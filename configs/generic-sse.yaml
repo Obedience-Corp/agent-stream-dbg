@@ -1,0 +1,46 @@
+# Generic SSE Configuration
+# Template for other SSE streaming APIs
+
+backend:
+  base_url: "http://localhost:8080"
+
+  stream_endpoint:
+    url: "/api/stream"
+    method: "POST"
+
+    message_format:
+      type: "json_body"
+      body_template: '{"prompt": "{message}", "stream": true}'
+
+    headers:
+      Accept: "text/event-stream"
+      Content-Type: "application/json"
+
+    auth:
+      type: "api_key"
+      header_name: "X-API-Key"
+      token_env: "API_KEY"
+
+session:
+  id: "default-session"
+
+events:
+  # Empty list means track all events
+  types: []
+
+  # Custom field mappings
+  field_mappings:
+    type: "event"
+    content: "data"
+    agent_id: "source"
+
+logging:
+  dir: "./logs"
+  dimensions:
+    by_event_type: true
+    by_session: true
+    api_calls: true
+
+display:
+  colors: true
+  max_agents_visible: 3

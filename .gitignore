@@ -1,0 +1,14 @@
+# Binaries
+bin/
+*.exe
+
+# Environment
+.env
+
+# Logs
+logs/
+*.log
+*.jsonl
+
+# Go
+vendor/

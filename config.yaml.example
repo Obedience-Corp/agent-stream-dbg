@@ -1,0 +1,138 @@
+# Stream Debugger Configuration
+
+# Backend API Configuration
+backend:
+  base_url: "http://localhost:5003"
+
+  # How to initiate streaming
+  stream_endpoint:
+    # URL pattern (supports {session_id} placeholder)
+    url: "/api/v3/sessions/{session_id}/stream"
+
+    # HTTP method for initiating stream
+    method: "GET"  # or "POST"
+
+    # How to pass the message
+    message_format:
+      type: "query_param"  # Options: query_param, json_body, form_data
+      param_name: "message"  # For query_param or form_data
+      # For json_body, use:
+      # body_template: '{"message": "{message}", "stream": true}'
+
+    # Additional headers
+    headers:
+      Accept: "text/event-stream"
+      # Add custom headers as needed
+
+    # Authentication
+    auth:
+      type: "bearer"  # Options: bearer, api_key, basic, none
+      token_env: "API_KEY"  # Read token from this env var
+      # For api_key type:
+      # header_name: "X-API-Key"
+      # For basic type:
+      # username_env: "API_USERNAME"
+      # password_env: "API_PASSWORD"
+
+# Session Configuration
+session:
+  id: "test-session-001"
+  id_env: "SESSION_ID"  # Override with env var if set
+
+# Event Configuration
+events:
+  # List of event types to track
+  # If empty, tracks all events
+  types:
+    - "session_start"
+    - "session_complete"
+    - "agent_stream_start"
+    - "agent_content"
+    - "agent_stream_complete"
+    - "wizard_stream_start"
+    - "wizard_content"
+    - "wizard_stream_complete"
+    - "error"
+
+  # Event field mappings (for non-standard APIs)
+  # Maps standard fields to API-specific fields
+  field_mappings:
+    type: "type"           # Event type field name
+    agent_id: "agent_id"   # Agent identifier field
+    content: "content"     # Content/token field
+    sequence: "sequence"   # Sequence number field
+    message_id: "message_id"
+    timestamp: "timestamp"
+
+# Logging Configuration
+logging:
+  dir: "./logs"
+
+  # Which dimensions to log
+  dimensions:
+    by_event_type: true
+    by_agent: true
+    by_session: true
+    api_calls: true
+
+  # Log format
+  format: "jsonl"  # Options: jsonl, json, text
+
+  # Log level
+  level: "info"  # Options: debug, info, warn, error
+
+# Display Configuration
+display:
+  # Enable colored output
+  colors: true
+
+  # Max agents to show simultaneously
+  max_agents_visible: 5
+
+  # Content preview length (characters)
+  agent_preview_length: 200
+  wizard_preview_length: 400
+
+  # Update rate (milliseconds)
+  update_interval_ms: 100
+
+  # Agent colors (map agent_id to color code)
+  agent_colors:
+    sam_harris: "13"      # Magenta
+    tony_robbins: "9"     # Red
+    david_goggins: "1"    # Dark Red
+    eckhart_tolle: "10"   # Green
+    marcus_aurelius: "12" # Blue
+    bruce_lee: "14"       # Cyan
+    alan_watts: "5"       # Purple
+    carl_jung: "3"        # Yellow
+    viktor_frankl: "6"    # Cyan
+    rumi: "11"            # Yellow
+    wizard: "11"          # Gold
+    default: "7"          # Gray
+
+# Sequence Tracking
+sequence_tracking:
+  enabled: true
+
+  # Show buffer state in UI
+  show_buffer_state: true
+
+  # Buffer timeout (seconds)
+  buffer_timeout: 5
+
+  # Warn on sequence gaps
+  warn_on_gaps: true
+
+# Performance Monitoring
+performance:
+  enabled: true
+
+  # Track metrics
+  track_token_rate: true
+  track_latency: true
+  track_memory: false
+
+  # Alert thresholds
+  slow_token_rate_threshold: 10  # tokens/sec
+  high_latency_threshold: 1000   # milliseconds

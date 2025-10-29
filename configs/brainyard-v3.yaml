@@ -1,0 +1,60 @@
+# BrainyardV3 Configuration
+# Specific configuration for BrainyardV3 backend
+
+backend:
+  base_url: "http://localhost:5003"
+
+  stream_endpoint:
+    url: "/api/v3/sessions/{session_id}/stream"
+    method: "GET"
+
+    message_format:
+      type: "query_param"
+      param_name: "message"
+
+    headers:
+      Accept: "text/event-stream"
+
+    auth:
+      type: "bearer"
+      token_env: "API_KEY"
+
+session:
+  id_env: "SESSION_ID"
+
+events:
+  types:
+    - "session_start"
+    - "session_complete"
+    - "agent_stream_start"
+    - "agent_content"
+    - "agent_stream_complete"
+    - "wizard_stream_start"
+    - "wizard_content"
+    - "wizard_stream_complete"
+    - "error"
+
+logging:
+  dir: "./logs"
+  dimensions:
+    by_event_type: true
+    by_agent: true
+    by_session: true
+    api_calls: true
+
+display:
+  colors: true
+  max_agents_visible: 5
+  agent_colors:
+    sam_harris: "13"
+    tony_robbins: "9"
+    david_goggins: "1"
+    eckhart_tolle: "10"
+    marcus_aurelius: "12"
+    bruce_lee: "14"
+    alan_watts: "5"
+    carl_jung: "3"
+    viktor_frankl: "6"
+    rumi: "11"
+    wizard: "11"
+    default: "7"
