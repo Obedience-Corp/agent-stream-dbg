@@ -1,4 +1,4 @@
-module github.com/lancekrogers/brainyard/stream-debugger
+module github.com/lancekrogers/stream-debugger
 
 go 1.25.1
 

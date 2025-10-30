@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/lancekrogers/brainyard/stream-debugger/internal/config"
-	"github.com/lancekrogers/brainyard/stream-debugger/internal/events"
+	"github.com/lancekrogers/stream-debugger/internal/config"
+	"github.com/lancekrogers/stream-debugger/internal/events"
 	"github.com/r3labs/sse/v2"
 )
 

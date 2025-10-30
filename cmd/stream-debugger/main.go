@@ -8,10 +8,10 @@ import (
 	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/lancekrogers/brainyard/stream-debugger/internal/client"
-	"github.com/lancekrogers/brainyard/stream-debugger/internal/config"
-	"github.com/lancekrogers/brainyard/stream-debugger/internal/logger"
-	"github.com/lancekrogers/brainyard/stream-debugger/internal/visualizer"
+	"github.com/lancekrogers/stream-debugger/internal/client"
+	"github.com/lancekrogers/stream-debugger/internal/config"
+	"github.com/lancekrogers/stream-debugger/internal/logger"
+	"github.com/lancekrogers/stream-debugger/internal/visualizer"
 )
 
 func main() {

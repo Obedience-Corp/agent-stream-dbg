@@ -8,10 +8,10 @@ import (
 
 	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/lancekrogers/brainyard/stream-debugger/internal/client"
-	"github.com/lancekrogers/brainyard/stream-debugger/internal/config"
-	"github.com/lancekrogers/brainyard/stream-debugger/internal/events"
-	"github.com/lancekrogers/brainyard/stream-debugger/internal/logger"
+	"github.com/lancekrogers/stream-debugger/internal/client"
+	"github.com/lancekrogers/stream-debugger/internal/config"
+	"github.com/lancekrogers/stream-debugger/internal/events"
+	"github.com/lancekrogers/stream-debugger/internal/logger"
 )
 
 // Model represents the TUI application state

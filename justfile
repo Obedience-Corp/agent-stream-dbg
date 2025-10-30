@@ -16,25 +16,25 @@ deps:
 # Build the binary
 build:
     mkdir -p bin
-    go build -o bin/debugger ./cmd/debugger
+    go build -o bin/stream-debugger ./cmd/stream-debugger
 
 # Run the debugger with a test message
 stream message="What is consciousness?" config="configs/brainyard-v3.yaml":
     @mkdir -p bin
-    @test -f bin/debugger || just build
-    ./bin/debugger stream --config "{{config}}" "{{message}}"
+    @test -f bin/stream-debugger || just build
+    ./bin/stream-debugger stream --config "{{config}}" "{{message}}"
 
 # Replay a session from logs with timeline visualization
 replay session_file:
     @mkdir -p bin
-    @test -f bin/debugger || just build
-    ./bin/debugger replay "{{session_file}}"
+    @test -f bin/stream-debugger || just build
+    ./bin/stream-debugger replay "{{session_file}}"
 
 # Visualize timeline from session log
 timeline session_file:
     @mkdir -p bin
-    @test -f bin/debugger || just build
-    ./bin/debugger timeline "{{session_file}}"
+    @test -f bin/stream-debugger || just build
+    ./bin/stream-debugger timeline "{{session_file}}"
 
 # Run tests
 test:
@@ -56,7 +56,19 @@ clean:
 # Run with race detector
 race message="Test message":
     mkdir -p bin
-    go run -race ./cmd/debugger stream "{{message}}"
+    go run -race ./cmd/stream-debugger stream "{{message}}"
+
+# Sign the binary for macOS (prevents security warnings)
+sign-macos:
+    @echo "🔏 Signing binary for macOS..."
+    codesign --sign - --force --deep bin/stream-debugger
+    @echo "✅ Binary signed (ad-hoc signature for local use)"
+    @echo "💡 For distribution, use: codesign --sign \"Developer ID\" bin/stream-debugger"
+
+# Build and sign in one step (macOS only)
+build-signed:
+    just build
+    just sign-macos
 
 # Show current configuration
 config:

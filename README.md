@@ -1,163 +1,151 @@
 # Stream Debugger
 
-A **configuration-driven** real-time Terminal UI (TUI) debugger for visualizing Server-Sent Events (SSE) streaming from any API. Built for BrainyardV3 but designed to work with any SSE streaming system.
+**A configuration-driven CLI tool for visualizing and debugging Server-Sent Events (SSE) streaming from any API.**
 
-## 🎯 Key Features
+Real-time TUI for watching streams + timeline analysis for understanding parallel execution patterns.
 
-### 1. Configuration-Driven
+[![Go Version](https://img.shields.io/badge/go-1.25+-blue.svg)](https://golang.org/dl/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-- **Pluggable configs** for different SSE APIs
-- Define how to connect, authenticate, and parse events
-- No code changes needed for new APIs
+---
 
-### 2. Real-Time Visualization
+## Features
 
-- Beautiful TUI showing parallel agent streams
-- Live stats: tokens/sec, latency, event counts
-- Color-coded agents with sequence tracking
+🎬 **Real-Time TUI** - Watch SSE streams live in your terminal
+📊 **Timeline Visualization** - Analyze parallel execution from logs
+⚙️ **Configuration-Driven** - Works with any SSE API via YAML config
+📝 **Multi-Dimensional Logging** - Events logged by type, agent, session, and API calls
+🎯 **9 Event Types** - Full SSE lifecycle support
+🚀 **Performance Tracking** - Tokens/sec, latency, sequence numbers
 
-### 3. Timeline Analysis
+---
 
-- **Visualize parallel execution** from log files
-- See exactly when agents ran simultaneously
-- Three views: Timeline, Detailed Log, Parallel Summary
+## Installation
 
-### 4. Multi-Dimensional Logging
-
-- Events logged to 4 categories simultaneously:
-  - By event type
-  - By agent
-  - By session (full timeline)
-  - API calls
-
-## 🚀 Quick Start
-
-### 1. Setup
+### Via Go Install (Recommended)
 
 ```bash
+go install github.com/lancekrogers/stream-debugger/cmd/stream-debugger@latest
+```
+
+### From Source
+
+```bash
+git clone https://github.com/lancekrogers/stream-debugger.git
 cd stream-debugger
-cp config.yaml.example config.yaml
-# Edit config.yaml with your API details
+go build -o bin/stream-debugger ./cmd/stream-debugger
 
-# Or use a pre-configured setup
-cp configs/brainyard-v3.yaml config.yaml
+# Optional: Install to $GOPATH/bin
+go install ./cmd/stream-debugger
 ```
 
-### 2. Stream (Real-Time)
+### From Binary Release
+
+Download the latest release from [GitHub Releases](https://github.com/lancekrogers/stream-debugger/releases).
+
+---
+
+## Quick Start
+
+### 1. Configure
 
 ```bash
-# Using default config
-just stream "What is consciousness?"
+# Copy example config
+cp configs/brainyard-v3.yaml my-config.yaml
 
-# Using specific config
-just stream "Your question" "configs/brainyard-v3.yaml"
-
-# Or directly
-./bin/debugger stream --config configs/brainyard-v3.yaml "Your question"
+# Or create .env for simple setup
+cat > .env << EOF
+BACKEND_URL=http://localhost:5003
+API_KEY=your-api-key
+SESSION_ID=debug-session
+EOF
 ```
 
-### 3. Analyze (From Logs)
+### 2. Stream (Real-Time TUI)
 
 ```bash
-# Timeline visualization (parallel execution)
-just timeline logs/by-session/session_*.jsonl
-
-# Detailed sequential log
-./bin/debugger replay logs/by-session/session_*.jsonl
+stream-debugger stream "What is consciousness?"
 ```
 
-## 📋 Configuration
+This opens an **interactive TUI** in your terminal showing live agent responses. Press `q` to exit.
 
-### Configuration Files
+### 3. Analyze (Timeline from Logs)
 
-```
-stream-debugger/
-├── config.yaml.example     # Full template with all options
-├── configs/
-│   ├── brainyard-v3.yaml  # BrainyardV3 multi-agent system
-│   └── generic-sse.yaml   # Generic SSE API template
+```bash
+stream-debugger timeline logs/by-session/session_*.jsonl
 ```
 
-### Key Configuration Sections
+This prints a visual timeline showing which agents ran in parallel.
 
-#### Backend Configuration
+---
 
-```yaml
-backend:
-  base_url: "http://localhost:5003"
+## Usage
 
-  stream_endpoint:
-    url: "/api/v3/sessions/{session_id}/stream"
-    method: "GET" # or POST
+```bash
+# Real-time streaming with TUI
+stream-debugger stream "your message"
 
-    message_format:
-      type: "query_param" # or json_body, form_data
-      param_name: "message"
+# With custom config
+stream-debugger stream --config my-config.yaml "your message"
+
+# Timeline visualization from logs
+stream-debugger timeline logs/by-session/session_*.jsonl
+
+# Detailed event log
+stream-debugger replay logs/by-session/session_*.jsonl
+
+# Help
+stream-debugger --help
 ```
 
-#### Authentication
+---
 
-```yaml
-auth:
-  type: "bearer" # or api_key, basic, none
-  token_env: "API_KEY"
-```
+## Real-Time TUI
 
-#### Event Configuration
-
-```yaml
-events:
-  types: # Which events to track
-    - "session_start"
-    - "agent_content"
-    - "error"
-
-  field_mappings: # Map API fields to standard names
-    type: "type"
-    agent_id: "agent_id"
-    content: "content"
-```
-
-See `config.yaml.example` for full documentation.
-
-## 🎨 Real-Time TUI
-
-When streaming, you'll see:
+When you run `stream stream`, you get a **full-screen interactive terminal UI**:
 
 ```
-╭─────────────────────────────────────────────╮
-│ Stream Debugger - Session: test-session-001│
-╰─────────────────────────────────────────────╯
+╭────────────────────────────────────────────────╮
+│ Stream Debugger - Session: debug-session-001  │
+╰────────────────────────────────────────────────╯
 
-╭───────────────────╮  ╭───────────────────╮
-│ ◉ sam_harris     │  │ ◉ eckhart_tolle  │
-│ Tokens: 145 | Seq: 144                   │
-│ Buffered: 0      │  │ Buffered: 0      │
-│                  │  │                  │
-│ ...consciousness │  │ ...present moment│
-╰───────────────────╯  ╰───────────────────╯
+╭─────────────────────╮  ╭─────────────────────╮
+│ ◉ sam_harris       │  │ ◉ eckhart_tolle    │
+│ Tokens: 145        │  │ Tokens: 98         │
+│ Seq: 144 | Buf: 0  │  │ Seq: 97 | Buf: 0   │
+│                    │  │                    │
+│ Consciousness is   │  │ The present moment │
+│ fundamentally...   │  │ is where...        │
+╰─────────────────────╯  ╰─────────────────────╯
 
-╭────────────────────────────────────────────╮
-│ ◉ Wizard (Synthesis)                      │
-│ Tokens: 243 | Seq: 242                    │
-│                                            │
-│ ...integrating both perspectives...       │
-╰────────────────────────────────────────────╯
+╭────────────────────────────────────────────────╮
+│ ◉ Wizard (Synthesis)                          │
+│ Tokens: 243 | Seq: 242                        │
+│                                                │
+│ Integrating both perspectives...              │
+╰────────────────────────────────────────────────╯
 
 Events: 487 | Tokens: 486 | Tokens/sec: 24.3 | Errors: 0 | Duration: 20s
 
-[p] pause/resume | [q] quit | [s] save session
+[p] pause/resume | [q] quit | [s] save
 ```
 
-## 📊 Timeline Visualization
+**Controls:**
+- `p` - Pause/resume display
+- `q` or `Ctrl+C` - Quit and save logs
+- `s` - Save session (future)
 
-**NEW**: Visualize what happened in parallel from log files!
+---
+
+## Timeline Analysis
+
+After streaming, analyze what happened:
 
 ```bash
-just timeline logs/by-session/session_test_20250128.jsonl
+stream-debugger timeline logs/by-session/session_*.jsonl
 ```
 
-### Timeline View (Parallel Execution)
+**Output:**
 
 ```
 📊 Timeline View - Parallel Execution Visualization
@@ -169,20 +157,12 @@ Time (ms)  sam_harris      eckhart_tolle   wizard
       0    ▶ START         │               │
     100    █                ▶ START         │
     200    █                █               │
-    300    █                █               │
-    400    █                █               │
     500    ■ DONE           █               │
-    600    │                ■ DONE          ▶ START
-    700    │                │               █
-    800    │                │               █
-    900    │                │               ■ DONE
+    700    │                ■ DONE          ▶ START
+   1000    │                │               ■ DONE
 
 Legend: ▶ START  █ Streaming  ■ DONE  ✗ ERROR  │ Idle
-```
 
-### Parallel Execution Summary
-
-```
 🔀 Parallel Execution Summary
 
 sam_harris ran in parallel with: eckhart_tolle
@@ -190,44 +170,78 @@ eckhart_tolle ran in parallel with: sam_harris
 wizard ran sequentially after all agents
 ```
 
-### Detailed Event Log
+---
 
+## Configuration
+
+Stream Debugger uses YAML configuration files to work with any SSE API.
+
+### Example Config
+
+```yaml
+# configs/my-api.yaml
+backend:
+  base_url: "http://localhost:5003"
+
+  stream_endpoint:
+    url: "/api/stream"
+    method: "POST"
+
+    message_format:
+      type: "json_body"
+      body_template: '{"prompt": "{message}", "stream": true}'
+
+    auth:
+      type: "bearer"
+      token_env: "API_KEY"
+
+events:
+  types:
+    - "session_start"
+    - "agent_content"
+    - "error"
+
+logging:
+  dir: "./logs"
+  dimensions:
+    by_event_type: true
+    by_agent: true
+    by_session: true
+    api_calls: true
 ```
-📋 Detailed Event Log
 
-[+  0.000s] sam_harris      | agent_stream_start   |
-[+  0.012s] sam_harris      | agent_content        | "Consciousness"
-[+  0.024s] eckhart_tolle   | agent_stream_start   |
-[+  0.036s] sam_harris      | agent_content        | " is"
-[+  0.048s] eckhart_tolle   | agent_content        | "The present"
-...
-```
+See [`config.yaml.example`](config.yaml.example) for all options.
 
-## 📝 Log Files
+### Pre-configured Examples
 
-All events are logged to 4 dimensions simultaneously:
+- `configs/brainyard-v3.yaml` - BrainyardV3 multi-agent system
+- `configs/generic-sse.yaml` - Generic SSE API template
+
+---
+
+## Log Files
+
+All events are automatically logged to 4 categories:
 
 ```
 logs/
-├── by-event-type/
+├── by-event-type/       # All events of one type
 │   ├── session_start.jsonl
 │   ├── agent_content.jsonl
-│   ├── wizard_content.jsonl
 │   └── error.jsonl
-├── by-agent/
+├── by-agent/            # All events from one agent
 │   ├── sam_harris.jsonl
-│   ├── wizard.jsonl
-│   └── tony_robbins.jsonl
-├── by-session/
-│   └── session_test-session-001_20250128_143022.jsonl
-└── api-calls/
-    └── http_20250128_143022.jsonl
+│   └── wizard.jsonl
+├── by-session/          # Complete session timelines
+│   └── session_xxx_20250128.jsonl
+└── api-calls/           # HTTP requests and responses
+    └── http_20250128.jsonl
 ```
 
 ### Analyzing Logs
 
 ```bash
-# See which agents were active
+# See which agents responded
 ls logs/by-agent/
 
 # Read full conversation
@@ -238,95 +252,76 @@ wc -l logs/by-event-type/*.jsonl
 
 # Find errors
 cat logs/by-event-type/error.jsonl | jq
-
-# Analyze API performance
-cat logs/api-calls/*.jsonl | jq '.duration_ms'
 ```
 
-## 🔧 Usage Examples
+---
 
-### BrainyardV3 Multi-Agent System
+## Documentation
+
+- **User Guides**
+  - [Quick Start](docs/user-guide/quickstart.md)
+  - [Getting Started with BrainyardV3](docs/user-guide/getting-started-brainyard.md)
+  - [TUI vs Timeline Mode](docs/user-guide/tui-vs-timeline.md)
+
+- **Development**
+  - [Implementation Details](docs/development/implementation.md)
+  - [Testing Guide](docs/development/testing.md)
+
+- **Configuration**
+  - [`config.yaml.example`](config.yaml.example) - Full config reference
+  - [`configs/`](configs/) - Example configurations
+
+---
+
+## Development
+
+For contributors, we use `just` for development convenience:
 
 ```bash
-# Stream with multiple agents
-just stream "What can philosophy teach us about consciousness and mental toughness?"
+# Install dependencies
+just deps
 
-# Analyze the session
-just timeline logs/by-session/session_*.jsonl
+# Build binary
+just build              # Creates bin/stream-debugger
+
+# Build and sign for macOS
+just build-signed       # Includes code signing
+
+# Run tests
+just test
+
+# Development shortcuts (calls the binary)
+just stream "test message"        # Quick test
+just timeline logs/session_*.jsonl
 ```
 
-### Generic SSE API
+### Code Signing (macOS)
 
 ```bash
-# Create custom config
-cp configs/generic-sse.yaml my-api.yaml
-# Edit my-api.yaml with your API details
+# Ad-hoc signing for local use
+just sign-macos
 
-# Stream
-./bin/debugger stream --config my-api.yaml "Your prompt"
+# Or manually with Developer ID for distribution
+codesign --sign "Developer ID Application: Your Name" bin/stream-debugger
 ```
 
-### OpenAI-Compatible Streaming
+---
 
-```yaml
-# configs/openai-streaming.yaml
-backend:
-  base_url: "https://api.openai.com"
-  stream_endpoint:
-    url: "/v1/chat/completions"
-    method: "POST"
-    message_format:
-      type: "json_body"
-      body_template: |
-        {
-          "model": "gpt-4",
-          "messages": [{"role": "user", "content": "{message}"}],
-          "stream": true
-        }
-    auth:
-      type: "bearer"
-      token_env: "OPENAI_API_KEY"
-```
+## Use Cases
 
-## 🎯 Why Configuration-Driven?
+- **Multi-Agent Debugging** - See which agents run in parallel
+- **Performance Analysis** - Identify bottlenecks and slowdowns
+- **API Integration Testing** - Validate SSE event flows
+- **Production Monitoring** - Real-time streaming observability
+- **Log Analysis** - Understand complex multi-agent conversations
 
-### Before (Hardcoded)
+---
 
-- Only worked with BrainyardV3
-- Required code changes for new APIs
-- Couldn't adapt to different event structures
-
-### After (Config-Driven)
-
-- Works with **any SSE API**
-- **No code changes** needed
-- Define endpoint, auth, events in YAML
-- Reusable across projects
-
-## 📦 Commands
-
-```bash
-# Development
-just deps      # Install dependencies
-just build     # Build binary
-just clean     # Remove artifacts
-
-# Streaming
-just stream "message" ["config.yaml"]  # Real-time streaming
-just timeline "session.jsonl"          # Timeline visualization
-just replay "session.jsonl"            # Detailed log view
-
-# Testing
-just test      # Run tests
-just race      # Race detector
-```
-
-## 🛠️ Architecture
+## Architecture
 
 ```
 stream-debugger/
-├── bin/                  # Binaries
-├── cmd/debugger/         # CLI entry point
+├── cmd/stream-debugger/  # CLI entry point
 ├── internal/
 │   ├── client/          # SSE client (config-driven)
 │   ├── config/          # YAML config loading
@@ -334,53 +329,42 @@ stream-debugger/
 │   ├── logger/          # Multi-dimensional logging
 │   └── visualizer/      # TUI + Timeline views
 ├── configs/             # Pre-configured setups
-├── logs/                # Generated logs
-└── config.yaml          # Your configuration
+├── docs/                # Documentation
+└── logs/                # Generated logs (gitignored)
 ```
-
-## 🔑 Configuration Examples
-
-See `configs/` directory for examples:
-
-- `brainyard-v3.yaml` - BrainyardV3 multi-agent system
-- `generic-sse.yaml` - Generic template for any SSE API
-
-## 🚦 Workflow
-
-1. **Configure**: Choose or create a config file for your API
-2. **Stream**: Watch real-time events in beautiful TUI
-3. **Analyze**: Visualize parallel execution from logs
-4. **Iterate**: Tune your system based on insights
-
-## 📚 Documentation
-
-- `config.yaml.example` - Full configuration reference
-- `QUICKSTART.md` - Step-by-step guide
-- `IMPLEMENTATION_COMPLETE.md` - Technical details
-
-## 🎓 Use Cases
-
-- **Multi-Agent Debugging**: See which agents run in parallel
-- **Performance Analysis**: Identify bottlenecks and slowdowns
-- **API Integration Testing**: Validate SSE event flows
-- **Production Monitoring**: Real-time streaming observability
-- **Log Analysis**: Understand complex multi-agent conversations
-
-## 🤝 Contributing
-
-This tool is designed to be generic and reusable. To add support for a new API:
-
-1. Create a config file in `configs/your-api.yaml`
-2. Define endpoint, auth, and event mappings
-3. Test with `just stream "test" "configs/your-api.yaml"`
-4. Share your config!
-
-## 📄 License
-
-MIT
 
 ---
 
-**Made for debugging complex SSE streaming systems** 🚀
+## Contributing
+
+Contributions welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new functionality
+4. Run `just test` to ensure all tests pass
+5. Submit a pull request
+
+---
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+## Credits
+
+Built for debugging complex SSE streaming systems. Originally created for [BrainyardV3](https://github.com/lancekrogers/BrainyardV3) but designed to be generic and reusable.
+
+**Technologies:**
+- [Bubbletea](https://github.com/charmbracelet/bubbletea) - Terminal UI framework
+- [Lipgloss](https://github.com/charmbracelet/lipgloss) - Terminal styling
+- [Zerolog](https://github.com/rs/zerolog) - Fast structured logging
+- [r3labs/sse](https://github.com/r3labs/sse) - SSE client library
+
+---
+
+**Made for debugging SSE streaming systems** 🚀
 
 Visualize parallel execution • Real-time monitoring • Configuration-driven • Log analysis

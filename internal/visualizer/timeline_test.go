@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lancekrogers/brainyard/stream-debugger/internal/events"
+	"github.com/lancekrogers/stream-debugger/internal/events"
 )
 
 func TestNewTimelineVisualizer(t *testing.T) {
