@@ -16,11 +16,11 @@ import (
 
 // Model represents the TUI application state
 type Model struct {
-	config    *config.Config
-	client    *client.SSEClient
-	logger    *logger.StructuredLogger
-	ctx       context.Context
-	cancel    context.CancelFunc
+	config *config.Config
+	client *client.SSEClient
+	logger *logger.StructuredLogger
+	ctx    context.Context
+	cancel context.CancelFunc
 
 	// State
 	agents        map[string]*AgentState
@@ -35,33 +35,33 @@ type Model struct {
 	paused        bool
 
 	// Stats
-	startTime     time.Time
-	totalTokens   int
-	totalEvents   int
+	startTime   time.Time
+	totalTokens int
+	totalEvents int
 }
 
 // AgentState tracks the state of a single agent
 type AgentState struct {
-	ID            string
-	Active        bool
-	Content       strings.Builder
-	TokenCount    int
-	Sequence      int
+	ID             string
+	Active         bool
+	Content        strings.Builder
+	TokenCount     int
+	Sequence       int
 	BufferedTokens map[int]string // sequence -> token
-	StartTime     time.Time
-	EndTime       time.Time
-	LastUpdate    time.Time
+	StartTime      time.Time
+	EndTime        time.Time
+	LastUpdate     time.Time
 }
 
 // WizardState tracks the wizard synthesis state
 type WizardState struct {
-	Active        bool
-	Content       strings.Builder
-	TokenCount    int
-	Sequence      int
+	Active         bool
+	Content        strings.Builder
+	TokenCount     int
+	Sequence       int
 	BufferedTokens map[int]string
-	StartTime     time.Time
-	EndTime       time.Time
+	StartTime      time.Time
+	EndTime        time.Time
 }
 
 // eventMsg wraps an SSE event for bubbletea
@@ -146,7 +146,7 @@ func (m *Model) View() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("8")).
 		Padding(1).
-		Width(m.width / 2 - 4)
+		Width(m.width/2 - 4)
 
 	wizardStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -396,17 +396,17 @@ func (m *Model) tickCmd() tea.Cmd {
 // getAgentColor returns a color for an agent based on their ID
 func getAgentColor(agentID string) string {
 	colors := map[string]string{
-		"sam_harris":     "13",  // Magenta
-		"tony_robbins":   "9",   // Red
-		"david_goggins":  "1",   // Dark red
-		"eckhart_tolle":  "10",  // Green
+		"sam_harris":      "13", // Magenta
+		"tony_robbins":    "9",  // Red
+		"david_goggins":   "1",  // Dark red
+		"eckhart_tolle":   "10", // Green
 		"marcus_aurelius": "12", // Blue
-		"bruce_lee":      "14",  // Cyan
-		"alan_watts":     "5",   // Purple
-		"carl_jung":      "3",   // Yellow
-		"viktor_frankl":  "6",   // Cyan
-		"rumi":           "11",  // Yellow
-		"wizard":         "11",  // Yellow/Gold
+		"bruce_lee":       "14", // Cyan
+		"alan_watts":      "5",  // Purple
+		"carl_jung":       "3",  // Yellow
+		"viktor_frankl":   "6",  // Cyan
+		"rumi":            "11", // Yellow
+		"wizard":          "11", // Yellow/Gold
 	}
 
 	if color, ok := colors[agentID]; ok {

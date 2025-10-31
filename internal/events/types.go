@@ -79,14 +79,14 @@ type WizardStreamCompleteEvent struct {
 type ErrorType string
 
 const (
-	AuthenticationError  ErrorType = "authentication_error"
-	ConnectionError      ErrorType = "connection_error"
-	RateLimitError       ErrorType = "rate_limit_error"
-	ModelNotFoundError   ErrorType = "model_not_found"
-	ContentFilterError   ErrorType = "content_filter_error"
-	StreamError          ErrorType = "stream_error"
-	TimeoutError         ErrorType = "timeout_error"
-	UnknownError         ErrorType = "unknown_error"
+	AuthenticationError ErrorType = "authentication_error"
+	ConnectionError     ErrorType = "connection_error"
+	RateLimitError      ErrorType = "rate_limit_error"
+	ModelNotFoundError  ErrorType = "model_not_found"
+	ContentFilterError  ErrorType = "content_filter_error"
+	StreamError         ErrorType = "stream_error"
+	TimeoutError        ErrorType = "timeout_error"
+	UnknownError        ErrorType = "unknown_error"
 )
 
 // ErrorEvent represents an error during streaming

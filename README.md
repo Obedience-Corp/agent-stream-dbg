@@ -33,10 +33,14 @@ go install github.com/lancekrogers/stream-debugger/cmd/stream-debugger@latest
 ```bash
 git clone https://github.com/lancekrogers/stream-debugger.git
 cd stream-debugger
+
+# Build locally
 go build -o bin/stream-debugger ./cmd/stream-debugger
 
-# Optional: Install to $GOPATH/bin
+# Install to $GOPATH/bin (recommended)
 go install ./cmd/stream-debugger
+# OR use just:
+just install
 ```
 
 ### From Binary Release

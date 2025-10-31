@@ -23,8 +23,8 @@ type Config struct {
 	LogLevel string
 
 	// Display Configuration
-	EnableColors       bool
-	MaxAgentsVisible   int
+	EnableColors     bool
+	MaxAgentsVisible int
 }
 
 // Load reads configuration from environment and .env file

@@ -169,7 +169,7 @@ func TestEvent_GetAgentID(t *testing.T) {
 		{
 			name: "SessionStart (no agent)",
 			event: &Event{
-				Type: SessionStart,
+				Type:         SessionStart,
 				SessionStart: &SessionStartEvent{},
 			},
 			expected: "",

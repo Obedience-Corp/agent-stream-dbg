@@ -4,19 +4,21 @@
 default:
     @just --list --justfile {{source_file()}}
 
-# Install dependencies
+# Download dependencies (optional - go build does this automatically)
 deps:
-    go get github.com/charmbracelet/bubbletea
-    go get github.com/charmbracelet/lipgloss
-    go get github.com/rs/zerolog
-    go get github.com/joho/godotenv
-    go get github.com/r3labs/sse/v2
-    go mod tidy
+    go mod download
 
 # Build the binary
 build:
     mkdir -p bin
     go build -o bin/stream-debugger ./cmd/stream-debugger
+
+# Install the binary to $GOPATH/bin
+install:
+    @echo "📦 Installing stream-debugger to Go bin..."
+    go install ./cmd/stream-debugger
+    @echo "✅ Installed successfully to $(go env GOPATH)/bin/stream-debugger"
+    @echo "💡 Make sure $(go env GOPATH)/bin is in your PATH"
 
 # Run the debugger with a test message
 stream message="What is consciousness?" config="configs/brainyard-v3.yaml":
@@ -44,9 +46,20 @@ test:
 fmt:
     go fmt ./...
 
-# Lint code
+# Check for suspicious code (built-in Go tool)
+vet:
+    go vet ./...
+
+# Lint code (requires golangci-lint)
 lint:
     golangci-lint run
+
+# Run all code quality checks
+check:
+    @echo "🔍 Running code quality checks..."
+    go fmt ./...
+    go vet ./...
+    @echo "✅ All checks passed!"
 
 # Clean build artifacts and logs
 clean:
@@ -80,6 +93,4 @@ init:
     cp .env.example .env
     @echo "✅ Created .env file"
     @echo "📝 Please edit .env with your API key and backend URL"
-    just deps
-    @echo "✅ Dependencies installed"
-    @echo "🚀 Ready to run: just stream \"your message\""
+    @echo "🚀 Ready to run: just build (dependencies will be downloaded automatically)"

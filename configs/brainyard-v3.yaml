@@ -6,11 +6,11 @@ backend:
 
   stream_endpoint:
     url: "/api/v3/sessions/{session_id}/stream"
-    method: "GET"
+    method: "POST"
 
     message_format:
-      type: "query_param"
-      param_name: "message"
+      type: "json_body"
+      body_template: '{"message": "{message}", "stream": true}'
 
     headers:
       Accept: "text/event-stream"
@@ -21,6 +21,12 @@ backend:
 
 session:
   id_env: "SESSION_ID"
+  auto_setup: true  # Automatically create session with default agents
+  default_agents:
+    - "sam_harris"
+    - "eckhart_tolle"
+    - "wizard"
+  setup_endpoint: "/api/v3/debug/session"
 
 events:
   types:
