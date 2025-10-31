@@ -11,16 +11,39 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lancekrogers/stream-debugger/internal/config"
+	"github.com/lancekrogers/stream-debugger/internal/events"
 )
+
+// ViewMode represents the display mode for responses
+type ViewMode int
+
+const (
+	ViewModeRaw ViewMode = iota
+	ViewModeParsed
+)
+
+// AgentResponse tracks a single agent's response
+type AgentResponse struct {
+	AgentID       string
+	ContentChunks []string
+	FullContent   string
+	TokenCount    int
+	StartTime     time.Time
+	EndTime       time.Time
+	Completed     bool
+}
 
 // InteractiveModel represents the interactive TUI state
 type InteractiveModel struct {
 	cfg      *config.EnhancedConfig
 	apiKey   string
 	textarea textarea.Model
+	viewport viewport.Model
+	viewMode ViewMode
 
 	// Message history
 	messages  []Message
@@ -35,8 +58,16 @@ type InteractiveModel struct {
 type Message struct {
 	Text      string
 	Timestamp time.Time
-	Response  string
 	Streaming bool
+
+	// Store complete raw SSE (no truncation)
+	RawSSE string
+
+	// Store parsed events
+	Events []*events.Event
+
+	// Store per-agent responses
+	AgentResponses map[string]*AgentResponse
 }
 
 // NewInteractiveModel creates a new interactive TUI model
@@ -49,10 +80,16 @@ func NewInteractiveModel(cfg *config.EnhancedConfig, apiKey string) InteractiveM
 	ta.SetHeight(3)
 	ta.ShowLineNumbers = false
 
+	// Initialize viewport for scrolling
+	vp := viewport.New(80, 20)
+	vp.HighPerformanceRendering = false
+
 	return InteractiveModel{
 		cfg:      cfg,
 		apiKey:   apiKey,
 		textarea: ta,
+		viewport: vp,
+		viewMode: ViewModeRaw, // Default to raw view
 		messages: make([]Message, 0),
 	}
 }
@@ -69,6 +106,35 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.Type {
 		case tea.KeyCtrlC:
 			return m, tea.Quit
+		case tea.KeyCtrlT:
+			// Toggle view mode
+			if m.viewMode == ViewModeRaw {
+				m.viewMode = ViewModeParsed
+			} else {
+				m.viewMode = ViewModeRaw
+			}
+			return m, nil
+
+		// Scrolling keys
+		case tea.KeyUp:
+			m.viewport.LineUp(1)
+			return m, nil
+		case tea.KeyDown:
+			m.viewport.LineDown(1)
+			return m, nil
+		case tea.KeyPgUp:
+			m.viewport.HalfViewUp()
+			return m, nil
+		case tea.KeyPgDown:
+			m.viewport.HalfViewDown()
+			return m, nil
+		case tea.KeyHome:
+			m.viewport.GotoTop()
+			return m, nil
+		case tea.KeyEnd:
+			m.viewport.GotoBottom()
+			return m, nil
+
 		case tea.KeyEnter:
 			if !m.streaming {
 				// Send the message
@@ -93,9 +159,19 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.textarea.SetWidth(msg.Width - 4)
 
+		// Update viewport size (leave room for header, input, status)
+		viewportHeight := msg.Height - 15 // Adjust for UI elements
+		if viewportHeight < 5 {
+			viewportHeight = 5
+		}
+		m.viewport.Width = msg.Width - 4
+		m.viewport.Height = viewportHeight
+
 	case streamCompleteMsg:
 		if msg.index < len(m.messages) {
-			m.messages[msg.index].Response = msg.response
+			m.messages[msg.index].RawSSE = msg.rawSSE
+			m.messages[msg.index].Events = msg.events
+			m.messages[msg.index].AgentResponses = msg.agentResponses
 			m.messages[msg.index].Streaming = false
 		}
 		m.streaming = false
@@ -128,16 +204,22 @@ func (m InteractiveModel) View() string {
 	b.WriteString(headerStyle.Render("🚀 Stream Debugger - Interactive Mode"))
 	b.WriteString("\n\n")
 
-	// Message history
+	// Prepare viewport content
+	var viewportContent string
 	if len(m.messages) > 0 {
-		b.WriteString(m.renderMessages())
-		b.WriteString("\n")
+		viewportContent = m.renderMessages()
 	} else {
-		b.WriteString(lipgloss.NewStyle().
+		viewportContent = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("8")).
-			Render("💬 Type a message below to start chatting..."))
-		b.WriteString("\n\n")
+			Render("💬 Type a message below to start chatting...")
 	}
+
+	// Update viewport with content
+	m.viewport.SetContent(viewportContent)
+
+	// Display viewport (scrollable message history)
+	b.WriteString(m.viewport.View())
+	b.WriteString("\n")
 
 	// Error display
 	if m.err != nil {
@@ -164,14 +246,200 @@ func (m InteractiveModel) View() string {
 	b.WriteString(inputBoxStyle.Render(m.textarea.View()))
 	b.WriteString("\n")
 
-	// Status line
+	// Status line with view mode indicator
 	statusStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("8")).
 		Italic(true)
 
-	status := fmt.Sprintf("Messages: %d | Session: %s | Press Ctrl+C to quit",
-		len(m.messages), m.cfg.Session.ID)
+	viewModeStr := "RAW"
+	if m.viewMode == ViewModeParsed {
+		viewModeStr = "PARSED"
+	}
+
+	status := fmt.Sprintf("Messages: %d | Session: %s | View: %s | Ctrl+T: toggle view | Ctrl+C: quit",
+		len(m.messages), m.cfg.Session.ID, viewModeStr)
 	b.WriteString(statusStyle.Render(status))
+
+	return b.String()
+}
+
+// parseSSEStream parses raw SSE stream into events
+func parseSSEStream(rawSSE string) ([]*events.Event, error) {
+	parser := events.NewParser()
+	var parsedEvents []*events.Event
+
+	lines := strings.Split(rawSSE, "\n")
+	var currentEvent string
+	var currentData strings.Builder
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		if strings.HasPrefix(line, "event:") {
+			// Save previous event if exists
+			if currentEvent != "" && currentData.Len() > 0 {
+				event, err := parser.Parse(currentEvent, []byte(currentData.String()))
+				if err == nil && event != nil {
+					parsedEvents = append(parsedEvents, event)
+				}
+			}
+
+			// Start new event
+			currentEvent = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+			currentData.Reset()
+
+		} else if strings.HasPrefix(line, "data:") {
+			// Accumulate data (remove "data: " prefix)
+			dataContent := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			if currentData.Len() > 0 {
+				currentData.WriteString("\n")
+			}
+			currentData.WriteString(dataContent)
+
+		} else if line == "" && currentEvent != "" {
+			// Empty line marks end of event
+			if currentData.Len() > 0 {
+				event, err := parser.Parse(currentEvent, []byte(currentData.String()))
+				if err == nil && event != nil {
+					parsedEvents = append(parsedEvents, event)
+				}
+			}
+			currentEvent = ""
+			currentData.Reset()
+		}
+	}
+
+	// Handle last event if stream doesn't end with newline
+	if currentEvent != "" && currentData.Len() > 0 {
+		event, err := parser.Parse(currentEvent, []byte(currentData.String()))
+		if err == nil && event != nil {
+			parsedEvents = append(parsedEvents, event)
+		}
+	}
+
+	return parsedEvents, nil
+}
+
+// buildAgentResponses builds agent response map from parsed events
+func buildAgentResponses(events []*events.Event) map[string]*AgentResponse {
+	responses := make(map[string]*AgentResponse)
+
+	for _, event := range events {
+		agentID := event.GetAgentID()
+		if agentID == "" {
+			continue
+		}
+
+		// Initialize agent response if needed
+		if _, exists := responses[agentID]; !exists {
+			responses[agentID] = &AgentResponse{
+				AgentID:       agentID,
+				ContentChunks: make([]string, 0),
+			}
+		}
+
+		agent := responses[agentID]
+
+		// Handle different event types
+		switch {
+		case event.AgentStreamStart != nil || event.WizardStreamStart != nil:
+			agent.StartTime = time.Now()
+
+		case event.AgentContent != nil || event.WizardContent != nil:
+			content := event.GetContent()
+			if content != "" {
+				agent.ContentChunks = append(agent.ContentChunks, content)
+				agent.FullContent += content
+				agent.TokenCount++
+			}
+
+		case event.AgentStreamComplete != nil || event.WizardStreamComplete != nil:
+			agent.EndTime = time.Now()
+			agent.Completed = true
+		}
+	}
+
+	return responses
+}
+
+// getAgentColor returns the lipgloss color for an agent
+func (m InteractiveModel) getAgentColor(agentID string) lipgloss.Color {
+	// Check if config has agent colors
+	if m.cfg != nil && m.cfg.Display != nil && m.cfg.Display.AgentColors != nil {
+		if color, exists := m.cfg.Display.AgentColors[agentID]; exists {
+			return lipgloss.Color(color)
+		}
+	}
+	// Default color
+	return lipgloss.Color("7")
+}
+
+// renderRawView renders the raw SSE stream
+func (m InteractiveModel) renderRawView(msg Message) string {
+	if msg.RawSSE == "" {
+		return ""
+	}
+
+	var b strings.Builder
+
+	responseStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("13")).
+		Bold(true)
+
+	b.WriteString(responseStyle.Render("Raw SSE Stream:"))
+	b.WriteString("\n")
+
+	// Show complete raw SSE (no truncation)
+	rawStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("8"))
+
+	b.WriteString(rawStyle.Render(msg.RawSSE))
+	b.WriteString("\n\n")
+
+	return b.String()
+}
+
+// renderParsedView renders agent responses color-coded by agent
+func (m InteractiveModel) renderParsedView(msg Message) string {
+	if len(msg.AgentResponses) == 0 {
+		return lipgloss.NewStyle().
+			Foreground(lipgloss.Color("8")).
+			Italic(true).
+			Render("No agent responses parsed")
+	}
+
+	var b strings.Builder
+
+	// Render each agent's response
+	for agentID, agentResp := range msg.AgentResponses {
+		if agentResp.FullContent == "" {
+			continue
+		}
+
+		// Agent header with color
+		agentColor := m.getAgentColor(agentID)
+		agentHeaderStyle := lipgloss.NewStyle().
+			Foreground(agentColor).
+			Bold(true)
+
+		// Display agent header
+		header := fmt.Sprintf("%s (%d tokens)", agentID, agentResp.TokenCount)
+		if agentResp.Completed {
+			header += " ✓"
+		} else {
+			header += " ⏳"
+		}
+
+		b.WriteString(agentHeaderStyle.Render(header))
+		b.WriteString("\n")
+
+		// Agent content with same color
+		contentStyle := lipgloss.NewStyle().
+			Foreground(agentColor)
+
+		b.WriteString(contentStyle.Render(agentResp.FullContent))
+		b.WriteString("\n\n")
+	}
 
 	return b.String()
 }
@@ -179,13 +447,8 @@ func (m InteractiveModel) View() string {
 func (m InteractiveModel) renderMessages() string {
 	var b strings.Builder
 
-	// Show last 3 messages
-	start := 0
-	if len(m.messages) > 3 {
-		start = len(m.messages) - 3
-	}
-
-	for i := start; i < len(m.messages); i++ {
+	// Show all messages (viewport handles scrolling)
+	for i := 0; i < len(m.messages); i++ {
 		msg := m.messages[i]
 
 		// User message
@@ -205,21 +468,13 @@ func (m InteractiveModel) renderMessages() string {
 				Italic(true).
 				Render("⏳ Streaming response from agents..."))
 			b.WriteString("\n\n")
-		} else if msg.Response != "" {
-			responseStyle := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("13")).
-				Bold(true)
-
-			b.WriteString(responseStyle.Render("Agents:"))
-			b.WriteString("\n")
-
-			// Truncate response if too long
-			response := msg.Response
-			if len(response) > 500 {
-				response = response[:500] + "..."
+		} else if msg.RawSSE != "" {
+			// Render based on view mode
+			if m.viewMode == ViewModeRaw {
+				b.WriteString(m.renderRawView(msg))
+			} else {
+				b.WriteString(m.renderParsedView(msg))
 			}
-			b.WriteString(response)
-			b.WriteString("\n\n")
 		}
 	}
 
@@ -271,14 +526,14 @@ func (m InteractiveModel) sendMessage(message string, index int) tea.Cmd {
 			return streamErrorMsg{err: fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))}
 		}
 
-		// Read streaming response
-		var responseText strings.Builder
+		// Read streaming response (complete raw SSE)
+		var rawSSE strings.Builder
 		buf := make([]byte, 4096)
 
 		for {
 			n, err := resp.Body.Read(buf)
 			if n > 0 {
-				responseText.Write(buf[:n])
+				rawSSE.Write(buf[:n])
 			}
 			if err != nil {
 				if err != io.EOF {
@@ -288,17 +543,32 @@ func (m InteractiveModel) sendMessage(message string, index int) tea.Cmd {
 			}
 		}
 
+		// Parse SSE stream into events
+		rawString := rawSSE.String()
+		parsedEvents, err := parseSSEStream(rawString)
+		if err != nil {
+			// If parsing fails, still show raw SSE
+			parsedEvents = []*events.Event{}
+		}
+
+		// Build agent responses from events
+		agentResponses := buildAgentResponses(parsedEvents)
+
 		return streamCompleteMsg{
-			index:    index,
-			response: responseText.String(),
+			index:          index,
+			rawSSE:         rawString,
+			events:         parsedEvents,
+			agentResponses: agentResponses,
 		}
 	}
 }
 
 // Message types
 type streamCompleteMsg struct {
-	index    int
-	response string
+	index          int
+	rawSSE         string
+	events         []*events.Event
+	agentResponses map[string]*AgentResponse
 }
 
 type streamErrorMsg struct {

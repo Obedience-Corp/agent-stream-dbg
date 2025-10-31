@@ -103,6 +103,11 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 			DefaultAgents: yamlCfg.Session.DefaultAgents,
 			SetupEndpoint: yamlCfg.Session.SetupEndpoint,
 		},
+		Display: &DisplayConfig{
+			Colors:           yamlCfg.Display.Colors,
+			MaxAgentsVisible: yamlCfg.Display.MaxAgentsVisible,
+			AgentColors:      yamlCfg.Display.AgentColors,
+		},
 		APIKey:           apiKey,
 		LogDir:           yamlCfg.Logging.Dir,
 		EnableColors:     yamlCfg.Display.Colors,
@@ -121,14 +126,22 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 type EnhancedConfig struct {
 	Backend BackendConfig
 	Session SessionConfig
+	Display *DisplayConfig
 	APIKey  string
 
 	// Logging
 	LogDir string
 
-	// Display
+	// Display (deprecated - use Display field instead)
 	EnableColors     bool
 	MaxAgentsVisible int
+}
+
+// DisplayConfig holds display configuration
+type DisplayConfig struct {
+	Colors           bool
+	MaxAgentsVisible int
+	AgentColors      map[string]string
 }
 
 // BackendConfig holds backend API configuration
