@@ -386,16 +386,67 @@ func (m InteractiveModel) renderRawView(msg Message) string {
 		Foreground(lipgloss.Color("13")).
 		Bold(true)
 
-	b.WriteString(responseStyle.Render("Raw SSE Stream:"))
-	b.WriteString("\n")
-
-	// Show complete raw SSE (no truncation)
-	rawStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("8"))
-
-	b.WriteString(rawStyle.Render(msg.RawSSE))
+	b.WriteString(responseStyle.Render("Raw SSE Stream (JSON Pretty-Printed):"))
 	b.WriteString("\n\n")
 
+	// Parse and pretty-print JSON in data fields
+	lines := strings.Split(msg.RawSSE, "\n")
+
+	eventStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("14")).
+		Bold(true)
+
+	jsonKeyStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("6"))
+
+	for _, line := range lines {
+		line = strings.TrimRight(line, "\r")
+
+		if strings.HasPrefix(line, "event:") {
+			// Style event lines
+			b.WriteString(eventStyle.Render(line))
+			b.WriteString("\n")
+
+		} else if strings.HasPrefix(line, "data:") {
+			// Extract JSON from data line
+			jsonStr := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+
+			if jsonStr == "" {
+				b.WriteString("data:\n")
+				continue
+			}
+
+			// Try to parse and pretty-print JSON
+			var jsonData interface{}
+			if err := json.Unmarshal([]byte(jsonStr), &jsonData); err == nil {
+				prettyJSON, err := json.MarshalIndent(jsonData, "  ", "  ")
+				if err == nil {
+					b.WriteString(jsonKeyStyle.Render("data:"))
+					b.WriteString("\n  ")
+					b.WriteString(string(prettyJSON))
+					b.WriteString("\n")
+				} else {
+					// Fallback to original if indent fails
+					b.WriteString(line)
+					b.WriteString("\n")
+				}
+			} else {
+				// Not JSON, render as-is
+				b.WriteString(line)
+				b.WriteString("\n")
+			}
+
+		} else if line == "" {
+			// Preserve empty lines (event separators)
+			b.WriteString("\n")
+		} else {
+			// Other lines (shouldn't happen in valid SSE, but handle anyway)
+			b.WriteString(line)
+			b.WriteString("\n")
+		}
+	}
+
+	b.WriteString("\n")
 	return b.String()
 }
 
