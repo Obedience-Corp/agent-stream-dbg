@@ -57,23 +57,34 @@ Download the latest release from [GitHub Releases](https://github.com/lancekroge
 # Copy example config
 cp configs/brainyard-v3.yaml my-config.yaml
 
-# Or create .env for simple setup
+# Edit config and set your API key in .env
 cat > .env << EOF
-BACKEND_URL=http://localhost:5003
 API_KEY=your-api-key
 SESSION_ID=debug-session
 EOF
 ```
 
-### 2. Stream (Real-Time TUI)
+### 2. Interactive Mode (Multi-Turn Chat)
 
 ```bash
-stream-debugger stream "What is consciousness?"
+stream-debugger --config my-config.yaml
 ```
 
-This opens an **interactive TUI** in your terminal showing live agent responses. Press `q` to exit.
+This opens an **interactive chat interface** where you can:
+- Type messages and press Enter
+- Press **Ctrl+T** to toggle between RAW (SSE) and PARSED (agent-organized) views
+- Use arrow keys to scroll
+- Press **Ctrl+C** to exit
 
-### 3. Analyze (Timeline from Logs)
+### 3. Stream Mode (Single Message)
+
+```bash
+stream-debugger stream "What is consciousness?" --config my-config.yaml
+```
+
+This sends a single message and exits when complete. Useful for CI/CD and scripting.
+
+### 4. Analyze (Timeline from Logs)
 
 ```bash
 stream-debugger timeline logs/by-session/session_*.jsonl
@@ -81,63 +92,69 @@ stream-debugger timeline logs/by-session/session_*.jsonl
 
 This prints a visual timeline showing which agents ran in parallel.
 
+**📖 See [USAGE.md](USAGE.md) for detailed documentation of all modes and features.**
+
 ---
 
 ## Usage
 
 ```bash
-# Real-time streaming with TUI
-stream-debugger stream "your message"
+# Interactive mode (multi-turn chat)
+stream-debugger --config my-config.yaml
 
-# With custom config
-stream-debugger stream --config my-config.yaml "your message"
+# Stream mode (single message) - ⚠️ message MUST come before --config
+stream-debugger stream "your message" --config my-config.yaml
 
 # Timeline visualization from logs
 stream-debugger timeline logs/by-session/session_*.jsonl
 
-# Detailed event log
+# Detailed event log (coming soon)
 stream-debugger replay logs/by-session/session_*.jsonl
 
 # Help
 stream-debugger --help
 ```
 
+**📖 Full documentation:** See [USAGE.md](USAGE.md) for detailed guide with examples, keyboard controls, and troubleshooting.
+
 ---
 
-## Real-Time TUI
+## Interactive Mode Features
 
-When you run `stream stream`, you get a **full-screen interactive terminal UI**:
+The interactive mode provides a **full-screen chat interface** with:
 
+### RAW View (Pretty-Printed SSE)
 ```
-╭────────────────────────────────────────────────╮
-│ Stream Debugger - Session: debug-session-001  │
-╰────────────────────────────────────────────────╯
-
-╭─────────────────────╮  ╭─────────────────────╮
-│ ◉ sam_harris       │  │ ◉ eckhart_tolle    │
-│ Tokens: 145        │  │ Tokens: 98         │
-│ Seq: 144 | Buf: 0  │  │ Seq: 97 | Buf: 0   │
-│                    │  │                    │
-│ Consciousness is   │  │ The present moment │
-│ fundamentally...   │  │ is where...        │
-╰─────────────────────╯  ╰─────────────────────╯
-
-╭────────────────────────────────────────────────╮
-│ ◉ Wizard (Synthesis)                          │
-│ Tokens: 243 | Seq: 242                        │
-│                                                │
-│ Integrating both perspectives...              │
-╰────────────────────────────────────────────────╯
-
-Events: 487 | Tokens: 486 | Tokens/sec: 24.3 | Errors: 0 | Duration: 20s
-
-[p] pause/resume | [q] quit | [s] save
+event: agent_content
+data:
+  {
+    "type": "agent_content",
+    "agent_id": "sam_harris",
+    "message_id": "msg_abc123",
+    "content": "Consciousness is a complex...",
+    "sequence": 1,
+    "timestamp": "2025-10-31T16:08:08.760689+00:00"
+  }
 ```
 
-**Controls:**
-- `p` - Pause/resume display
-- `q` or `Ctrl+C` - Quit and save logs
-- `s` - Save session (future)
+### PARSED View (Agent-Organized Responses)
+```
+sam_harris (145 tokens) ✓
+Consciousness is a complex and multifaceted concept that has been
+studied by philosophers, neuroscientists, and psychologists...
+
+eckhart_tolle (98 tokens) ✓
+The present moment is where true awareness resides...
+
+wizard (243 tokens) ✓
+Integrating both perspectives, consciousness can be understood...
+```
+
+**Keyboard Controls:**
+- **Type & Enter** - Send message
+- **Ctrl+T** - Toggle RAW ↔ PARSED views
+- **↑ ↓ PgUp PgDn Home End** - Scroll through responses
+- **Ctrl+C** - Quit and save logs
 
 ---
 

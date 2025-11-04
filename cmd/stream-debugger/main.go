@@ -25,13 +25,33 @@ func main() {
 func run() error {
 	// Define flags
 	configPath := flag.String("config", "", "Path to configuration file (YAML)")
+	helpFlag := flag.Bool("help", false, "Show help message")
+	flag.BoolVar(helpFlag, "h", false, "Show help message (shorthand)")
+
 	flag.Parse()
 
 	args := flag.Args()
 
+	// Handle help flag
+	if *helpFlag {
+		printHelp()
+		return nil
+	}
+
+	// Handle help command
+	if len(args) > 0 && args[0] == "help" {
+		if len(args) > 1 {
+			printCommandHelp(args[1])
+		} else {
+			printHelp()
+		}
+		return nil
+	}
+
 	// If no command and no config, show usage
 	if len(args) == 0 && *configPath == "" {
-		return fmt.Errorf("usage: %s [--config FILE] [COMMAND]\n\nCommands:\n  replay <file>     - Replay session from log file\n  timeline <file>   - Show timeline visualization\n\nIf no command is provided, starts interactive TUI mode (requires --config)", os.Args[0])
+		printHelp()
+		return fmt.Errorf("\nError: No command or config provided")
 	}
 
 	// If config provided but no command, run interactive mode
@@ -39,32 +59,37 @@ func run() error {
 		return runInteractive(*configPath)
 	}
 
-	// Handle legacy commands
+	// Handle commands
 	if len(args) > 0 {
 		command := args[0]
 		switch command {
 		case "stream":
-			// Legacy: stream "message" --config file.yaml
+			// stream "message" --config file.yaml
 			if len(args) < 2 {
-				return fmt.Errorf("usage: %s stream <message> --config <file>", os.Args[0])
+				printCommandHelp("stream")
+				return fmt.Errorf("\nError: Missing message argument")
 			}
 			message := args[1]
 			if *configPath == "" {
-				return fmt.Errorf("--config flag is required")
+				printCommandHelp("stream")
+				return fmt.Errorf("\nError: --config flag is required")
 			}
 			return runLegacyStream(*configPath, message)
 		case "replay":
 			if len(args) < 2 {
-				return fmt.Errorf("usage: %s replay <session-file>", os.Args[0])
+				printCommandHelp("replay")
+				return fmt.Errorf("\nError: Missing session file argument")
 			}
 			return runReplay(args[1])
 		case "timeline":
 			if len(args) < 2 {
-				return fmt.Errorf("usage: %s timeline <session-file>", os.Args[0])
+				printCommandHelp("timeline")
+				return fmt.Errorf("\nError: Missing session file argument")
 			}
 			return runTimeline(args[1])
 		default:
-			return fmt.Errorf("unknown command: %s", command)
+			printHelp()
+			return fmt.Errorf("\nError: Unknown command: %s", command)
 		}
 	}
 
@@ -221,6 +246,127 @@ func runLegacyStream(configPath string, message string) error {
 	fmt.Printf("   Logs saved to: %s\n", cfg.LogDir)
 
 	return nil
+}
+
+func printHelp() {
+	fmt.Printf(`stream-debugger - Debug SSE streaming responses from multi-agent systems
+
+USAGE:
+  stream-debugger [OPTIONS] [COMMAND]
+
+MODES:
+  Interactive (default):
+    stream-debugger --config FILE
+      Multi-turn chat interface with real-time visualization
+      Press Ctrl+T to toggle views, Ctrl+C to quit
+
+  stream <message> --config FILE
+      Send single message and exit (CI/CD mode)
+      ⚠️  Message MUST come before --config flag
+
+COMMANDS:
+  stream <message>   Send single message (CI/CD, scripting)
+  replay <file>      Replay session from log file (coming soon)
+  timeline <file>    Visualize agent execution timeline (coming soon)
+  help [command]     Show help for command
+
+OPTIONS:
+  --config FILE      Path to YAML configuration file
+  -h, --help         Show this help message
+
+EXAMPLES:
+  # Interactive mode (recommended for development)
+  $ stream-debugger --config config.yaml
+
+  # Stream mode - note message comes BEFORE --config!
+  $ stream-debugger stream "What is consciousness?" --config config.yaml
+
+  # Timeline analysis
+  $ stream-debugger timeline logs/by-session/session_*.jsonl
+
+  # Get help for a specific command
+  $ stream-debugger help stream
+
+KEYBOARD CONTROLS (Interactive Mode):
+  Type & Enter       Send message
+  Ctrl+T             Toggle RAW (SSE) ↔ PARSED (agent responses)
+  ↑ ↓ PgUp PgDn      Scroll through content
+  Home / End         Jump to top/bottom
+  Ctrl+C             Quit
+
+MORE INFO:
+  Documentation: USAGE.md, QUICK_REFERENCE.md
+  GitHub: https://github.com/lancekrogers/stream-debugger
+`)
+}
+
+func printCommandHelp(command string) {
+	switch command {
+	case "stream":
+		fmt.Printf(`stream-debugger stream - Send single message (CI/CD mode)
+
+USAGE:
+  stream-debugger stream <message> --config FILE
+
+DESCRIPTION:
+  Sends a single message to the configured backend and displays the
+  streaming response. Useful for CI/CD pipelines, scripting, and
+  quick one-off tests. Exits automatically when response completes.
+
+  ⚠️  IMPORTANT: The message must come BEFORE the --config flag!
+
+EXAMPLES:
+  # Correct syntax
+  $ stream-debugger stream "Hello" --config config.yaml
+  $ stream-debugger stream "What is consciousness?" --config my-api.yaml
+
+  # ❌ WRONG - will fail
+  $ stream-debugger stream --config config.yaml "Hello"
+
+OPTIONS:
+  --config FILE      Path to YAML configuration file (required)
+
+USE CASES:
+  - CI/CD testing: Test streaming responses in automated pipelines
+  - Scripting: Batch process multiple messages
+  - Quick tests: One-off message without interactive mode
+
+SEE ALSO:
+  Interactive mode for multi-turn conversations:
+    $ stream-debugger --config config.yaml
+`)
+
+	case "replay":
+		fmt.Printf(`stream-debugger replay - Replay session from logs
+
+USAGE:
+  stream-debugger replay <session-file>
+
+DESCRIPTION:
+  Replays a recorded session from log files. (Coming soon)
+
+EXAMPLE:
+  $ stream-debugger replay logs/by-session/session_*.jsonl
+`)
+
+	case "timeline":
+		fmt.Printf(`stream-debugger timeline - Visualize execution timeline
+
+USAGE:
+  stream-debugger timeline <session-file>
+
+DESCRIPTION:
+  Generates a visual timeline showing which agents ran in parallel,
+  execution durations, and performance metrics. (Coming soon)
+
+EXAMPLE:
+  $ stream-debugger timeline logs/by-session/session_*.jsonl
+`)
+
+	default:
+		fmt.Printf("Unknown command: %s\n\n", command)
+		printHelp()
+	}
 }
 
 func runReplay(sessionFile string) error {
