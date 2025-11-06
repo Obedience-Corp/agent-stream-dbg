@@ -10,12 +10,16 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/lancekrogers/stream-debugger/internal/client"
 	"github.com/lancekrogers/stream-debugger/internal/config"
+	"github.com/lancekrogers/stream-debugger/internal/help"
 	"github.com/lancekrogers/stream-debugger/internal/logger"
 	"github.com/lancekrogers/stream-debugger/internal/visualizer"
 	"github.com/urfave/cli/v2"
 )
 
 func main() {
+	// Set custom help printer with Lipgloss styling
+	cli.HelpPrinter = help.CustomHelpPrinter
+
 	app := &cli.App{
 		Name:  "stream-debugger",
 		Usage: "Debug SSE streaming responses from multi-agent systems",
