@@ -71,6 +71,8 @@ func (c *SSEClient) Connect(ctx context.Context, message string) error {
 		"wizard_content",
 		"wizard_stream_complete",
 		"error",
+		"flow_step_start",
+		"flow_step_end",
 	}
 
 	for _, eventType := range eventTypes {

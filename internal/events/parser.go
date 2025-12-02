@@ -77,6 +77,20 @@ func (p *Parser) Parse(eventType string, data []byte) (*Event, error) {
 		}
 		event.WizardStreamComplete = &e
 
+	case FlowStepStart:
+		var e FlowStepStartEvent
+		if err := json.Unmarshal(data, &e); err != nil {
+			return nil, fmt.Errorf("failed to parse flow_step_start: %w", err)
+		}
+		event.FlowStepStart = &e
+
+	case FlowStepEnd:
+		var e FlowStepEndEvent
+		if err := json.Unmarshal(data, &e); err != nil {
+			return nil, fmt.Errorf("failed to parse flow_step_end: %w", err)
+		}
+		event.FlowStepEnd = &e
+
 	case Error:
 		var e ErrorEvent
 		if err := json.Unmarshal(data, &e); err != nil {

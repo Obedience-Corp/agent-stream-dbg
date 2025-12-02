@@ -15,6 +15,9 @@ const (
 	WizardContent        EventType = "wizard_content"
 	WizardStreamComplete EventType = "wizard_stream_complete"
 	Error                EventType = "error"
+    // Flow control step events (BrainyardV3 extension)
+    FlowStepStart       EventType = "flow_step_start"
+    FlowStepEnd         EventType = "flow_step_end"
 )
 
 // BaseEvent contains fields common to all events
@@ -71,8 +74,29 @@ type WizardContentEvent struct {
 
 // WizardStreamCompleteEvent represents wizard synthesis completion
 type WizardStreamCompleteEvent struct {
-	BaseEvent
-	TokenCount int `json:"token_count"`
+    BaseEvent
+    TokenCount int `json:"token_count"`
+}
+
+// FlowStepStartEvent represents a flow step starting (BrainyardV3)
+type FlowStepStartEvent struct {
+    BaseEvent
+    Step       string `json:"step"`
+    Enabled    bool   `json:"enabled"`
+    AgentCount int    `json:"agent_count,omitempty"`
+    NonWizardCount int `json:"non_wizard_count,omitempty"`
+}
+
+// FlowStepEndEvent represents a flow step ending (BrainyardV3)
+type FlowStepEndEvent struct {
+    BaseEvent
+    Step       string `json:"step"`
+    Enabled    bool   `json:"enabled"`
+    AgentCount int    `json:"agent_count,omitempty"`
+    // Optional routing details (for step==routing)
+    RoutingMode string `json:"routing_mode,omitempty"`
+    RouteTaken  string `json:"route_taken,omitempty"`
+    RouteReason string `json:"route_reason,omitempty"`
 }
 
 // ErrorType represents different categories of errors
@@ -101,8 +125,8 @@ type ErrorEvent struct {
 
 // Event is a union type that can hold any event
 type Event struct {
-	Type EventType
-	Raw  []byte // Raw JSON for logging
+    Type EventType
+    Raw  []byte // Raw JSON for logging
 
 	// Only one of these will be populated based on Type
 	SessionStart         *SessionStartEvent
@@ -112,8 +136,10 @@ type Event struct {
 	AgentStreamComplete  *AgentStreamCompleteEvent
 	WizardStreamStart    *WizardStreamStartEvent
 	WizardContent        *WizardContentEvent
-	WizardStreamComplete *WizardStreamCompleteEvent
-	Error                *ErrorEvent
+    WizardStreamComplete *WizardStreamCompleteEvent
+    Error                *ErrorEvent
+    FlowStepStart        *FlowStepStartEvent
+    FlowStepEnd          *FlowStepEndEvent
 }
 
 // GetAgentID returns the agent ID if the event is agent-related

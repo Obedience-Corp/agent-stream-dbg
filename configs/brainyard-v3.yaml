@@ -39,6 +39,8 @@ events:
     - "wizard_content"
     - "wizard_stream_complete"
     - "error"
+    - "flow_step_start"
+    - "flow_step_end"
 
 logging:
   dir: "./logs"

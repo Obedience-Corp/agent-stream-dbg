@@ -28,16 +28,19 @@ type Model struct {
 	sessionActive bool
 	errorCount    int
 
-	// UI State
-	width         int
-	height        int
-	selectedAgent string
-	paused        bool
+    // UI State
+    width         int
+    height        int
+    selectedAgent string
+    paused        bool
 
-	// Stats
-	startTime   time.Time
-	totalTokens int
-	totalEvents int
+    // Stats
+    startTime   time.Time
+    totalTokens int
+    totalEvents int
+
+    // Flow status
+    flow map[string]*FlowStepStatus
 }
 
 // AgentState tracks the state of a single agent
@@ -64,6 +67,18 @@ type WizardState struct {
 	EndTime        time.Time
 }
 
+// FlowStepStatus tracks the state of a flow step
+type FlowStepStatus struct {
+    Step         string
+    Enabled      bool
+    Started      bool
+    Ended        bool
+    AgentCount   int
+    RoutingMode  string
+    RouteTaken   string
+    RouteReason  string
+}
+
 // eventMsg wraps an SSE event for bubbletea
 type eventMsg struct {
 	event *events.Event
@@ -88,10 +103,11 @@ func NewModel(cfg *config.Config, sseClient *client.SSEClient, structuredLogger 
 		ctx:           ctx,
 		cancel:        cancel,
 		agents:        make(map[string]*AgentState),
-		wizardState:   &WizardState{BufferedTokens: make(map[int]string)},
-		sessionActive: false,
-		startTime:     time.Now(),
-	}
+        wizardState:   &WizardState{BufferedTokens: make(map[int]string)},
+        sessionActive: false,
+        startTime:     time.Now(),
+        flow:          make(map[string]*FlowStepStatus),
+    }
 }
 
 // Init initializes the bubbletea application
@@ -158,8 +174,11 @@ func (m *Model) View() string {
 		Foreground(lipgloss.Color("8")).
 		Padding(0, 1)
 
-	// Build header
-	header := headerStyle.Render(fmt.Sprintf("Stream Debugger - Session: %s", m.config.SessionID))
+    // Build header
+    header := headerStyle.Render(fmt.Sprintf("Stream Debugger - Session: %s", m.config.SessionID))
+
+    // Build flow status line
+    flowView := m.renderFlowStatus()
 
 	// Build agent views
 	var agentViews []string
@@ -188,7 +207,10 @@ func (m *Model) View() string {
 	controls := statsStyle.Render("[p] pause/resume | [q] quit | [s] save session")
 
 	// Combine all sections
-	sections := []string{header}
+    sections := []string{header}
+    if flowView != "" {
+        sections = append(sections, flowView)
+    }
 
 	// Add agent views (side by side)
 	if len(agentViews) > 0 {
@@ -351,15 +373,99 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 		m.wizardState.Sequence = event.WizardContent.Sequence
 		m.totalTokens++
 
-	case events.WizardStreamComplete:
-		m.wizardState.Active = false
-		m.wizardState.EndTime = time.Now()
+    case events.WizardStreamComplete:
+        m.wizardState.Active = false
+        m.wizardState.EndTime = time.Now()
 
-	case events.Error:
-		m.errorCount++
-	}
+    case events.Error:
+        m.errorCount++
+
+    case events.FlowStepStart:
+        if s := event.FlowStepStart; s != nil {
+            step := s.Step
+            st := m.flow[step]
+            if st == nil {
+                st = &FlowStepStatus{Step: step}
+                m.flow[step] = st
+            }
+            st.Enabled = s.Enabled
+            st.Started = true
+            st.Ended = false
+            if step == "agent_exec" {
+                st.AgentCount = s.NonWizardCount
+            }
+        }
+
+    case events.FlowStepEnd:
+        if s := event.FlowStepEnd; s != nil {
+            step := s.Step
+            st := m.flow[step]
+            if st == nil {
+                st = &FlowStepStatus{Step: step}
+                m.flow[step] = st
+            }
+            st.Enabled = s.Enabled
+            st.Ended = true
+            if s.AgentCount > 0 {
+                st.AgentCount = s.AgentCount
+            }
+            if step == "routing" {
+                st.RoutingMode = s.RoutingMode
+                st.RouteTaken = s.RouteTaken
+                st.RouteReason = s.RouteReason
+            }
+        }
+    }
 
 	return m, m.waitForEvent()
+}
+
+// renderFlowStatus renders a one-line flow status overview
+func (m *Model) renderFlowStatus() string {
+    if m.width == 0 {
+        return ""
+    }
+
+    // Order of steps to show
+    steps := []string{"routing", "discovery", "agent_exec", "synthesis", "wizard"}
+    var parts []string
+
+    for _, step := range steps {
+        st, ok := m.flow[step]
+        label := step
+        if step == "agent_exec" {
+            label = "agents"
+        }
+
+        style := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+        sym := "·" // not started / disabled
+        if ok {
+            if !st.Enabled {
+                sym = "–" // explicitly disabled
+                style = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+            } else if st.Ended {
+                sym = "✓"
+                style = lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
+            } else if st.Started {
+                sym = "…"
+                style = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+            }
+        }
+
+        text := fmt.Sprintf("%s %s", sym, label)
+
+        // Routing details
+        if step == "routing" && ok && st.Enabled {
+            det := st.RouteTaken
+            if det == "" { det = "—" }
+            text = fmt.Sprintf("%s(%s)", text, det)
+        }
+
+        parts = append(parts, style.Render(text))
+    }
+
+    sep := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  |  ")
+    return lipgloss.JoinHorizontal(lipgloss.Top, parts[0], sep, parts[1], sep, parts[2], sep, parts[3], sep, parts[4])
 }
 
 // waitForEvent waits for the next SSE event
