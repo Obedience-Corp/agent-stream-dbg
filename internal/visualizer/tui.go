@@ -77,6 +77,8 @@ type FlowStepStatus struct {
     RoutingMode  string
     RouteTaken   string
     RouteReason  string
+    RouteAgents  []string
+    DurationMs   int
 }
 
 // eventMsg wraps an SSE event for bubbletea
@@ -413,7 +415,9 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
                 st.RoutingMode = s.RoutingMode
                 st.RouteTaken = s.RouteTaken
                 st.RouteReason = s.RouteReason
+                st.RouteAgents = s.RouteAgents
             }
+            if s.DurationMs > 0 { st.DurationMs = s.DurationMs }
         }
     }
 
@@ -458,11 +462,31 @@ func (m *Model) renderFlowStatus() string {
         if step == "routing" && ok && st.Enabled {
             det := st.RouteTaken
             if det == "" { det = "—" }
-            if st.RouteReason != "" {
+            // Show agents (trim to first 2)
+            agents := ""
+            if len(st.RouteAgents) > 0 {
+                max := 2
+                if len(st.RouteAgents) < max { max = len(st.RouteAgents) }
+                agents = strings.Join(st.RouteAgents[:max], ",")
+                if len(st.RouteAgents) > max {
+                    agents = fmt.Sprintf("%s,+%d", agents, len(st.RouteAgents)-max)
+                }
+            }
+            // Compose details (type:reason [agents])
+            if st.RouteReason != "" && agents != "" {
+                text = fmt.Sprintf("%s(%s:%s [%s])", text, det, st.RouteReason, agents)
+            } else if st.RouteReason != "" {
                 text = fmt.Sprintf("%s(%s:%s)", text, det, st.RouteReason)
+            } else if agents != "" {
+                text = fmt.Sprintf("%s(%s [%s])", text, det, agents)
             } else {
                 text = fmt.Sprintf("%s(%s)", text, det)
             }
+        }
+
+        // Append duration if available
+        if ok && st.DurationMs > 0 {
+            text = fmt.Sprintf("%s [%dms]", text, st.DurationMs)
         }
 
         parts = append(parts, style.Render(text))

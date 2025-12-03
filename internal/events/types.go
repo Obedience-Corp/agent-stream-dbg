@@ -97,6 +97,8 @@ type FlowStepEndEvent struct {
     RoutingMode string `json:"routing_mode,omitempty"`
     RouteTaken  string `json:"route_taken,omitempty"`
     RouteReason string `json:"route_reason,omitempty"`
+    RouteAgents []string `json:"route_agents,omitempty"`
+    DurationMs  int      `json:"duration_ms,omitempty"`
 }
 
 // ErrorType represents different categories of errors
