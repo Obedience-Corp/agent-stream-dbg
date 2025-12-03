@@ -458,7 +458,11 @@ func (m *Model) renderFlowStatus() string {
         if step == "routing" && ok && st.Enabled {
             det := st.RouteTaken
             if det == "" { det = "—" }
-            text = fmt.Sprintf("%s(%s)", text, det)
+            if st.RouteReason != "" {
+                text = fmt.Sprintf("%s(%s:%s)", text, det, st.RouteReason)
+            } else {
+                text = fmt.Sprintf("%s(%s)", text, det)
+            }
         }
 
         parts = append(parts, style.Render(text))
