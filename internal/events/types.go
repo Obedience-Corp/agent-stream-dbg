@@ -29,8 +29,9 @@ type BaseEvent struct {
 
 // SessionStartEvent represents session initialization
 type SessionStartEvent struct {
-	BaseEvent
-	SessionID string `json:"session_id"`
+    BaseEvent
+    SessionID string `json:"session_id"`
+    FlowID    string `json:"flow_id,omitempty"`
 }
 
 // SessionCompleteEvent represents session completion
@@ -99,6 +100,8 @@ type FlowStepEndEvent struct {
     RouteReason string `json:"route_reason,omitempty"`
     RouteAgents []string `json:"route_agents,omitempty"`
     DurationMs  int      `json:"duration_ms,omitempty"`
+    // Optional prompt references for provenance (e.g., filter_config, synthesis_plan_id)
+    PromptRef   map[string]interface{} `json:"prompt_ref,omitempty"`
 }
 
 // ErrorType represents different categories of errors

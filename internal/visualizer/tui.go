@@ -41,6 +41,14 @@ type Model struct {
 
     // Flow status
     flow map[string]*FlowStepStatus
+    // Flow metadata
+    FlowID string
+    // Debug toggles
+    showAgentsExpanded bool
+    showPromptRef      bool
+    // Last prompt_ref received
+    lastPromptRef  map[string]interface{}
+    lastPromptStep string
 }
 
 // AgentState tracks the state of a single agent
@@ -177,10 +185,27 @@ func (m *Model) View() string {
 		Padding(0, 1)
 
     // Build header
-    header := headerStyle.Render(fmt.Sprintf("Stream Debugger - Session: %s", m.config.SessionID))
+    headerText := fmt.Sprintf("Stream Debugger - Session: %s", m.config.SessionID)
+    if m.FlowID != "" {
+        headerText = fmt.Sprintf("%s (flow: %s)", headerText, m.FlowID)
+    }
+    header := headerStyle.Render(headerText)
 
     // Build flow status line
     flowView := m.renderFlowStatus()
+    // Optional prompt_ref view
+    promptView := ""
+    if m.showPromptRef && m.lastPromptRef != nil {
+        pairs := []string{}
+        for k, v := range m.lastPromptRef {
+            pairs = append(pairs, fmt.Sprintf("%s=%v", k, v))
+        }
+        if len(pairs) > 0 {
+            promptView = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
+                fmt.Sprintf("prompt_ref(%s): %s", m.lastPromptStep, strings.Join(pairs, ", ")),
+            )
+        }
+    }
 
 	// Build agent views
 	var agentViews []string
@@ -206,13 +231,12 @@ func (m *Model) View() string {
 	))
 
 	// Build controls
-	controls := statsStyle.Render("[p] pause/resume | [q] quit | [s] save session")
+    controls := statsStyle.Render("[p] pause/resume | [a] agents view | [r] prompt refs | [q] quit | [s] save session")
 
 	// Combine all sections
     sections := []string{header}
-    if flowView != "" {
-        sections = append(sections, flowView)
-    }
+    if flowView != "" { sections = append(sections, flowView) }
+    if promptView != "" { sections = append(sections, promptView) }
 
 	// Add agent views (side by side)
 	if len(agentViews) > 0 {
@@ -310,10 +334,18 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.paused = !m.paused
 		return m, nil
 
-	case "s":
-		// Save session logic would go here
-		return m, nil
-	}
+    case "s":
+        // Save session logic would go here
+        return m, nil
+
+    case "a":
+        m.showAgentsExpanded = !m.showAgentsExpanded
+        return m, nil
+
+    case "r":
+        m.showPromptRef = !m.showPromptRef
+        return m, nil
+    }
 
 	return m, nil
 }
@@ -332,8 +364,11 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 	}
 
 	switch event.Type {
-	case events.SessionStart:
-		m.sessionActive = true
+    case events.SessionStart:
+        m.sessionActive = true
+        if event.SessionStart.FlowID != "" {
+            m.FlowID = event.SessionStart.FlowID
+        }
 
 	case events.SessionComplete:
 		m.sessionActive = false
@@ -418,6 +453,10 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
                 st.RouteAgents = s.RouteAgents
             }
             if s.DurationMs > 0 { st.DurationMs = s.DurationMs }
+            if s.PromptRef != nil {
+                m.lastPromptRef = s.PromptRef
+                m.lastPromptStep = s.Step
+            }
         }
     }
 
@@ -462,14 +501,18 @@ func (m *Model) renderFlowStatus() string {
         if step == "routing" && ok && st.Enabled {
             det := st.RouteTaken
             if det == "" { det = "—" }
-            // Show agents (trim to first 2)
+            // Show agents (full when expanded; else trim to first 2)
             agents := ""
             if len(st.RouteAgents) > 0 {
-                max := 2
-                if len(st.RouteAgents) < max { max = len(st.RouteAgents) }
-                agents = strings.Join(st.RouteAgents[:max], ",")
-                if len(st.RouteAgents) > max {
-                    agents = fmt.Sprintf("%s,+%d", agents, len(st.RouteAgents)-max)
+                if m.showAgentsExpanded {
+                    agents = strings.Join(st.RouteAgents, ",")
+                } else {
+                    max := 2
+                    if len(st.RouteAgents) < max { max = len(st.RouteAgents) }
+                    agents = strings.Join(st.RouteAgents[:max], ",")
+                    if len(st.RouteAgents) > max {
+                        agents = fmt.Sprintf("%s,+%d", agents, len(st.RouteAgents)-max)
+                    }
                 }
             }
             // Compose details (type:reason [agents])

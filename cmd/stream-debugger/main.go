@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/lancekrogers/stream-debugger/internal/client"
 	"github.com/lancekrogers/stream-debugger/internal/config"
+	"github.com/lancekrogers/stream-debugger/internal/events"
 	"github.com/lancekrogers/stream-debugger/internal/help"
 	"github.com/lancekrogers/stream-debugger/internal/logger"
 	"github.com/lancekrogers/stream-debugger/internal/visualizer"
@@ -282,17 +284,102 @@ func runLegacyStream(configPath string, message string) error {
 }
 
 func runReplay(sessionFile string) error {
-	fmt.Printf("🔄 Replay functionality coming soon...\n")
-	fmt.Printf("   File: %s\n", sessionFile)
+	fmt.Printf("🔄 Replaying session from: %s\n\n", sessionFile)
 
-	// TODO: Implement replay logic
+	// Load events from log file
+	evts, err := loadEventsFromFile(sessionFile)
+	if err != nil {
+		return fmt.Errorf("failed to load events: %w", err)
+	}
+
+	if len(evts) == 0 {
+		return fmt.Errorf("no events found in file")
+	}
+
+	fmt.Printf("📝 Loaded %d events\n\n", len(evts))
+
+	// Create timeline visualizer and add events
+	tv := visualizer.NewTimelineVisualizer()
+	for _, evt := range evts {
+		tv.AddEvent(evt)
+	}
+
+	// Show detailed log for replay
+	fmt.Println(tv.RenderDetailedLog())
+	fmt.Println()
+	fmt.Println(tv.RenderParallelSummary())
+
 	return nil
 }
 
 func runTimeline(sessionFile string) error {
-	fmt.Printf("📊 Timeline visualization coming soon...\n")
-	fmt.Printf("   File: %s\n", sessionFile)
+	fmt.Printf("📊 Generating timeline from: %s\n\n", sessionFile)
 
-	// TODO: Implement timeline logic
+	// Load events from log file
+	evts, err := loadEventsFromFile(sessionFile)
+	if err != nil {
+		return fmt.Errorf("failed to load events: %w", err)
+	}
+
+	if len(evts) == 0 {
+		return fmt.Errorf("no events found in file")
+	}
+
+	fmt.Printf("📝 Loaded %d events\n\n", len(evts))
+
+	// Create timeline visualizer and add events
+	tv := visualizer.NewTimelineVisualizer()
+	for _, evt := range evts {
+		tv.AddEvent(evt)
+	}
+
+	// Render timeline (default width 120)
+	fmt.Println(tv.RenderTimeline(120))
+	fmt.Println()
+	fmt.Println(tv.RenderParallelSummary())
+
 	return nil
+}
+
+// loadEventsFromFile reads a JSONL session log file and parses events
+func loadEventsFromFile(filePath string) ([]*events.Event, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	parser := events.NewParser()
+	var result []*events.Event
+
+	// Read file line by line (JSONL format)
+	scanner := bufio.NewScanner(file)
+	// Increase buffer size for long lines
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	lineNum := 0
+	for scanner.Scan() {
+		lineNum++
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+
+		// Parse the event using ParseRaw (extracts type from JSON)
+		evt, err := parser.ParseRaw(line)
+		if err != nil {
+			// Log warning but continue - some lines might be metadata
+			fmt.Fprintf(os.Stderr, "Warning: skipping line %d: %v\n", lineNum, err)
+			continue
+		}
+
+		result = append(result, evt)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error reading file: %w", err)
+	}
+
+	return result, nil
 }
