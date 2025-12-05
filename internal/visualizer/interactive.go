@@ -52,7 +52,11 @@ type InteractiveModel struct {
 	// UI state
 	width  int
 	height int
-	err    error
+    err    error
+
+    // UX toggles
+    follow      bool // keep viewport pinned to bottom when true
+    showHistory bool // render all messages when true; else latest only
 }
 
 type Message struct {
@@ -84,14 +88,16 @@ func NewInteractiveModel(cfg *config.EnhancedConfig, apiKey string) InteractiveM
 	vp := viewport.New(80, 20)
 	vp.HighPerformanceRendering = false
 
-	return InteractiveModel{
-		cfg:      cfg,
-		apiKey:   apiKey,
-		textarea: ta,
-		viewport: vp,
-		viewMode: ViewModeRaw, // Default to raw view
-		messages: make([]Message, 0),
-	}
+    return InteractiveModel{
+        cfg:      cfg,
+        apiKey:   apiKey,
+        textarea: ta,
+        viewport: vp,
+        viewMode: ViewModeRaw, // Default to raw view
+        messages:    make([]Message, 0),
+        follow:      true,
+        showHistory: true,
+    }
 }
 
 func (m InteractiveModel) Init() tea.Cmd {
@@ -102,8 +108,8 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.Type {
+    case tea.KeyMsg:
+        switch msg.Type {
 		case tea.KeyCtrlC:
 			return m, tea.Quit
 		case tea.KeyCtrlT:
@@ -115,25 +121,32 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
-		// Scrolling keys
-		case tea.KeyUp:
-			m.viewport.LineUp(1)
-			return m, nil
-		case tea.KeyDown:
-			m.viewport.LineDown(1)
-			return m, nil
-		case tea.KeyPgUp:
-			m.viewport.HalfViewUp()
-			return m, nil
-		case tea.KeyPgDown:
-			m.viewport.HalfViewDown()
-			return m, nil
-		case tea.KeyHome:
-			m.viewport.GotoTop()
-			return m, nil
-		case tea.KeyEnd:
-			m.viewport.GotoBottom()
-			return m, nil
+        // Scrolling keys
+        case tea.KeyUp:
+            m.viewport.LineUp(1)
+            // disable follow when user scrolls manually
+            m.follow = false
+            return m, nil
+        case tea.KeyDown:
+            m.viewport.LineDown(1)
+            m.follow = false
+            return m, nil
+        case tea.KeyPgUp:
+            m.viewport.HalfViewUp()
+            m.follow = false
+            return m, nil
+        case tea.KeyPgDown:
+            m.viewport.HalfViewDown()
+            m.follow = false
+            return m, nil
+        case tea.KeyHome:
+            m.viewport.GotoTop()
+            m.follow = false
+            return m, nil
+        case tea.KeyEnd:
+            m.viewport.GotoBottom()
+            m.follow = true
+            return m, nil
 
 		case tea.KeyEnter:
 			if !m.streaming {
@@ -150,7 +163,48 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 					// Start streaming
 					return m, m.sendMessage(message, len(m.messages)-1)
-				}
+        }
+
+        // Additional keybindings by rune
+        switch msg.String() {
+        case "j":
+            m.viewport.LineDown(1)
+            m.follow = false
+            return m, nil
+        case "k":
+            m.viewport.LineUp(1)
+            m.follow = false
+            return m, nil
+        case "g":
+            m.viewport.GotoTop()
+            m.follow = false
+            return m, nil
+        case "G":
+            m.viewport.GotoBottom()
+            m.follow = true
+            return m, nil
+        case " ": // space → page down
+            m.viewport.HalfViewDown()
+            m.follow = false
+            return m, nil
+        case "b": // page up
+            m.viewport.HalfViewUp()
+            m.follow = false
+            return m, nil
+        case "f": // toggle follow
+            m.follow = !m.follow
+            if m.follow {
+                m.viewport.GotoBottom()
+            }
+            return m, nil
+        case "H": // toggle history
+            m.showHistory = !m.showHistory
+            if !m.showHistory {
+                m.follow = true
+                m.viewport.GotoBottom()
+            }
+            return m, nil
+        }
 			}
 		}
 
@@ -167,14 +221,17 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.Width = msg.Width - 4
 		m.viewport.Height = viewportHeight
 
-	case streamCompleteMsg:
-		if msg.index < len(m.messages) {
-			m.messages[msg.index].RawSSE = msg.rawSSE
-			m.messages[msg.index].Events = msg.events
-			m.messages[msg.index].AgentResponses = msg.agentResponses
-			m.messages[msg.index].Streaming = false
-		}
-		m.streaming = false
+    case streamCompleteMsg:
+        if msg.index < len(m.messages) {
+            m.messages[msg.index].RawSSE = msg.rawSSE
+            m.messages[msg.index].Events = msg.events
+            m.messages[msg.index].AgentResponses = msg.agentResponses
+            m.messages[msg.index].Streaming = false
+        }
+        m.streaming = false
+        if m.follow {
+            m.viewport.GotoBottom()
+        }
 
 	case streamErrorMsg:
 		m.err = msg.err
@@ -217,8 +274,11 @@ func (m InteractiveModel) View() string {
 	// Update viewport with content
 	m.viewport.SetContent(viewportContent)
 
-	// Display viewport (scrollable message history)
-	b.WriteString(m.viewport.View())
+    // Display viewport (scrollable message history); pin to bottom in follow mode
+    if m.follow {
+        m.viewport.GotoBottom()
+    }
+    b.WriteString(m.viewport.View())
 	b.WriteString("\n")
 
 	// Error display
@@ -256,8 +316,10 @@ func (m InteractiveModel) View() string {
 		viewModeStr = "PARSED"
 	}
 
-	status := fmt.Sprintf("Messages: %d | Session: %s | View: %s | Ctrl+T: toggle view | Ctrl+C: quit",
-		len(m.messages), m.cfg.Session.ID, viewModeStr)
+    status := fmt.Sprintf(
+        "Messages: %d | Session: %s | View: %s | Follow: %v | History: %v | (Ctrl+T) toggle view, (f) follow, (H) history, (j/k/↑/↓/PgUp/PgDn) scroll, (G) bottom, (g) top, Ctrl+C quit",
+        len(m.messages), m.cfg.Session.ID, viewModeStr, m.follow, m.showHistory,
+    )
 	b.WriteString(statusStyle.Render(status))
 
 	return b.String()
@@ -498,9 +560,13 @@ func (m InteractiveModel) renderParsedView(msg Message) string {
 func (m InteractiveModel) renderMessages() string {
 	var b strings.Builder
 
-	// Show all messages (viewport handles scrolling)
-	for i := 0; i < len(m.messages); i++ {
-		msg := m.messages[i]
+    // Show last or all messages depending on history toggle
+    start := 0
+    if !m.showHistory && len(m.messages) > 0 {
+        start = len(m.messages) - 1
+    }
+    for i := start; i < len(m.messages); i++ {
+        msg := m.messages[i]
 
 		// User message
 		userStyle := lipgloss.NewStyle().
