@@ -5,17 +5,20 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"strings"
-	"time"
+    "io"
+    "net/http"
+    "os"
+    "path/filepath"
+    "strings"
+    "time"
 
-	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/lancekrogers/stream-debugger/internal/config"
-	"github.com/lancekrogers/stream-debugger/internal/events"
+    "github.com/charmbracelet/bubbles/textarea"
+    "github.com/charmbracelet/bubbles/viewport"
+    tea "github.com/charmbracelet/bubbletea"
+    "github.com/charmbracelet/lipgloss"
+    "github.com/lancekrogers/stream-debugger/internal/config"
+    "github.com/lancekrogers/stream-debugger/internal/events"
+    "sort"
 )
 
 // ViewMode represents the display mode for responses
@@ -514,20 +517,25 @@ func (m InteractiveModel) renderRawView(msg Message) string {
 
 // renderParsedView renders agent responses color-coded by agent
 func (m InteractiveModel) renderParsedView(msg Message) string {
-	if len(msg.AgentResponses) == 0 {
-		return lipgloss.NewStyle().
-			Foreground(lipgloss.Color("8")).
-			Italic(true).
-			Render("No agent responses parsed")
-	}
+    if len(msg.AgentResponses) == 0 {
+        return lipgloss.NewStyle().
+            Foreground(lipgloss.Color("8")).
+            Italic(true).
+            Render("No agent responses parsed")
+    }
 
-	var b strings.Builder
+    var b strings.Builder
 
-	// Render each agent's response
-	for agentID, agentResp := range msg.AgentResponses {
-		if agentResp.FullContent == "" {
-			continue
-		}
+    // Render each agent's response (deterministic order)
+    // Collect and sort agent IDs for stable rendering to avoid flicker
+    keys := make([]string, 0, len(msg.AgentResponses))
+    for k := range msg.AgentResponses { keys = append(keys, k) }
+    sort.Strings(keys)
+    for _, agentID := range keys {
+        agentResp := msg.AgentResponses[agentID]
+        if agentResp.FullContent == "" {
+            continue
+        }
 
 		// Agent header with color
 		agentColor := m.getAgentColor(agentID)
@@ -599,9 +607,9 @@ func (m InteractiveModel) renderMessages() string {
 }
 
 func (m InteractiveModel) sendMessage(message string, index int) tea.Cmd {
-	return func() tea.Msg {
-		// Build request
-		url := m.cfg.StreamEndpointURL()
+    return func() tea.Msg {
+        // Build request
+        url := m.cfg.StreamEndpointURL()
 
 		requestBody := map[string]interface{}{
 			"message": message,
@@ -622,10 +630,19 @@ func (m InteractiveModel) sendMessage(message string, index int) tea.Cmd {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", m.apiKey))
 		req.Header.Set("Accept", "text/event-stream")
 
-		// Send request
-		client := &http.Client{
-			Timeout: 60 * time.Second,
-		}
+        // Prepare logging file for raw SSE
+        logDir := m.cfg.LogDir
+        bySessionDir := filepath.Join(logDir, "by-session")
+        _ = os.MkdirAll(bySessionDir, 0o755)
+        ts := time.Now().Format("20060102_150405")
+        ssePath := filepath.Join(bySessionDir, fmt.Sprintf("interactive_%s_%s.sse", m.cfg.Session.ID, ts))
+        sseFile, _ := os.OpenFile(ssePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+        defer func(){ if sseFile != nil { _ = sseFile.Close() } }()
+
+        // Send request
+        client := &http.Client{
+            Timeout: 60 * time.Second,
+        }
 
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
@@ -643,22 +660,25 @@ func (m InteractiveModel) sendMessage(message string, index int) tea.Cmd {
 			return streamErrorMsg{err: fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))}
 		}
 
-		// Read streaming response (complete raw SSE)
-		var rawSSE strings.Builder
-		buf := make([]byte, 4096)
+        // Read streaming response (complete raw SSE) and append to log as it arrives
+        var rawSSE strings.Builder
+        buf := make([]byte, 4096)
 
-		for {
-			n, err := resp.Body.Read(buf)
-			if n > 0 {
-				rawSSE.Write(buf[:n])
-			}
-			if err != nil {
-				if err != io.EOF {
-					return streamErrorMsg{err: err}
-				}
-				break
-			}
-		}
+        for {
+            n, err := resp.Body.Read(buf)
+            if n > 0 {
+                rawSSE.Write(buf[:n])
+                if sseFile != nil {
+                    _, _ = sseFile.Write(buf[:n])
+                }
+            }
+            if err != nil {
+                if err != io.EOF {
+                    return streamErrorMsg{err: err}
+                }
+                break
+            }
+        }
 
 		// Parse SSE stream into events
 		rawString := rawSSE.String()
