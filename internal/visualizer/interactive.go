@@ -11,6 +11,7 @@ import (
     "path/filepath"
     "sort"
     "unicode/utf8"
+    neturl "net/url"
     "strings"
     "time"
 
@@ -701,6 +702,9 @@ func clipRunesLeft(line string, n int) string {
     return ""
 }
 
+// urlQueryEscape safely escapes a message for URL query use
+func urlQueryEscape(s string) string { return neturl.QueryEscape(s) }
+
 func (m InteractiveModel) sendMessage(message string, index int) tea.Cmd {
     return func() tea.Msg {
         // Build request
@@ -744,16 +748,28 @@ func (m InteractiveModel) sendMessage(message string, index int) tea.Cmd {
 
 		req = req.WithContext(ctx)
 
-		resp, err := client.Do(req)
-		if err != nil {
-			return streamErrorMsg{err: fmt.Errorf("failed to send request: %w", err)}
-		}
-		defer resp.Body.Close()
+        resp, err := client.Do(req)
+        if err != nil {
+            return streamErrorMsg{err: fmt.Errorf("failed to send request: %w", err)}
+        }
+        defer resp.Body.Close()
 
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			return streamErrorMsg{err: fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))}
-		}
+        if resp.StatusCode == http.StatusMethodNotAllowed {
+            // Fallback to GET with query parameter if POST not allowed
+            resp.Body.Close()
+            getURL := fmt.Sprintf("%s?message=%s", url, urlQueryEscape(message))
+            req, err = http.NewRequest("GET", getURL, nil)
+            if err != nil { return streamErrorMsg{err: fmt.Errorf("failed to create GET request: %w", err)} }
+            req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", m.apiKey))
+            req.Header.Set("Accept", "text/event-stream")
+            resp, err = client.Do(req)
+            if err != nil { return streamErrorMsg{err: fmt.Errorf("failed to send GET request: %w", err)} }
+            defer resp.Body.Close()
+        }
+        if resp.StatusCode != http.StatusOK {
+            body, _ := io.ReadAll(resp.Body)
+            return streamErrorMsg{err: fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))}
+        }
 
         // Read streaming response (complete raw SSE) and append to log as it arrives
         var rawSSE strings.Builder

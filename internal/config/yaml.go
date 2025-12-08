@@ -89,14 +89,14 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 		sessionID = getEnv("SESSION_ID", "debug-session-001")
 	}
 
-	// Build enhanced config
-	cfg := &EnhancedConfig{
-		Backend: BackendConfig{
-			BaseURL:        yamlCfg.Backend.BaseURL,
-			StreamEndpoint: yamlCfg.Backend.StreamEndpoint.URL,
-			Method:         yamlCfg.Backend.StreamEndpoint.Method,
-			Headers:        yamlCfg.Backend.StreamEndpoint.Headers,
-		},
+    // Build enhanced config
+    cfg := &EnhancedConfig{
+        Backend: BackendConfig{
+            BaseURL:        yamlCfg.Backend.BaseURL,
+            StreamEndpoint: yamlCfg.Backend.StreamEndpoint.URL,
+            Method:         yamlCfg.Backend.StreamEndpoint.Method,
+            Headers:        yamlCfg.Backend.StreamEndpoint.Headers,
+        },
 		Session: SessionConfig{
 			ID:            sessionID,
 			AutoSetup:     yamlCfg.Session.AutoSetup,
@@ -114,10 +114,13 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 		MaxAgentsVisible: yamlCfg.Display.MaxAgentsVisible,
 	}
 
-	// Ensure log directories exist
-	if err := cfg.createLogDirs(); err != nil {
-		return nil, fmt.Errorf("failed to create log directories: %w", err)
-	}
+    // Normalize defaults for endpoints if missing
+    cfg.Normalize()
+
+    // Ensure log directories exist
+    if err := cfg.createLogDirs(); err != nil {
+        return nil, fmt.Errorf("failed to create log directories: %w", err)
+    }
 
 	return cfg, nil
 }
@@ -162,14 +165,30 @@ type SessionConfig struct {
 
 // StreamEndpointURL returns the full streaming endpoint URL
 func (c *EnhancedConfig) StreamEndpointURL() string {
-	// Replace {session_id} placeholder
-	endpoint := c.Backend.StreamEndpoint
-	sessionID := c.Session.ID
+    // Replace {session_id} placeholder
+    endpoint := c.Backend.StreamEndpoint
+    sessionID := c.Session.ID
 
 	// Simple string replacement for {session_id}
 	endpoint = strings.Replace(endpoint, "{session_id}", sessionID, 1)
 
-	return fmt.Sprintf("%s%s", c.Backend.BaseURL, endpoint)
+    return fmt.Sprintf("%s%s", c.Backend.BaseURL, endpoint)
+}
+
+// Normalize fills in sensible defaults for missing endpoints
+func (c *EnhancedConfig) Normalize() {
+    if c.Backend.BaseURL == "" {
+        c.Backend.BaseURL = "http://localhost:5003"
+    }
+    if c.Session.SetupEndpoint == "" {
+        c.Session.SetupEndpoint = "/api/v3/debug/session"
+    }
+    if c.Backend.StreamEndpoint == "" {
+        c.Backend.StreamEndpoint = "/api/v3/sessions/{session_id}/stream"
+    }
+    if c.LogDir == "" {
+        c.LogDir = "./logs"
+    }
 }
 
 // createLogDirs ensures all log directories exist
