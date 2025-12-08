@@ -710,6 +710,11 @@ func (m InteractiveModel) sendMessage(message string, index int) tea.Cmd {
         // Build request
         url := m.cfg.StreamEndpointURL()
 
+        // Debug: Log the URL being called
+        fmt.Fprintf(os.Stderr, "DEBUG: Calling URL: %s\n", url)
+        fmt.Fprintf(os.Stderr, "DEBUG: BaseURL=%q Endpoint=%q SessionID=%q\n",
+            m.cfg.Backend.BaseURL, m.cfg.Backend.StreamEndpoint, m.cfg.Session.ID)
+
 		requestBody := map[string]interface{}{
 			"message": message,
 			"stream":  true,
