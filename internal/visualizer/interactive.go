@@ -9,6 +9,8 @@ import (
     "net/http"
     "os"
     "path/filepath"
+    "sort"
+    "unicode/utf8"
     "strings"
     "time"
 
@@ -17,8 +19,8 @@ import (
     tea "github.com/charmbracelet/bubbletea"
     "github.com/charmbracelet/lipgloss"
     "github.com/lancekrogers/stream-debugger/internal/config"
+    dblogger "github.com/lancekrogers/stream-debugger/internal/logger"
     "github.com/lancekrogers/stream-debugger/internal/events"
-    "sort"
 )
 
 // ViewMode represents the display mode for responses
@@ -60,6 +62,12 @@ type InteractiveModel struct {
     // UX toggles
     follow      bool // keep viewport pinned to bottom when true
     showHistory bool // render all messages when true; else latest only
+    wrap        bool // soft-wrap lines to viewport width
+    xOffset     int  // horizontal scroll offset (columns)
+    insertMode  bool // when true, keys go to textarea; when false, keys control viewport
+
+    // Structured logger
+    slog *dblogger.StructuredLogger
 }
 
 type Message struct {
@@ -91,6 +99,22 @@ func NewInteractiveModel(cfg *config.EnhancedConfig, apiKey string) InteractiveM
 	vp := viewport.New(80, 20)
 	vp.HighPerformanceRendering = false
 
+    // Initialize structured logger (using legacy config wrapper)
+    var slog *dblogger.StructuredLogger
+    {
+        legacy := &config.Config{
+            BackendURL:       cfg.Backend.BaseURL,
+            APIKey:           cfg.APIKey,
+            SessionID:        cfg.Session.ID,
+            LogDir:           cfg.LogDir,
+            EnableColors:     cfg.EnableColors,
+            MaxAgentsVisible: cfg.MaxAgentsVisible,
+        }
+        if l, err := dblogger.NewStructuredLogger(legacy); err == nil {
+            slog = l
+        }
+    }
+
     return InteractiveModel{
         cfg:      cfg,
         apiKey:   apiKey,
@@ -100,6 +124,10 @@ func NewInteractiveModel(cfg *config.EnhancedConfig, apiKey string) InteractiveM
         messages:    make([]Message, 0),
         follow:      true,
         showHistory: true,
+        wrap:        false,
+        xOffset:     0,
+        insertMode:  false,
+        slog:        slog,
     }
 }
 
@@ -112,104 +140,80 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
     case tea.KeyMsg:
-        switch msg.Type {
-		case tea.KeyCtrlC:
-			return m, tea.Quit
-		case tea.KeyCtrlT:
-			// Toggle view mode
-			if m.viewMode == ViewModeRaw {
-				m.viewMode = ViewModeParsed
-			} else {
-				m.viewMode = ViewModeRaw
-			}
-			return m, nil
-
-        // Scrolling keys
-        case tea.KeyUp:
-            m.viewport.LineUp(1)
-            // disable follow when user scrolls manually
-            m.follow = false
+        // Global ctrl bindings
+        if msg.Type == tea.KeyCtrlC { return m, tea.Quit }
+        if msg.Type == tea.KeyCtrlT {
+            if m.viewMode == ViewModeRaw { m.viewMode = ViewModeParsed } else { m.viewMode = ViewModeRaw }
             return m, nil
-        case tea.KeyDown:
-            m.viewport.LineDown(1)
-            m.follow = false
-            return m, nil
-        case tea.KeyPgUp:
-            m.viewport.HalfViewUp()
-            m.follow = false
-            return m, nil
-        case tea.KeyPgDown:
-            m.viewport.HalfViewDown()
-            m.follow = false
-            return m, nil
-        case tea.KeyHome:
-            m.viewport.GotoTop()
-            m.follow = false
-            return m, nil
-        case tea.KeyEnd:
-            m.viewport.GotoBottom()
-            m.follow = true
-            return m, nil
-
-		case tea.KeyEnter:
-			if !m.streaming {
-				// Send the message
-				message := m.textarea.Value()
-				if strings.TrimSpace(message) != "" {
-					m.messages = append(m.messages, Message{
-						Text:      message,
-						Timestamp: time.Now(),
-						Streaming: true,
-					})
-					m.textarea.Reset()
-					m.streaming = true
-
-					// Start streaming
-					return m, m.sendMessage(message, len(m.messages)-1)
         }
-
-        // Additional keybindings by rune
-        switch msg.String() {
-        case "j":
-            m.viewport.LineDown(1)
-            m.follow = false
-            return m, nil
-        case "k":
-            m.viewport.LineUp(1)
-            m.follow = false
-            return m, nil
-        case "g":
-            m.viewport.GotoTop()
-            m.follow = false
-            return m, nil
-        case "G":
-            m.viewport.GotoBottom()
-            m.follow = true
-            return m, nil
-        case " ": // space → page down
-            m.viewport.HalfViewDown()
-            m.follow = false
-            return m, nil
-        case "b": // page up
-            m.viewport.HalfViewUp()
-            m.follow = false
-            return m, nil
-        case "f": // toggle follow
+        if msg.Type == tea.KeyCtrlF {
             m.follow = !m.follow
-            if m.follow {
-                m.viewport.GotoBottom()
-            }
+            if m.follow { m.viewport.GotoBottom() }
             return m, nil
-        case "H": // toggle history
-            m.showHistory = !m.showHistory
-            if !m.showHistory {
-                m.follow = true
-                m.viewport.GotoBottom()
+        }
+        if msg.Type == tea.KeyEsc {
+            if m.insertMode { m.insertMode = false; m.textarea.Blur() }
+            return m, nil
+        }
+        if msg.Type == tea.KeyEnter {
+            if m.insertMode && !m.streaming {
+                message := m.textarea.Value()
+                if strings.TrimSpace(message) != "" {
+                    m.messages = append(m.messages, Message{ Text: message, Timestamp: time.Now(), Streaming: true })
+                    m.textarea.Reset()
+                    m.streaming = true
+                    return m, m.sendMessage(message, len(m.messages)-1)
+                }
             }
             return m, nil
         }
-			}
-		}
+
+        // Insert toggle
+        if msg.String() == "i" && !m.insertMode { m.insertMode = true; m.textarea.Focus(); return m, nil }
+
+        // Normal-mode navigation only when not inserting
+        if !m.insertMode {
+            switch msg.Type {
+            case tea.KeyUp:
+                m.viewport.LineUp(1); m.follow = false; return m, nil
+            case tea.KeyDown:
+                m.viewport.LineDown(1); m.follow = false; return m, nil
+            case tea.KeyPgUp:
+                m.viewport.HalfViewUp(); m.follow = false; return m, nil
+            case tea.KeyPgDown:
+                m.viewport.HalfViewDown(); m.follow = false; return m, nil
+            case tea.KeyHome:
+                m.viewport.GotoTop(); m.follow = false; return m, nil
+            case tea.KeyEnd:
+                m.viewport.GotoBottom(); m.follow = true; return m, nil
+            case tea.KeyLeft:
+                if m.xOffset > 0 { m.xOffset-- }; return m, nil
+            case tea.KeyRight:
+                m.xOffset++; return m, nil
+            }
+            switch msg.String() {
+            case "j":
+                m.viewport.LineDown(1); m.follow = false; return m, nil
+            case "k":
+                m.viewport.LineUp(1); m.follow = false; return m, nil
+            case "g":
+                m.viewport.GotoTop(); m.follow = false; return m, nil
+            case "G":
+                m.viewport.GotoBottom(); m.follow = true; return m, nil
+            case " ":
+                m.viewport.HalfViewDown(); m.follow = false; return m, nil
+            case "b":
+                m.viewport.HalfViewUp(); m.follow = false; return m, nil
+            case "H":
+                m.showHistory = !m.showHistory; if !m.showHistory { m.follow = true; m.viewport.GotoBottom() }; return m, nil
+            case "w":
+                m.wrap = !m.wrap; if m.wrap { m.xOffset = 0 }; return m, nil
+            case "h":
+                if m.xOffset > 0 { m.xOffset-- }; return m, nil
+            case "l":
+                m.xOffset++; return m, nil
+            }
+        }
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -244,10 +248,18 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.streaming = false
 	}
 
-	// Update textarea
-	var cmd tea.Cmd
-	m.textarea, cmd = m.textarea.Update(msg)
-	cmds = append(cmds, cmd)
+    // Update textarea only in insert mode for KeyMsg; always for non-key msgs (blink etc.)
+    if _, isKey := msg.(tea.KeyMsg); isKey {
+        if m.insertMode {
+            var cmd tea.Cmd
+            m.textarea, cmd = m.textarea.Update(msg)
+            cmds = append(cmds, cmd)
+        }
+    } else {
+        var cmd tea.Cmd
+        m.textarea, cmd = m.textarea.Update(msg)
+        cmds = append(cmds, cmd)
+    }
 
 	return m, tea.Batch(cmds...)
 }
@@ -264,11 +276,18 @@ func (m InteractiveModel) View() string {
 	b.WriteString(headerStyle.Render("🚀 Stream Debugger - Interactive Mode"))
 	b.WriteString("\n\n")
 
-	// Prepare viewport content
-	var viewportContent string
-	if len(m.messages) > 0 {
-		viewportContent = m.renderMessages()
-	} else {
+    // Prepare viewport content
+    var viewportContent string
+    if len(m.messages) > 0 {
+        raw := m.renderMessages()
+        if m.wrap {
+            viewportContent = m.wrapToWidth(raw, m.viewport.Width)
+        } else if m.xOffset > 0 {
+            viewportContent = m.clipLeft(raw, m.xOffset)
+        } else {
+            viewportContent = raw
+        }
+    } else {
 		viewportContent = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("8")).
 			Render("💬 Type a message below to start chatting...")
@@ -278,9 +297,7 @@ func (m InteractiveModel) View() string {
 	m.viewport.SetContent(viewportContent)
 
     // Display viewport (scrollable message history); pin to bottom in follow mode
-    if m.follow {
-        m.viewport.GotoBottom()
-    }
+    // Don't force bottom here; follow is applied on stream completion and explicit commands
     b.WriteString(m.viewport.View())
 	b.WriteString("\n")
 
@@ -319,9 +336,11 @@ func (m InteractiveModel) View() string {
 		viewModeStr = "PARSED"
 	}
 
+    mode := "INSERT"
+    if !m.insertMode { mode = "NORMAL" }
     status := fmt.Sprintf(
-        "Messages: %d | Session: %s | View: %s | Follow: %v | History: %v | (Ctrl+T) toggle view, (f) follow, (H) history, (j/k/↑/↓/PgUp/PgDn) scroll, (G) bottom, (g) top, Ctrl+C quit",
-        len(m.messages), m.cfg.Session.ID, viewModeStr, m.follow, m.showHistory,
+        "Mode:%s Msgs:%d Sess:%s View:%s Follow:%v Hist:%v Wrap:%v X:%d | Ctrl+T view, Ctrl+F follow, H hist, w wrap, ←/→/h/l horiz, ↑/↓/PgUp/PgDn/j/k scroll, G bottom, g top, i insert, Esc normal, Ctrl+C quit",
+        mode, len(m.messages), m.cfg.Session.ID, viewModeStr, m.follow, m.showHistory, m.wrap, m.xOffset,
     )
 	b.WriteString(statusStyle.Render(status))
 
@@ -603,7 +622,68 @@ func (m InteractiveModel) renderMessages() string {
 		}
 	}
 
-	return b.String()
+    return b.String()
+}
+
+// clipLeft removes the first x columns (approx bytes) from each line for basic horizontal scrolling
+func (m InteractiveModel) clipLeft(s string, off int) string {
+    if off <= 0 { return s }
+    var out strings.Builder
+    lines := strings.Split(s, "\n")
+    for i, line := range lines {
+        if off >= len(line) {
+            // If we clip more than line length, write empty
+            // Note: we do not try to be rune-precise for performance; fallback to byte slicing
+            // For better unicode handling, clip by runes below
+            out.WriteString("")
+        } else {
+            // Clip by runes to avoid cutting multibyte characters
+            out.WriteString(clipRunesLeft(line, off))
+        }
+        if i < len(lines)-1 { out.WriteByte('\n') }
+    }
+    return out.String()
+}
+
+// wrapToWidth wraps long lines to the given width (approx runes)
+func (m InteractiveModel) wrapToWidth(s string, width int) string {
+    if width <= 0 { return s }
+    var out strings.Builder
+    lines := strings.Split(s, "\n")
+    for i, line := range lines {
+        if line == "" {
+            // Preserve blank lines
+            //
+        } else {
+            // Wrap line by rune count
+            runes := []rune(line)
+            for start := 0; start < len(runes); start += width {
+                end := start + width
+                if end > len(runes) { end = len(runes) }
+                out.WriteString(string(runes[start:end]))
+                if end < len(runes) { out.WriteByte('\n') }
+            }
+        }
+        if i < len(lines)-1 { out.WriteByte('\n') }
+    }
+    return out.String()
+}
+
+// clipRunesLeft clips n columns (by rune) from the left; if n exceeds line length, returns empty
+func clipRunesLeft(line string, n int) string {
+    if n <= 0 { return line }
+    // Fast path for ASCII
+    if utf8.RuneCountInString(line) == len(line) {
+        if n >= len(line) { return "" }
+        return line[n:]
+    }
+    // Unicode-aware path
+    i := 0
+    for idx := range line {
+        if i == n { return line[idx:] }
+        i++
+    }
+    return ""
 }
 
 func (m InteractiveModel) sendMessage(message string, index int) tea.Cmd {
@@ -680,16 +760,23 @@ func (m InteractiveModel) sendMessage(message string, index int) tea.Cmd {
             }
         }
 
-		// Parse SSE stream into events
-		rawString := rawSSE.String()
-		parsedEvents, err := parseSSEStream(rawString)
-		if err != nil {
-			// If parsing fails, still show raw SSE
-			parsedEvents = []*events.Event{}
-		}
+        // Parse SSE stream into events
+        rawString := rawSSE.String()
+        parsedEvents, err := parseSSEStream(rawString)
+        if err != nil {
+            // If parsing fails, still show raw SSE
+            parsedEvents = []*events.Event{}
+        }
 
-		// Build agent responses from events
-		agentResponses := buildAgentResponses(parsedEvents)
+        // Build agent responses from events
+        agentResponses := buildAgentResponses(parsedEvents)
+
+        // Log parsed events to structured logger if available
+        if m.slog != nil {
+            for _, ev := range parsedEvents {
+                _ = m.slog.LogEvent(ev)
+            }
+        }
 
 		return streamCompleteMsg{
 			index:          index,
@@ -711,3 +798,4 @@ type streamCompleteMsg struct {
 type streamErrorMsg struct {
 	err error
 }
+        
