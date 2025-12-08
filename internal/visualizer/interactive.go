@@ -68,6 +68,9 @@ type InteractiveModel struct {
 
     // Structured logger
     slog *dblogger.StructuredLogger
+
+    // Track if viewport content needs refresh
+    contentDirty bool
 }
 
 type Message struct {
@@ -128,11 +131,33 @@ func NewInteractiveModel(cfg *config.EnhancedConfig, apiKey string) InteractiveM
         xOffset:     0,
         insertMode:  false,
         slog:        slog,
+        contentDirty: true,
     }
 }
 
 func (m InteractiveModel) Init() tea.Cmd {
 	return textarea.Blink
+}
+
+// refreshViewportContent updates the viewport content based on current state
+func (m *InteractiveModel) refreshViewportContent() {
+    var viewportContent string
+    if len(m.messages) > 0 {
+        raw := m.renderMessages()
+        if m.wrap {
+            viewportContent = m.wrapToWidth(raw, m.viewport.Width)
+        } else if m.xOffset > 0 {
+            viewportContent = m.clipLeft(raw, m.xOffset)
+        } else {
+            viewportContent = raw
+        }
+    } else {
+        viewportContent = lipgloss.NewStyle().
+            Foreground(lipgloss.Color("8")).
+            Render("💬 Type a message below to start chatting...")
+    }
+    m.viewport.SetContent(viewportContent)
+    m.contentDirty = false
 }
 
 func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -144,6 +169,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
         if msg.Type == tea.KeyCtrlC { return m, tea.Quit }
         if msg.Type == tea.KeyCtrlT {
             if m.viewMode == ViewModeRaw { m.viewMode = ViewModeParsed } else { m.viewMode = ViewModeRaw }
+            m.contentDirty = true
             return m, nil
         }
         if msg.Type == tea.KeyCtrlF {
@@ -162,6 +188,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                     m.messages = append(m.messages, Message{ Text: message, Timestamp: time.Now(), Streaming: true })
                     m.textarea.Reset()
                     m.streaming = true
+                    m.contentDirty = true
                     return m, m.sendMessage(message, len(m.messages)-1)
                 }
             }
@@ -187,9 +214,9 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
             case tea.KeyEnd:
                 m.viewport.GotoBottom(); m.follow = true; return m, nil
             case tea.KeyLeft:
-                if m.xOffset > 0 { m.xOffset-- }; return m, nil
+                if m.xOffset > 0 { m.xOffset--; m.contentDirty = true }; return m, nil
             case tea.KeyRight:
-                m.xOffset++; return m, nil
+                m.xOffset++; m.contentDirty = true; return m, nil
             }
             switch msg.String() {
             case "j":
@@ -205,13 +232,13 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
             case "b":
                 m.viewport.HalfViewUp(); m.follow = false; return m, nil
             case "H":
-                m.showHistory = !m.showHistory; if !m.showHistory { m.follow = true; m.viewport.GotoBottom() }; return m, nil
+                m.showHistory = !m.showHistory; m.contentDirty = true; if !m.showHistory { m.follow = true; m.viewport.GotoBottom() }; return m, nil
             case "w":
-                m.wrap = !m.wrap; if m.wrap { m.xOffset = 0 }; return m, nil
+                m.wrap = !m.wrap; m.contentDirty = true; if m.wrap { m.xOffset = 0 }; return m, nil
             case "h":
-                if m.xOffset > 0 { m.xOffset-- }; return m, nil
+                if m.xOffset > 0 { m.xOffset--; m.contentDirty = true }; return m, nil
             case "l":
-                m.xOffset++; return m, nil
+                m.xOffset++; m.contentDirty = true; return m, nil
             }
         }
 
@@ -227,6 +254,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.viewport.Width = msg.Width - 4
 		m.viewport.Height = viewportHeight
+		m.contentDirty = true
 
     case streamCompleteMsg:
         if msg.index < len(m.messages) {
@@ -236,6 +264,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
             m.messages[msg.index].Streaming = false
         }
         m.streaming = false
+        m.contentDirty = true
         if m.follow {
             m.viewport.GotoBottom()
         }
@@ -246,7 +275,13 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.messages[len(m.messages)-1].Streaming = false
 		}
 		m.streaming = false
+		m.contentDirty = true
 	}
+
+    // Refresh viewport content if dirty
+    if m.contentDirty {
+        m.refreshViewportContent()
+    }
 
     // Update textarea only in insert mode for KeyMsg; always for non-key msgs (blink etc.)
     if _, isKey := msg.(tea.KeyMsg); isKey {
@@ -276,28 +311,8 @@ func (m InteractiveModel) View() string {
 	b.WriteString(headerStyle.Render("🚀 Stream Debugger - Interactive Mode"))
 	b.WriteString("\n\n")
 
-    // Prepare viewport content
-    var viewportContent string
-    if len(m.messages) > 0 {
-        raw := m.renderMessages()
-        if m.wrap {
-            viewportContent = m.wrapToWidth(raw, m.viewport.Width)
-        } else if m.xOffset > 0 {
-            viewportContent = m.clipLeft(raw, m.xOffset)
-        } else {
-            viewportContent = raw
-        }
-    } else {
-		viewportContent = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("8")).
-			Render("💬 Type a message below to start chatting...")
-	}
-
-	// Update viewport with content
-	m.viewport.SetContent(viewportContent)
-
-    // Display viewport (scrollable message history); pin to bottom in follow mode
-    // Don't force bottom here; follow is applied on stream completion and explicit commands
+    // Display viewport (scrollable message history)
+    // Content is set in Update() via refreshViewportContent()
     b.WriteString(m.viewport.View())
 	b.WriteString("\n")
 
