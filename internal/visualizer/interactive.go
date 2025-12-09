@@ -236,13 +236,21 @@ func (m *InteractiveModel) refreshViewportContent() {
 }
 
 func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmds []tea.Cmd
+    var cmds []tea.Cmd
+    // Always refresh viewport content on return if content became dirty,
+    // even when we return early inside key handlers.
+    defer func() {
+        if m.contentDirty {
+            m.refreshViewportContent()
+        }
+    }()
 
 	switch msg := msg.(type) {
     case tea.KeyMsg:
         // Global ctrl bindings
         if msg.Type == tea.KeyCtrlC { return m, tea.Quit }
         if msg.Type == tea.KeyCtrlT {
+            // Toggle view mode (used by Events pane to switch RAW↔PARSED views)
             if m.viewMode == ViewModeRaw { m.viewMode = ViewModeParsed } else { m.viewMode = ViewModeRaw }
             m.contentDirty = true
             return m, nil
@@ -474,11 +482,6 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.streaming = false
 		m.contentDirty = true
 	}
-
-    // Refresh viewport content if dirty
-    if m.contentDirty {
-        m.refreshViewportContent()
-    }
 
     // Update textarea only in insert mode for KeyMsg; always for non-key msgs (blink etc.)
     if _, isKey := msg.(tea.KeyMsg); isKey {
@@ -1364,17 +1367,27 @@ func (m InteractiveModel) renderEventsPane() string {
     headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
     dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 
-    tokensLabel := "OFF"
-    if m.showTokens {
-        tokensLabel = "ON"
+    viewLabel := "PARSED"
+    if m.viewMode == ViewModeRaw {
+        viewLabel = "RAW"
     }
+    tokensLabel := "OFF"
+    if m.showTokens { tokensLabel = "ON" }
 
     b.WriteString(headerStyle.Render("Events"))
-    b.WriteString(fmt.Sprintf(" (Tokens: %s)", tokensLabel))
+    b.WriteString(fmt.Sprintf(" (View: %s)", viewLabel))
+    if m.viewMode == ViewModeParsed {
+        b.WriteString(fmt.Sprintf(" (Tokens: %s)", tokensLabel))
+    }
     b.WriteString("\n")
     b.WriteString(dimStyle.Render("─────────────────────────────────────────"))
     b.WriteString("\n")
-    b.WriteString(dimStyle.Render("t: toggle token events"))
+    // Hints
+    if m.viewMode == ViewModeParsed {
+        b.WriteString(dimStyle.Render("Ctrl+T: RAW view, t: toggle token events"))
+    } else {
+        b.WriteString(dimStyle.Render("Ctrl+T: PARSED view"))
+    }
     b.WriteString("\n\n")
 
     if len(m.messages) == 0 {
@@ -1384,6 +1397,17 @@ func (m InteractiveModel) renderEventsPane() string {
 
     msg := m.messages[len(m.messages)-1]
 
+    // RAW view: pretty-print the raw SSE of the last message
+    if m.viewMode == ViewModeRaw {
+        if msg.RawSSE == "" {
+            b.WriteString(dimStyle.Render("No raw SSE captured for latest message."))
+            return b.String()
+        }
+        b.WriteString(m.renderRawView(msg))
+        return b.String()
+    }
+
+    // PARSED view
     if len(msg.Events) == 0 {
         b.WriteString(dimStyle.Render("No events in latest message."))
         return b.String()
