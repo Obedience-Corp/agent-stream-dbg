@@ -1,14 +1,13 @@
 package visualizer
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
-	"fmt"
+    "bytes"
+    "context"
+    "encoding/json"
+    "fmt"
     "io"
     "net/http"
     "os"
-    "path/filepath"
     "sort"
     "unicode/utf8"
     neturl "net/url"
@@ -126,6 +125,14 @@ type InteractiveModel struct {
     yamlReloadStatus string
     yamlDiff         string
     configClient     *client.ConfigAPIClient
+
+    // Streaming (incremental) state
+    streamBody   io.ReadCloser
+    streamIndex  int
+    sseBuf       string            // carryover between chunks
+    sseEvent     string            // current event type being assembled
+    sseDataBuf   strings.Builder   // current event data buffer
+    streamCancel context.CancelFunc
 }
 
 type Message struct {
@@ -274,7 +281,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                     m.textarea.Reset()
                     m.streaming = true
                     m.contentDirty = true
-                    return m, m.sendMessage(message, len(m.messages)-1)
+                    return m, m.startStreamingCmd(message, len(m.messages)-1)
                 }
             }
             return m, nil
@@ -494,14 +501,68 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
             m.viewport.GotoBottom()
         }
 
-	case streamErrorMsg:
-		m.err = msg.err
-		if len(m.messages) > 0 {
-			m.messages[len(m.messages)-1].Streaming = false
-		}
-		m.streaming = false
-		m.contentDirty = true
-	}
+    case streamStartMsg:
+        // Initialize incremental streaming state
+        m.streamBody = msg.body
+        m.streamIndex = msg.index
+        m.streamCancel = msg.cancel
+        m.sseBuf = ""
+        m.sseEvent = ""
+        m.sseDataBuf.Reset()
+        // Kick off first read
+        return m, m.readStreamChunkCmd()
+
+    case streamChunkMsg:
+        if msg.err != nil {
+            // Treat as completion with error
+            if m.streamBody != nil { _ = m.streamBody.Close(); m.streamBody = nil }
+            if m.streamCancel != nil { m.streamCancel(); m.streamCancel = nil }
+            m.err = msg.err
+            m.streaming = false
+            if m.streamIndex < len(m.messages) { m.messages[m.streamIndex].Streaming = false }
+            m.contentDirty = true
+            break
+        }
+        if msg.eof {
+            // Finalize
+            if m.streamBody != nil { _ = m.streamBody.Close(); m.streamBody = nil }
+            if m.streamCancel != nil { m.streamCancel(); m.streamCancel = nil }
+            // Build parsed events once at end to fill Events if needed
+            if m.streamIndex < len(m.messages) {
+                raw := m.messages[m.streamIndex].RawSSE
+                parsed, _ := parseSSEStream(raw)
+                m.messages[m.streamIndex].Events = parsed
+                // Ensure AgentResponses is fully built at end as well
+                if len(m.messages[m.streamIndex].AgentResponses) == 0 {
+                    m.messages[m.streamIndex].AgentResponses = buildAgentResponses(parsed)
+                }
+                m.messages[m.streamIndex].Streaming = false
+            }
+            m.streaming = false
+            m.contentDirty = true
+            if m.follow { m.viewport.GotoBottom() }
+            break
+        }
+
+        // Append raw and incrementally parse
+        if m.streamIndex < len(m.messages) {
+            if msg.chunk != nil && len(msg.chunk) > 0 {
+                m.messages[m.streamIndex].RawSSE += string(msg.chunk)
+                m.incrementalParseSSE(msg.chunk)
+                m.contentDirty = true
+            }
+        }
+        // Schedule next read
+        return m, m.readStreamChunkCmd()
+
+    case streamErrorMsg:
+        m.err = msg.err
+        if len(m.messages) > 0 {
+            m.messages[len(m.messages)-1].Streaming = false
+        }
+        m.streaming = false
+        m.contentDirty = true
+    }
 
     // Update textarea only in insert mode for KeyMsg; always for non-key msgs (blink etc.)
     if _, isKey := msg.(tea.KeyMsg); isKey {
@@ -689,6 +750,99 @@ func parseSSEStream(rawSSE string) ([]*events.Event, error) {
 	}
 
 	return parsedEvents, nil
+}
+
+// incrementalParseSSE parses SSE incrementally from chunks to update AgentResponses as tokens arrive
+func (m *InteractiveModel) incrementalParseSSE(chunk []byte) {
+    if m.streamIndex >= len(m.messages) { return }
+    data := m.sseBuf + string(chunk)
+    lines := strings.Split(data, "\n")
+    // If the chunk doesn't end with a newline, keep last partial for next time
+    carry := ""
+    if !strings.HasSuffix(data, "\n") {
+        carry = lines[len(lines)-1]
+        lines = lines[:len(lines)-1]
+    }
+    parser := events.NewParser()
+    for _, line := range lines {
+        s := strings.TrimRight(line, "\r")
+        if strings.HasPrefix(s, "event:") {
+            // Finish previous event if any
+            if m.sseEvent != "" && m.sseDataBuf.Len() > 0 {
+                evt, err := parser.Parse(m.sseEvent, []byte(m.sseDataBuf.String()))
+                if err == nil && evt != nil {
+                    m.applyParsedEvent(evt)
+                }
+                m.sseDataBuf.Reset()
+            }
+            m.sseEvent = strings.TrimSpace(strings.TrimPrefix(s, "event:"))
+        } else if strings.HasPrefix(s, "data:") {
+            payload := strings.TrimSpace(strings.TrimPrefix(s, "data:"))
+            if m.sseDataBuf.Len() > 0 { m.sseDataBuf.WriteString("\n") }
+            m.sseDataBuf.WriteString(payload)
+        } else if s == "" {
+            // End of one event
+            if m.sseEvent != "" && m.sseDataBuf.Len() > 0 {
+                evt, err := parser.Parse(m.sseEvent, []byte(m.sseDataBuf.String()))
+                if err == nil && evt != nil {
+                    m.applyParsedEvent(evt)
+                }
+            }
+            m.sseEvent = ""
+            m.sseDataBuf.Reset()
+        } else {
+            // Unknown line; ignore
+        }
+    }
+    m.sseBuf = carry
+}
+
+// applyParsedEvent updates agent responses incrementally from a parsed event
+func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
+    idx := m.streamIndex
+    if idx >= len(m.messages) { return }
+    if m.messages[idx].AgentResponses == nil { m.messages[idx].AgentResponses = make(map[string]*AgentResponse) }
+    switch evt.Type {
+    case events.AgentStreamStart:
+        aid := evt.AgentStreamStart.AgentID
+        if aid == "" { return }
+        if m.messages[idx].AgentResponses[aid] == nil {
+            m.messages[idx].AgentResponses[aid] = &AgentResponse{AgentID: aid}
+        }
+    case events.AgentContent:
+        aid := evt.AgentContent.AgentID
+        if aid == "" { return }
+        ar := m.messages[idx].AgentResponses[aid]
+        if ar == nil { ar = &AgentResponse{AgentID: aid}; m.messages[idx].AgentResponses[aid] = ar }
+        c := evt.AgentContent.Content
+        ar.ContentChunks = append(ar.ContentChunks, c)
+        ar.FullContent += c
+        ar.TokenCount++
+    case events.AgentStreamComplete:
+        aid := evt.AgentStreamComplete.AgentID
+        if aid == "" { return }
+        ar := m.messages[idx].AgentResponses[aid]
+        if ar == nil { ar = &AgentResponse{AgentID: aid}; m.messages[idx].AgentResponses[aid] = ar }
+        ar.Completed = true
+    case events.WizardStreamStart:
+        // ensure wizard entry exists
+        if m.messages[idx].AgentResponses["wizard"] == nil {
+            m.messages[idx].AgentResponses["wizard"] = &AgentResponse{AgentID: "wizard"}
+        }
+    case events.WizardContent:
+        ar := m.messages[idx].AgentResponses["wizard"]
+        if ar == nil { ar = &AgentResponse{AgentID: "wizard"}; m.messages[idx].AgentResponses["wizard"] = ar }
+        c := evt.WizardContent.Content
+        ar.ContentChunks = append(ar.ContentChunks, c)
+        ar.FullContent += c
+        ar.TokenCount++
+    case events.WizardStreamComplete:
+        ar := m.messages[idx].AgentResponses["wizard"]
+        if ar == nil { ar = &AgentResponse{AgentID: "wizard"}; m.messages[idx].AgentResponses["wizard"] = ar }
+        ar.Completed = true
+    default:
+        // ignore others
+    }
 }
 
 // buildAgentResponses builds agent response map from parsed events
@@ -1567,133 +1721,93 @@ func clipRunesLeft(line string, n int) string {
 // urlQueryEscape safely escapes a message for URL query use
 func urlQueryEscape(s string) string { return neturl.QueryEscape(s) }
 
-func (m InteractiveModel) sendMessage(message string, index int) tea.Cmd {
+// startStreamingCmd initiates the streaming request and hands off to chunk reader
+func (m InteractiveModel) startStreamingCmd(message string, index int) tea.Cmd {
     return func() tea.Msg {
-        // Build request
         url := m.cfg.StreamEndpointURL()
-
-        // Debug: Log the URL being called
         fmt.Fprintf(os.Stderr, "DEBUG: Calling URL: %s\n", url)
         fmt.Fprintf(os.Stderr, "DEBUG: BaseURL=%q Endpoint=%q SessionID=%q\n",
             m.cfg.Backend.BaseURL, m.cfg.Backend.StreamEndpoint, m.cfg.Session.ID)
 
-		requestBody := map[string]interface{}{
-			"message": message,
-			"stream":  true,
-		}
+        requestBody := map[string]interface{}{"message": message, "stream": true}
+        jsonData, err := json.Marshal(requestBody)
+        if err != nil { return streamErrorMsg{err: fmt.Errorf("failed to marshal request: %w", err)} }
 
-		jsonData, err := json.Marshal(requestBody)
-		if err != nil {
-			return streamErrorMsg{err: fmt.Errorf("failed to marshal request: %w", err)}
-		}
+        req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+        if err != nil { return streamErrorMsg{err: fmt.Errorf("failed to create request: %w", err)} }
+        req.Header.Set("Content-Type", "application/json")
+        req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", m.apiKey))
+        req.Header.Set("Accept", "text/event-stream")
 
-		req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-		if err != nil {
-			return streamErrorMsg{err: fmt.Errorf("failed to create request: %w", err)}
-		}
+        clientHTTP := &http.Client{} // no timeout; SSE is long-lived
+        ctx, cancel := context.WithCancel(context.Background())
+        req = req.WithContext(ctx)
 
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", m.apiKey))
-		req.Header.Set("Accept", "text/event-stream")
-
-        // Prepare logging file for raw SSE
-        logDir := m.cfg.LogDir
-        bySessionDir := filepath.Join(logDir, "by-session")
-        _ = os.MkdirAll(bySessionDir, 0o755)
-        ts := time.Now().Format("20060102_150405")
-        ssePath := filepath.Join(bySessionDir, fmt.Sprintf("interactive_%s_%s.sse", m.cfg.Session.ID, ts))
-        sseFile, _ := os.OpenFile(ssePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-        defer func(){ if sseFile != nil { _ = sseFile.Close() } }()
-
-        // Send request
-        client := &http.Client{
-            Timeout: 60 * time.Second,
-        }
-
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-
-		req = req.WithContext(ctx)
-
-        resp, err := client.Do(req)
-        if err != nil {
-            return streamErrorMsg{err: fmt.Errorf("failed to send request: %w", err)}
-        }
-        defer resp.Body.Close()
+        resp, err := clientHTTP.Do(req)
+        if err != nil { return streamErrorMsg{err: fmt.Errorf("failed to send request: %w", err)} }
 
         if resp.StatusCode == http.StatusMethodNotAllowed {
-            // Fallback to GET with query parameter if POST not allowed
             resp.Body.Close()
             getURL := fmt.Sprintf("%s?message=%s", url, urlQueryEscape(message))
             req, err = http.NewRequest("GET", getURL, nil)
             if err != nil { return streamErrorMsg{err: fmt.Errorf("failed to create GET request: %w", err)} }
             req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", m.apiKey))
             req.Header.Set("Accept", "text/event-stream")
-            resp, err = client.Do(req)
+            resp, err = clientHTTP.Do(req)
             if err != nil { return streamErrorMsg{err: fmt.Errorf("failed to send GET request: %w", err)} }
-            defer resp.Body.Close()
         }
         if resp.StatusCode != http.StatusOK {
             body, _ := io.ReadAll(resp.Body)
+            resp.Body.Close()
             return streamErrorMsg{err: fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))}
         }
+        return streamStartMsg{ index: index, body: resp.Body, cancel: cancel }
+    }
+}
 
-        // Read streaming response (complete raw SSE) and append to log as it arrives
-        var rawSSE strings.Builder
+// readStreamChunkCmd reads the next chunk from the active stream and returns a chunk message
+func (m InteractiveModel) readStreamChunkCmd() tea.Cmd {
+    // capture the current ReadCloser
+    r := m.streamBody
+    idx := m.streamIndex
+    return func() tea.Msg {
+        if r == nil { return streamChunkMsg{ index: idx, eof: true } }
         buf := make([]byte, 4096)
-
-        for {
-            n, err := resp.Body.Read(buf)
-            if n > 0 {
-                rawSSE.Write(buf[:n])
-                if sseFile != nil {
-                    _, _ = sseFile.Write(buf[:n])
-                }
-            }
-            if err != nil {
-                if err != io.EOF {
-                    return streamErrorMsg{err: err}
-                }
-                break
-            }
-        }
-
-        // Parse SSE stream into events
-        rawString := rawSSE.String()
-        parsedEvents, err := parseSSEStream(rawString)
+        n, err := r.Read(buf)
         if err != nil {
-            // If parsing fails, still show raw SSE
-            parsedEvents = []*events.Event{}
-        }
-
-        // Build agent responses from events
-        agentResponses := buildAgentResponses(parsedEvents)
-
-        // Log parsed events to structured logger if available
-        if m.slog != nil {
-            for _, ev := range parsedEvents {
-                _ = m.slog.LogEvent(ev)
+            if err == io.EOF {
+                return streamChunkMsg{ index: idx, chunk: buf[:n], eof: true }
             }
+            return streamChunkMsg{ index: idx, err: err }
         }
-
-		return streamCompleteMsg{
-			index:          index,
-			rawSSE:         rawString,
-			events:         parsedEvents,
-			agentResponses: agentResponses,
-		}
-	}
+        return streamChunkMsg{ index: idx, chunk: buf[:n] }
+    }
 }
 
 // Message types
 type streamCompleteMsg struct {
-	index          int
-	rawSSE         string
-	events         []*events.Event
-	agentResponses map[string]*AgentResponse
+    index          int
+    rawSSE         string
+    events         []*events.Event
+    agentResponses map[string]*AgentResponse
 }
 
 type streamErrorMsg struct {
-	err error
+    err error
+}
+
+// streamStartMsg signals beginning of incremental streaming
+type streamStartMsg struct {
+    index int
+    body  io.ReadCloser
+    cancel context.CancelFunc
+}
+
+// streamChunkMsg carries data chunk from the streaming response
+type streamChunkMsg struct {
+    index int
+    chunk []byte
+    eof   bool
+    err   error
 }
         
