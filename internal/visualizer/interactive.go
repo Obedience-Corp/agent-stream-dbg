@@ -133,6 +133,10 @@ type InteractiveModel struct {
     sseEvent     string            // current event type being assembled
     sseDataBuf   strings.Builder   // current event data buffer
     streamCancel context.CancelFunc
+
+    // Flow pane state
+    flowTurnIndex int // which message index is displayed in Flow (default latest)
+    flowContinuous bool // when true, render all turns continuously
 }
 
 type Message struct {
@@ -200,6 +204,7 @@ func NewInteractiveModel(cfg *config.EnhancedConfig, apiKey string) InteractiveM
         flowExpanded:      make(map[string]bool),
         showTokens:        false,
         showPromptRef:     false,
+        flowContinuous:    true,
         // App pane defaults
         appFocus:       AppFocusWizard,
         agentCollapsed: make(map[string]bool),
@@ -224,7 +229,11 @@ func (m *InteractiveModel) refreshViewportContent() {
     // Dispatch to pane-specific renderer
     switch m.activePane {
     case PaneFlow:
-        viewportContent = m.renderFlowPane()
+        if m.flowContinuous {
+            viewportContent = m.renderFlowAllPane()
+        } else {
+            viewportContent = m.renderFlowPane()
+        }
     case PaneApp:
         viewportContent = m.renderAppPane()
     case PaneYAML:
@@ -274,17 +283,21 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
             return m, nil
         }
         if msg.Type == tea.KeyEnter {
+            // In insert mode, Enter sends the message. In normal mode, let the
+            // key fall through to pane-specific handling (e.g., Flow expand).
             if m.insertMode && !m.streaming {
                 message := m.textarea.Value()
                 if strings.TrimSpace(message) != "" {
                     m.messages = append(m.messages, Message{ Text: message, Timestamp: time.Now(), Streaming: true })
+                    m.flowTurnIndex = len(m.messages) - 1
                     m.textarea.Reset()
                     m.streaming = true
                     m.contentDirty = true
                     return m, m.startStreamingCmd(message, len(m.messages)-1)
                 }
+                return m, nil
             }
-            return m, nil
+            // Not in insert mode: do not return here; handle below.
         }
 
         // Insert toggle
@@ -371,6 +384,26 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                     m.viewport.LineUp(1); m.follow = false
                 }
                 return m, nil
+            case "[":
+                // Flow pane: previous turn
+                if m.activePane == PaneFlow {
+                    if m.flowTurnIndex > 0 {
+                        m.flowTurnIndex--
+                        m.contentDirty = true
+                        m.refreshViewportContent()
+                    }
+                }
+                return m, nil
+            case "]":
+                // Flow pane: next turn
+                if m.activePane == PaneFlow {
+                    if m.flowTurnIndex < len(m.messages)-1 {
+                        m.flowTurnIndex++
+                        m.contentDirty = true
+                        m.refreshViewportContent()
+                    }
+                }
+                return m, nil
             case "enter":
                 // Flow pane: toggle expand/collapse
                 if m.activePane == PaneFlow {
@@ -407,6 +440,14 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                 // Flow pane: toggle prompt ref display
                 if m.activePane == PaneFlow {
                     m.showPromptRef = !m.showPromptRef
+                    m.contentDirty = true
+                    m.refreshViewportContent()
+                }
+                return m, nil
+            case "a":
+                // Flow pane: toggle continuous view (all turns)
+                if m.activePane == PaneFlow {
+                    m.flowContinuous = !m.flowContinuous
                     m.contentDirty = true
                     m.refreshViewportContent()
                 }
@@ -564,6 +605,12 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
         m.contentDirty = true
     }
 
+    // For non-key messages (stream chunks, completions, window size),
+    // ensure we refresh the viewport when content changed.
+    if m.contentDirty {
+        m.refreshViewportContent()
+    }
+
     // Update textarea only in insert mode for KeyMsg; always for non-key msgs (blink etc.)
     if _, isKey := msg.(tea.KeyMsg); isKey {
         if m.insertMode {
@@ -673,7 +720,9 @@ func (m InteractiveModel) View() string {
     var paneHints string
     switch m.activePane {
     case PaneFlow:
-        paneHints = "j/k:select Enter:expand p:prompt"
+        toggle := "off"
+        if m.flowContinuous { toggle = "on" }
+        paneHints = fmt.Sprintf("j/k:select Enter:expand p:prompt [/]:turn a:all(%s)", toggle)
     case PaneEvents:
         tokensStr := "OFF"
         if m.showTokens { tokensStr = "ON" }
@@ -843,6 +892,8 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
     default:
         // ignore others
     }
+    // Append to events list so Flow/Events can update incrementally
+    m.messages[idx].Events = append(m.messages[idx].Events, evt)
 }
 
 // buildAgentResponses builds agent response map from parsed events
@@ -1145,13 +1196,14 @@ func (m InteractiveModel) renderFlowPane() string {
     b.WriteString(dimStyle.Render("─────────────────────────────────────────"))
     b.WriteString("\n\n")
 
-    // Get latest message events
+    // Select message for Flow view (latest by default, or navigated turn)
     if len(m.messages) == 0 {
         b.WriteString(dimStyle.Render("No messages yet. Send a message to see flow steps."))
         return b.String()
     }
-
-    msg := m.messages[len(m.messages)-1]
+    turn := m.flowTurnIndex
+    if turn < 0 || turn >= len(m.messages) { turn = len(m.messages) - 1 }
+    msg := m.messages[turn]
     if len(msg.Events) == 0 {
         b.WriteString(dimStyle.Render("No flow events in latest message."))
         return b.String()
@@ -1159,6 +1211,10 @@ func (m InteractiveModel) renderFlowPane() string {
 
     nodes := m.buildFlowNodes(msg.Events)
     steps := []string{"routing", "discovery", "agent_exec", "filter", "synthesis", "wizard"}
+
+    // Header detail: show turn index for context
+    b.WriteString(dimStyle.Render(fmt.Sprintf("Turn %d of %d  ([ ] to navigate)", turn+1, len(m.messages))))
+    b.WriteString("\n\n")
 
     for i, step := range steps {
         n := nodes[step]
@@ -1216,6 +1272,86 @@ func (m InteractiveModel) renderFlowPane() string {
         if m.flowExpanded[step] && n != nil {
             b.WriteString(m.renderFlowNodeDetails(n))
         }
+    }
+
+    return b.String()
+}
+
+// renderFlowAllPane renders a continuous flow across all messages (turns)
+func (m InteractiveModel) renderFlowAllPane() string {
+    var b strings.Builder
+
+    headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
+    dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+
+    b.WriteString(headerStyle.Render("Flow (All Turns)"))
+    b.WriteString("\n")
+    b.WriteString(dimStyle.Render("─────────────────────────────────────────"))
+    b.WriteString("\n\n")
+
+    if len(m.messages) == 0 {
+        b.WriteString(dimStyle.Render("No messages yet. Send a message to see flow steps."))
+        return b.String()
+    }
+
+    for i, msg := range m.messages {
+        // Per-turn header with timestamp and user message
+        ts := msg.Timestamp.Format("15:04:05")
+        preview := msg.Text
+        if len(preview) > 80 {
+            preview = preview[:80] + "…"
+        }
+        b.WriteString(lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("Turn %d • %s", i+1, ts)))
+        b.WriteString("\n")
+        b.WriteString(fmt.Sprintf("You: %s\n", preview))
+
+        // Build nodes for this turn
+        evts := msg.Events
+        if len(evts) == 0 && msg.RawSSE != "" {
+            if parsed, err := parseSSEStream(msg.RawSSE); err == nil { evts = parsed }
+        }
+        nodes := m.buildFlowNodes(evts)
+
+        // Agent list: prefer routing.route_agents; else from AgentStreamStart
+        agents := nodes["routing"].RouteAgents
+        if len(agents) == 0 {
+            // derive from events
+            uniq := map[string]struct{}{}
+            for _, e := range evts {
+                if e.Type == events.AgentStreamStart && e.AgentStreamStart != nil {
+                    aid := e.AgentStreamStart.AgentID
+                    if aid != "" && aid != "wizard" { uniq[aid] = struct{}{} }
+                }
+            }
+            for aid := range uniq { agents = append(agents, aid) }
+            sort.Strings(agents)
+        }
+        if len(agents) > 0 {
+            b.WriteString(fmt.Sprintf("Agents: [%s]\n", strings.Join(agents, ", ")))
+        }
+
+        // Step rows
+        steps := []string{"routing", "discovery", "agent_exec", "filter", "synthesis", "wizard"}
+        for _, step := range steps {
+            n := nodes[step]
+            if n == nil { continue }
+
+            var line strings.Builder
+            line.WriteString(statusIcon(n))
+            line.WriteString(" ")
+            line.WriteString(fmt.Sprintf("%-12s", step))
+            if n.DurationMs > 0 { line.WriteString(fmt.Sprintf(" [%dms]", n.DurationMs)) }
+            if step == "agent_exec" && n.AgentCount > 0 { line.WriteString(fmt.Sprintf(" agents:%d", n.AgentCount)) }
+            if step == "filter" && n.FilteredCount > 0 { line.WriteString(fmt.Sprintf(" filtered:%d", n.FilteredCount)) }
+            if step == "routing" && n.RouteTaken != "" {
+                line.WriteString(fmt.Sprintf(" → %s", n.RouteTaken))
+                if len(n.RouteAgents) > 0 { line.WriteString(fmt.Sprintf(" [%s]", strings.Join(n.RouteAgents, ", "))) }
+            }
+            b.WriteString("  " + line.String() + "\n")
+        }
+
+        // Spacer between turns
+        if i < len(m.messages)-1 { b.WriteString("\n") }
     }
 
     return b.String()
