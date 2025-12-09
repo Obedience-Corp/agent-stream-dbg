@@ -246,13 +246,6 @@ func (m *InteractiveModel) refreshViewportContent() {
 
 func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
     var cmds []tea.Cmd
-    // Always refresh viewport content on return if content became dirty,
-    // even when we return early inside key handlers.
-    defer func() {
-        if m.contentDirty {
-            m.refreshViewportContent()
-        }
-    }()
 
 	switch msg := msg.(type) {
     case tea.KeyMsg:
@@ -296,26 +289,32 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
             case "1", "f1":
                 m.activePane = PaneFlow
                 m.contentDirty = true
+                m.refreshViewportContent()
                 return m, nil
             case "2", "f2":
                 m.activePane = PaneApp
                 m.contentDirty = true
+                m.refreshViewportContent()
                 return m, nil
             case "3", "f3":
                 m.activePane = PaneYAML
                 m.contentDirty = true
+                m.refreshViewportContent()
                 return m, nil
             case "4", "f4":
                 m.activePane = PaneTimeline
                 m.contentDirty = true
+                m.refreshViewportContent()
                 return m, nil
             case "5", "f5":
                 m.activePane = PaneEvents
                 m.contentDirty = true
+                m.refreshViewportContent()
                 return m, nil
             case "6", "f6":
                 m.activePane = PaneMessages
                 m.contentDirty = true
+                m.refreshViewportContent()
                 return m, nil
             }
         }
@@ -347,6 +346,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                     if m.selectedStepIndex < 5 { // 6 steps: 0-5
                         m.selectedStepIndex++
                         m.contentDirty = true
+                        m.refreshViewportContent()
                     }
                 } else {
                     m.viewport.LineDown(1); m.follow = false
@@ -358,6 +358,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                     if m.selectedStepIndex > 0 {
                         m.selectedStepIndex--
                         m.contentDirty = true
+                        m.refreshViewportContent()
                     }
                 } else {
                     m.viewport.LineUp(1); m.follow = false
@@ -371,6 +372,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                         step := steps[m.selectedStepIndex]
                         m.flowExpanded[step] = !m.flowExpanded[step]
                         m.contentDirty = true
+                        m.refreshViewportContent()
                     }
                 }
                 return m, nil
@@ -390,6 +392,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                         }
                         m.activePane = PaneApp
                         m.contentDirty = true
+                        m.refreshViewportContent()
                     }
                 }
                 return m, nil
@@ -398,6 +401,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                 if m.activePane == PaneFlow {
                     m.showPromptRef = !m.showPromptRef
                     m.contentDirty = true
+                    m.refreshViewportContent()
                 }
                 return m, nil
             case "t":
@@ -405,6 +409,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                 if m.activePane == PaneEvents {
                     m.showTokens = !m.showTokens
                     m.contentDirty = true
+                    m.refreshViewportContent()
                 }
                 return m, nil
             case "y":
@@ -427,6 +432,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                         }
                     }
                     m.contentDirty = true
+                    m.refreshViewportContent()
                 }
                 return m, nil
             case "R":
@@ -439,6 +445,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                         m.yamlReloadStatus = fmt.Sprintf("HTTP %d\n%s", status, client.PrettyJSON(data))
                     }
                     m.contentDirty = true
+                    m.refreshViewportContent()
                 }
                 return m, nil
             case "g":
