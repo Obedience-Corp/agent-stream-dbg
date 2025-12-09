@@ -1287,6 +1287,21 @@ func (m InteractiveModel) renderFlowPane() string {
 
         // Expanded details (if expanded and node exists)
         if m.flowExpanded[step] && n != nil {
+            // For agent_exec, show agent list for this turn
+            if step == "agent_exec" {
+                agents := m.deriveAgentsFromEvents(msg.Events)
+                if len(agents) == 0 && msg.RawSSE != "" {
+                    if parsed, err := parseSSEStream(msg.RawSSE); err == nil {
+                        agents = m.deriveAgentsFromEvents(parsed)
+                    }
+                }
+                if len(agents) > 0 {
+                    b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).PaddingLeft(4).Render(
+                        fmt.Sprintf("agents: [%s]", strings.Join(agents, ", ")),
+                    ))
+                    b.WriteString("\n")
+                }
+            }
             b.WriteString(m.renderFlowNodeDetails(n))
         }
     }
@@ -1371,6 +1386,15 @@ func (m InteractiveModel) renderFlowAllPane() string {
 
             // Expanded details across all turns for the selected step
             if m.flowExpanded[step] {
+                if step == "agent_exec" {
+                    agents := m.deriveAgentsFromEvents(evts)
+                    if len(agents) > 0 {
+                        b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).PaddingLeft(4).Render(
+                            fmt.Sprintf("agents: [%s]", strings.Join(agents, ", ")),
+                        ))
+                        b.WriteString("\n")
+                    }
+                }
                 b.WriteString(m.renderFlowNodeDetails(n))
             }
         }
@@ -1382,24 +1406,62 @@ func (m InteractiveModel) renderFlowAllPane() string {
     return b.String()
 }
 
+// deriveAgentsFromEvents returns a sorted list of non-wizard agents that streamed in this turn
+func (m InteractiveModel) deriveAgentsFromEvents(evts []*events.Event) []string {
+    uniq := map[string]struct{}{}
+    for _, e := range evts {
+        if e.Type == events.AgentStreamStart && e.AgentStreamStart != nil {
+            aid := e.AgentStreamStart.AgentID
+            if aid != "" && aid != "wizard" { uniq[aid] = struct{}{} }
+        }
+    }
+    if len(uniq) == 0 { return nil }
+    agents := make([]string, 0, len(uniq))
+    for aid := range uniq { agents = append(agents, aid) }
+    sort.Strings(agents)
+    return agents
+}
+
 // renderFlowNodeDetails renders expanded details for a flow node
 func (m InteractiveModel) renderFlowNodeDetails(n *FlowNode) string {
     var b strings.Builder
     detailStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).PaddingLeft(4)
+    wrote := false
+
+    // Basic fields always useful
+    b.WriteString(detailStyle.Render(fmt.Sprintf("enabled: %v", n.Enabled)))
+    b.WriteString("\n")
+    wrote = true
+    if n.DurationMs > 0 {
+        b.WriteString(detailStyle.Render(fmt.Sprintf("duration_ms: %d", n.DurationMs)))
+        b.WriteString("\n")
+    }
+    if n.AgentCount > 0 {
+        b.WriteString(detailStyle.Render(fmt.Sprintf("agent_count: %d", n.AgentCount)))
+        b.WriteString("\n")
+    }
 
     if n.RoutingMode != "" {
         b.WriteString(detailStyle.Render(fmt.Sprintf("mode: %s", n.RoutingMode)))
         b.WriteString("\n")
+        wrote = true
     }
     if n.RouteReason != "" {
         b.WriteString(detailStyle.Render(fmt.Sprintf("reason: %s", n.RouteReason)))
         b.WriteString("\n")
+        wrote = true
     }
     if m.showPromptRef && n.PromptRef != nil && len(n.PromptRef) > 0 {
         for k, v := range n.PromptRef {
             b.WriteString(detailStyle.Render(fmt.Sprintf("%s: %v", k, v)))
             b.WriteString("\n")
         }
+        wrote = true
+    }
+
+    if !wrote {
+        b.WriteString(detailStyle.Render("No details. Press 'p' to show YAML refs."))
+        b.WriteString("\n")
     }
 
     return b.String()
