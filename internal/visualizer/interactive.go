@@ -19,6 +19,7 @@ import (
     "github.com/charmbracelet/bubbles/viewport"
     tea "github.com/charmbracelet/bubbletea"
     "github.com/charmbracelet/lipgloss"
+    "github.com/lancekrogers/stream-debugger/internal/client"
     "github.com/lancekrogers/stream-debugger/internal/config"
     dblogger "github.com/lancekrogers/stream-debugger/internal/logger"
     "github.com/lancekrogers/stream-debugger/internal/events"
@@ -31,6 +32,40 @@ const (
 	ViewModeRaw ViewMode = iota
 	ViewModeParsed
 )
+
+// Pane represents the active pane in the TUI
+type Pane int
+
+const (
+    PaneFlow Pane = iota
+    PaneApp
+    PaneYAML
+    PaneTimeline
+    PaneEvents
+)
+
+// AppFocus represents the focused section in App pane
+type AppFocus int
+
+const (
+    AppFocusWizard AppFocus = iota
+    AppFocusAgents
+)
+
+// FlowNode represents a flow step's state for rendering
+type FlowNode struct {
+    Step          string
+    Enabled       bool
+    AgentCount    int
+    FilteredCount int
+    DurationMs    int
+    RoutingMode   string
+    RouteTaken    string
+    RouteReason   string
+    RouteAgents   []string
+    PromptRef     map[string]interface{}
+    InProgress    bool
+}
 
 // AgentResponse tracks a single agent's response
 type AgentResponse struct {
@@ -72,6 +107,24 @@ type InteractiveModel struct {
 
     // Track if viewport content needs refresh
     contentDirty bool
+
+    // Pane management
+    activePane        Pane
+    selectedStepIndex int
+    flowExpanded      map[string]bool // track expanded/collapsed state per step
+    showTokens        bool            // Events pane: show token events
+    showPromptRef     bool            // Flow pane: show prompt references
+
+    // App pane state
+    appFocus       AppFocus
+    agentCollapsed map[string]bool // per-agent collapsed state
+
+    // YAML pane state
+    yamlSnapshot     string
+    yamlPrevSnapshot string
+    yamlReloadStatus string
+    yamlDiff         string
+    configClient     *client.ConfigAPIClient
 }
 
 type Message struct {
@@ -133,6 +186,17 @@ func NewInteractiveModel(cfg *config.EnhancedConfig, apiKey string) InteractiveM
         insertMode:  false,
         slog:        slog,
         contentDirty: true,
+        // Pane defaults
+        activePane:        PaneFlow,
+        selectedStepIndex: 0,
+        flowExpanded:      make(map[string]bool),
+        showTokens:        false,
+        showPromptRef:     false,
+        // App pane defaults
+        appFocus:       AppFocusWizard,
+        agentCollapsed: make(map[string]bool),
+        // YAML pane
+        configClient: client.NewConfigAPIClient(cfg, apiKey),
     }
 }
 
@@ -143,20 +207,30 @@ func (m InteractiveModel) Init() tea.Cmd {
 // refreshViewportContent updates the viewport content based on current state
 func (m *InteractiveModel) refreshViewportContent() {
     var viewportContent string
-    if len(m.messages) > 0 {
-        raw := m.renderMessages()
-        if m.wrap {
-            viewportContent = m.wrapToWidth(raw, m.viewport.Width)
-        } else if m.xOffset > 0 {
-            viewportContent = m.clipLeft(raw, m.xOffset)
-        } else {
-            viewportContent = raw
-        }
-    } else {
-        viewportContent = lipgloss.NewStyle().
-            Foreground(lipgloss.Color("8")).
-            Render("💬 Type a message below to start chatting...")
+
+    // Dispatch to pane-specific renderer
+    switch m.activePane {
+    case PaneFlow:
+        viewportContent = m.renderFlowPane()
+    case PaneApp:
+        viewportContent = m.renderAppPane()
+    case PaneYAML:
+        viewportContent = m.renderYAMLPane()
+    case PaneTimeline:
+        viewportContent = m.renderTimelinePane()
+    case PaneEvents:
+        viewportContent = m.renderEventsPane()
+    default:
+        viewportContent = m.renderMessages()
     }
+
+    // Apply wrapping/clipping
+    if m.wrap {
+        viewportContent = m.wrapToWidth(viewportContent, m.viewport.Width)
+    } else if m.xOffset > 0 {
+        viewportContent = m.clipLeft(viewportContent, m.xOffset)
+    }
+
     m.viewport.SetContent(viewportContent)
     m.contentDirty = false
 }
@@ -199,6 +273,32 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
         // Insert toggle
         if msg.String() == "i" && !m.insertMode { m.insertMode = true; m.textarea.Focus(); return m, nil }
 
+        // Pane switching (works in normal mode only)
+        if !m.insertMode {
+            switch msg.String() {
+            case "1", "f1":
+                m.activePane = PaneFlow
+                m.contentDirty = true
+                return m, nil
+            case "2", "f2":
+                m.activePane = PaneApp
+                m.contentDirty = true
+                return m, nil
+            case "3", "f3":
+                m.activePane = PaneYAML
+                m.contentDirty = true
+                return m, nil
+            case "4", "f4":
+                m.activePane = PaneTimeline
+                m.contentDirty = true
+                return m, nil
+            case "5", "f5":
+                m.activePane = PaneEvents
+                m.contentDirty = true
+                return m, nil
+            }
+        }
+
         // Normal-mode navigation only when not inserting
         if !m.insertMode {
             switch msg.Type {
@@ -221,9 +321,105 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
             }
             switch msg.String() {
             case "j":
-                m.viewport.LineDown(1); m.follow = false; return m, nil
+                // Flow pane: move selection down; others: scroll viewport
+                if m.activePane == PaneFlow {
+                    if m.selectedStepIndex < 5 { // 6 steps: 0-5
+                        m.selectedStepIndex++
+                        m.contentDirty = true
+                    }
+                } else {
+                    m.viewport.LineDown(1); m.follow = false
+                }
+                return m, nil
             case "k":
-                m.viewport.LineUp(1); m.follow = false; return m, nil
+                // Flow pane: move selection up; others: scroll viewport
+                if m.activePane == PaneFlow {
+                    if m.selectedStepIndex > 0 {
+                        m.selectedStepIndex--
+                        m.contentDirty = true
+                    }
+                } else {
+                    m.viewport.LineUp(1); m.follow = false
+                }
+                return m, nil
+            case "enter":
+                // Flow pane: toggle expand/collapse
+                if m.activePane == PaneFlow {
+                    steps := []string{"routing", "discovery", "agent_exec", "filter", "synthesis", "wizard"}
+                    if m.selectedStepIndex < len(steps) {
+                        step := steps[m.selectedStepIndex]
+                        m.flowExpanded[step] = !m.flowExpanded[step]
+                        m.contentDirty = true
+                    }
+                }
+                return m, nil
+            case "o":
+                // Flow pane: open in App pane with focus on selected step's content
+                if m.activePane == PaneFlow {
+                    steps := []string{"routing", "discovery", "agent_exec", "filter", "synthesis", "wizard"}
+                    if m.selectedStepIndex < len(steps) {
+                        step := steps[m.selectedStepIndex]
+                        switch step {
+                        case "wizard", "synthesis":
+                            m.appFocus = AppFocusWizard
+                        case "agent_exec":
+                            m.appFocus = AppFocusAgents
+                        default:
+                            m.appFocus = AppFocusWizard
+                        }
+                        m.activePane = PaneApp
+                        m.contentDirty = true
+                    }
+                }
+                return m, nil
+            case "p":
+                // Flow pane: toggle prompt ref display
+                if m.activePane == PaneFlow {
+                    m.showPromptRef = !m.showPromptRef
+                    m.contentDirty = true
+                }
+                return m, nil
+            case "t":
+                // Events pane: toggle token visibility
+                if m.activePane == PaneEvents {
+                    m.showTokens = !m.showTokens
+                    m.contentDirty = true
+                }
+                return m, nil
+            case "y":
+                // YAML pane: take snapshot
+                if m.activePane == PaneYAML && m.configClient != nil {
+                    m.yamlPrevSnapshot = m.yamlSnapshot
+                    data, status, err := m.configClient.GetFlowVizConfig()
+                    if err != nil {
+                        m.yamlReloadStatus = fmt.Sprintf("Snapshot error: %v", err)
+                    } else if status/100 != 2 {
+                        m.yamlReloadStatus = fmt.Sprintf("HTTP %d", status)
+                    } else {
+                        m.yamlSnapshot = client.PrettyJSON(data)
+                        m.yamlReloadStatus = fmt.Sprintf("Snapshot taken at %s", time.Now().Format("15:04:05"))
+                        // Compute diff if we have a previous snapshot
+                        if m.yamlPrevSnapshot != "" {
+                            m.yamlDiff = lineDiff(m.yamlPrevSnapshot, m.yamlSnapshot)
+                        } else {
+                            m.yamlDiff = ""
+                        }
+                    }
+                    m.contentDirty = true
+                }
+                return m, nil
+            case "R":
+                // YAML pane: reload prompts
+                if m.activePane == PaneYAML && m.configClient != nil {
+                    data, status, err := m.configClient.ReloadPrompts()
+                    if err != nil {
+                        m.yamlReloadStatus = fmt.Sprintf("Reload error: %v", err)
+                    } else {
+                        m.yamlReloadStatus = fmt.Sprintf("HTTP %d\n%s", status, client.PrettyJSON(data))
+                    }
+                    m.contentDirty = true
+                }
+                return m, nil
             case "g":
                 m.viewport.GotoTop(); m.follow = false; return m, nil
             case "G":
@@ -300,16 +496,53 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
+// currentPaneName returns the display name for the active pane
+func (m InteractiveModel) currentPaneName() string {
+    switch m.activePane {
+    case PaneFlow:
+        return "Flow"
+    case PaneApp:
+        return "App"
+    case PaneYAML:
+        return "YAML"
+    case PaneTimeline:
+        return "Timeline"
+    case PaneEvents:
+        return "Events"
+    default:
+        return "?"
+    }
+}
+
 func (m InteractiveModel) View() string {
 	var b strings.Builder
 
-	// Header
+	// Header with pane indicator
 	headerStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("6")).
 		Padding(0, 1)
 
-	b.WriteString(headerStyle.Render("🚀 Stream Debugger - Interactive Mode"))
+    paneStyle := lipgloss.NewStyle().
+        Bold(true).
+        Foreground(lipgloss.Color("14")).
+        Background(lipgloss.Color("8")).
+        Padding(0, 1)
+
+    // Pane tabs
+    paneNames := []string{"Flow", "App", "YAML", "Timeline", "Events"}
+    var tabs strings.Builder
+    for i, name := range paneNames {
+        if Pane(i) == m.activePane {
+            tabs.WriteString(paneStyle.Render(fmt.Sprintf("[%d]%s", i+1, name)))
+        } else {
+            tabs.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(fmt.Sprintf(" %d:%s ", i+1, name)))
+        }
+    }
+
+	b.WriteString(headerStyle.Render("🚀 Stream Debugger"))
+    b.WriteString(" ")
+    b.WriteString(tabs.String())
 	b.WriteString("\n\n")
 
     // Display viewport (scrollable message history)
@@ -342,21 +575,32 @@ func (m InteractiveModel) View() string {
 	b.WriteString(inputBoxStyle.Render(m.textarea.View()))
 	b.WriteString("\n")
 
-	// Status line with view mode indicator
+	// Status line with pane-specific hints
 	statusStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("8")).
 		Italic(true)
 
-	viewModeStr := "RAW"
-	if m.viewMode == ViewModeParsed {
-		viewModeStr = "PARSED"
-	}
-
     mode := "INSERT"
     if !m.insertMode { mode = "NORMAL" }
+
+    // Pane-specific status hints
+    var paneHints string
+    switch m.activePane {
+    case PaneFlow:
+        paneHints = "j/k:select Enter:expand p:prompt"
+    case PaneEvents:
+        tokensStr := "OFF"
+        if m.showTokens { tokensStr = "ON" }
+        paneHints = fmt.Sprintf("t:tokens(%s)", tokensStr)
+    case PaneYAML:
+        paneHints = "R:reload y:snapshot"
+    default:
+        paneHints = ""
+    }
+
     status := fmt.Sprintf(
-        "Mode:%s Msgs:%d Sess:%s View:%s Follow:%v Hist:%v Wrap:%v X:%d | Ctrl+T view, Ctrl+F follow, H hist, w wrap, ←/→/h/l horiz, ↑/↓/PgUp/PgDn/j/k scroll, G bottom, g top, i insert, Esc normal, Ctrl+C quit",
-        mode, len(m.messages), m.cfg.Session.ID, viewModeStr, m.follow, m.showHistory, m.wrap, m.xOffset,
+        "Mode:%s Pane:%s Msgs:%d | 1-5:panes %s Ctrl+T:raw/parsed i:insert Esc:normal Ctrl+C:quit",
+        mode, m.currentPaneName(), len(m.messages), paneHints,
     )
 	b.WriteString(statusStyle.Render(status))
 
@@ -637,6 +881,571 @@ func (m InteractiveModel) renderMessages() string {
 			}
 		}
 	}
+
+    return b.String()
+}
+
+// =============================================================================
+// PANE RENDERERS
+// =============================================================================
+
+// buildFlowNodes extracts FlowNode state from parsed events
+func (m InteractiveModel) buildFlowNodes(evts []*events.Event) map[string]*FlowNode {
+    nodes := map[string]*FlowNode{}
+    for _, e := range evts {
+        if s := e.FlowStepStart; s != nil {
+            n := nodes[s.Step]
+            if n == nil {
+                n = &FlowNode{Step: s.Step}
+            }
+            n.Enabled = s.Enabled
+            n.InProgress = true
+            if s.Step == "agent_exec" && s.NonWizardCount > 0 {
+                n.AgentCount = s.NonWizardCount
+            }
+            nodes[s.Step] = n
+        }
+        if s := e.FlowStepEnd; s != nil {
+            n := nodes[s.Step]
+            if n == nil {
+                n = &FlowNode{Step: s.Step}
+            }
+            n.Enabled = s.Enabled
+            n.InProgress = false
+            if s.AgentCount > 0 {
+                n.AgentCount = s.AgentCount
+            }
+            if s.DurationMs > 0 {
+                n.DurationMs = s.DurationMs
+            }
+            n.PromptRef = s.PromptRef
+            n.RoutingMode = s.RoutingMode
+            n.RouteTaken = s.RouteTaken
+            n.RouteReason = s.RouteReason
+            n.RouteAgents = s.RouteAgents
+            if s.FilteredCount > 0 {
+                n.FilteredCount = s.FilteredCount
+            }
+            nodes[s.Step] = n
+        }
+    }
+    return nodes
+}
+
+// statusIcon returns the status indicator for a flow step
+func statusIcon(n *FlowNode) string {
+    if !n.Enabled {
+        return "–"
+    }
+    if n.InProgress {
+        return "…"
+    }
+    if n.DurationMs > 0 {
+        return "✓"
+    }
+    return "…"
+}
+
+// renderFlowPane renders the Flow pane (F1) showing step rows
+func (m InteractiveModel) renderFlowPane() string {
+    var b strings.Builder
+
+    headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
+    selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
+    dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+
+    b.WriteString(headerStyle.Render("Flow Steps"))
+    b.WriteString("\n")
+    b.WriteString(dimStyle.Render("─────────────────────────────────────────"))
+    b.WriteString("\n\n")
+
+    // Get latest message events
+    if len(m.messages) == 0 {
+        b.WriteString(dimStyle.Render("No messages yet. Send a message to see flow steps."))
+        return b.String()
+    }
+
+    msg := m.messages[len(m.messages)-1]
+    if len(msg.Events) == 0 {
+        b.WriteString(dimStyle.Render("No flow events in latest message."))
+        return b.String()
+    }
+
+    nodes := m.buildFlowNodes(msg.Events)
+    steps := []string{"routing", "discovery", "agent_exec", "filter", "synthesis", "wizard"}
+
+    for i, step := range steps {
+        n := nodes[step]
+
+        // Build the line
+        var line strings.Builder
+
+        // Status icon
+        if n != nil {
+            line.WriteString(statusIcon(n))
+        } else {
+            line.WriteString(" ")
+        }
+        line.WriteString(" ")
+
+        // Step name
+        line.WriteString(fmt.Sprintf("%-12s", step))
+
+        // Metrics (if available)
+        if n != nil {
+            // Duration
+            if n.DurationMs > 0 {
+                line.WriteString(fmt.Sprintf(" [%dms]", n.DurationMs))
+            }
+
+            // Agent count for agent_exec
+            if step == "agent_exec" && n.AgentCount > 0 {
+                line.WriteString(fmt.Sprintf(" agents:%d", n.AgentCount))
+            }
+
+            // Filtered count for filter
+            if step == "filter" && n.FilteredCount > 0 {
+                line.WriteString(fmt.Sprintf(" filtered:%d", n.FilteredCount))
+            }
+
+            // Routing info
+            if step == "routing" && n.RouteTaken != "" {
+                line.WriteString(fmt.Sprintf(" → %s", n.RouteTaken))
+                if len(n.RouteAgents) > 0 {
+                    line.WriteString(fmt.Sprintf(" [%s]", strings.Join(n.RouteAgents, ", ")))
+                }
+            }
+        }
+
+        // Render with selection highlight
+        lineStr := line.String()
+        if i == m.selectedStepIndex {
+            b.WriteString(selectedStyle.Render("> " + lineStr))
+        } else {
+            b.WriteString("  " + lineStr)
+        }
+        b.WriteString("\n")
+
+        // Expanded details (if expanded and node exists)
+        if m.flowExpanded[step] && n != nil {
+            b.WriteString(m.renderFlowNodeDetails(n))
+        }
+    }
+
+    return b.String()
+}
+
+// renderFlowNodeDetails renders expanded details for a flow node
+func (m InteractiveModel) renderFlowNodeDetails(n *FlowNode) string {
+    var b strings.Builder
+    detailStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).PaddingLeft(4)
+
+    if n.RoutingMode != "" {
+        b.WriteString(detailStyle.Render(fmt.Sprintf("mode: %s", n.RoutingMode)))
+        b.WriteString("\n")
+    }
+    if n.RouteReason != "" {
+        b.WriteString(detailStyle.Render(fmt.Sprintf("reason: %s", n.RouteReason)))
+        b.WriteString("\n")
+    }
+    if m.showPromptRef && n.PromptRef != nil && len(n.PromptRef) > 0 {
+        for k, v := range n.PromptRef {
+            b.WriteString(detailStyle.Render(fmt.Sprintf("%s: %v", k, v)))
+            b.WriteString("\n")
+        }
+    }
+
+    return b.String()
+}
+
+// renderAppPane renders the App pane (F2) showing wizard output and agent summaries
+func (m InteractiveModel) renderAppPane() string {
+    var b strings.Builder
+
+    headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
+    dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+    focusStyle := lipgloss.NewStyle().Bold(true).Underline(true)
+
+    b.WriteString(headerStyle.Render("App Output"))
+    b.WriteString("\n")
+    b.WriteString(dimStyle.Render("─────────────────────────────────────────"))
+    b.WriteString("\n\n")
+
+    if len(m.messages) == 0 {
+        b.WriteString(dimStyle.Render("No messages yet."))
+        return b.String()
+    }
+
+    msg := m.messages[len(m.messages)-1]
+
+    // Render based on focus: wizard first if focused, agents first if focused
+    if m.appFocus == AppFocusWizard {
+        b.WriteString(m.renderWizardSection(msg, focusStyle))
+        b.WriteString(m.renderAgentSummaries(msg))
+    } else {
+        b.WriteString(m.renderAgentSummaries(msg))
+        b.WriteString(m.renderWizardSection(msg, lipgloss.NewStyle()))
+    }
+
+    return b.String()
+}
+
+// renderWizardSection renders the wizard output section
+func (m InteractiveModel) renderWizardSection(msg Message, titleStyle lipgloss.Style) string {
+    var b strings.Builder
+    wizard, ok := msg.AgentResponses["wizard"]
+    if !ok || wizard.FullContent == "" {
+        return ""
+    }
+
+    wizardStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("13")).Bold(true)
+    if titleStyle.GetUnderline() {
+        b.WriteString(titleStyle.Foreground(lipgloss.Color("13")).Render("Wizard Output"))
+    } else {
+        b.WriteString(wizardStyle.Render("Wizard Output"))
+    }
+    b.WriteString("\n")
+    b.WriteString(wizard.FullContent)
+    b.WriteString("\n\n")
+    return b.String()
+}
+
+// renderAgentSummaries renders the agent summaries section with collapse/expand
+func (m InteractiveModel) renderAgentSummaries(msg Message) string {
+    headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
+
+    // Sort agents for stable display (excluding wizard)
+    agentIDs := make([]string, 0, len(msg.AgentResponses))
+    for id := range msg.AgentResponses {
+        if id != "wizard" {
+            agentIDs = append(agentIDs, id)
+        }
+    }
+    sort.Strings(agentIDs)
+
+    if len(agentIDs) == 0 {
+        return ""
+    }
+
+    var b strings.Builder
+    b.WriteString(headerStyle.Render(fmt.Sprintf("Agents (%d)", len(agentIDs))))
+    b.WriteString("\n")
+
+    for _, agentID := range agentIDs {
+        resp := msg.AgentResponses[agentID]
+        if resp == nil || resp.FullContent == "" {
+            continue
+        }
+
+        agentColor := m.getAgentColor(agentID)
+        agentStyle := lipgloss.NewStyle().Foreground(agentColor).Bold(true)
+
+        // Collapse/expand indicator
+        collapsed := m.agentCollapsed[agentID]
+        caret := "▼"
+        if collapsed {
+            caret = "▶"
+        }
+
+        // Status indicator
+        status := ""
+        if resp.Completed {
+            status = " ✓"
+        }
+
+        header := fmt.Sprintf("%s %s (%d tokens)%s", caret, agentID, resp.TokenCount, status)
+        b.WriteString(agentStyle.Render(header))
+        b.WriteString("\n")
+
+        // Show content only if not collapsed
+        if !collapsed {
+            b.WriteString(lipgloss.NewStyle().Foreground(agentColor).Render(resp.FullContent))
+            b.WriteString("\n\n")
+        }
+    }
+
+    return b.String()
+}
+
+// lineDiff computes a simple line-based diff between two strings
+func lineDiff(a, b string) string {
+    al := strings.Split(a, "\n")
+    bl := strings.Split(b, "\n")
+
+    // Build sets for comparison
+    aSet := make(map[string]struct{})
+    for _, s := range al {
+        aSet[s] = struct{}{}
+    }
+    bSet := make(map[string]struct{})
+    for _, s := range bl {
+        bSet[s] = struct{}{}
+    }
+
+    var out []string
+
+    // Lines in new but not in old (added)
+    for _, s := range bl {
+        if _, ok := aSet[s]; !ok {
+            out = append(out, "+ "+s)
+        } else {
+            out = append(out, "  "+s)
+        }
+    }
+
+    // Lines in old but not in new (removed)
+    for _, s := range al {
+        if _, ok := bSet[s]; !ok {
+            out = append(out, "- "+s)
+        }
+    }
+
+    return strings.Join(out, "\n")
+}
+
+// renderYAMLPane renders the YAML pane (F3) showing config snapshot
+func (m InteractiveModel) renderYAMLPane() string {
+    var b strings.Builder
+
+    headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
+    dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+    addStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10")) // green
+    removeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9")) // red
+
+    b.WriteString(headerStyle.Render("YAML Configuration"))
+    b.WriteString("\n")
+    b.WriteString(dimStyle.Render("─────────────────────────────────────────"))
+    b.WriteString("\n")
+    b.WriteString(dimStyle.Render("R: reload prompts | y: take snapshot"))
+    b.WriteString("\n\n")
+
+    if m.yamlReloadStatus != "" {
+        b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Render(m.yamlReloadStatus))
+        b.WriteString("\n\n")
+    }
+
+    // Show diff if available
+    if m.yamlDiff != "" {
+        b.WriteString(headerStyle.Render("Snapshot Diff"))
+        b.WriteString("\n")
+        // Color-code diff lines
+        for _, line := range strings.Split(m.yamlDiff, "\n") {
+            if strings.HasPrefix(line, "+ ") {
+                b.WriteString(addStyle.Render(line))
+            } else if strings.HasPrefix(line, "- ") {
+                b.WriteString(removeStyle.Render(line))
+            } else {
+                b.WriteString(line)
+            }
+            b.WriteString("\n")
+        }
+        b.WriteString("\n")
+    }
+
+    if m.yamlSnapshot == "" {
+        b.WriteString(dimStyle.Render("No snapshot. Press 'y' to capture current config."))
+    } else {
+        b.WriteString(headerStyle.Render("Current Snapshot"))
+        b.WriteString("\n")
+        b.WriteString(m.yamlSnapshot)
+    }
+
+    return b.String()
+}
+
+// renderTimelinePane renders the Timeline pane (F4) showing agent execution timeline
+func (m InteractiveModel) renderTimelinePane() string {
+    var b strings.Builder
+
+    headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
+    dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+
+    b.WriteString(headerStyle.Render("Timeline"))
+    b.WriteString("\n")
+    b.WriteString(dimStyle.Render("─────────────────────────────────────────"))
+    b.WriteString("\n\n")
+
+    if len(m.messages) == 0 {
+        b.WriteString(dimStyle.Render("No messages yet."))
+        return b.String()
+    }
+
+    msg := m.messages[len(m.messages)-1]
+
+    // Show stage durations from flow events
+    nodes := m.buildFlowNodes(msg.Events)
+    stages := []string{"routing", "discovery", "agent_exec", "filter", "synthesis", "wizard"}
+
+    b.WriteString(lipgloss.NewStyle().Bold(true).Render("Stages"))
+    b.WriteString("\n")
+
+    totalDuration := 0
+    for _, stage := range stages {
+        if n := nodes[stage]; n != nil && n.DurationMs > 0 {
+            totalDuration += n.DurationMs
+        }
+    }
+
+    for _, stage := range stages {
+        n := nodes[stage]
+        if n == nil {
+            continue
+        }
+
+        // Calculate bar width proportional to duration
+        barWidth := 0
+        if totalDuration > 0 && n.DurationMs > 0 {
+            barWidth = (n.DurationMs * 40) / totalDuration
+            if barWidth < 1 {
+                barWidth = 1
+            }
+        }
+
+        bar := strings.Repeat("█", barWidth)
+
+        b.WriteString(fmt.Sprintf("%-12s %s %dms\n", stage, bar, n.DurationMs))
+    }
+
+    b.WriteString("\n")
+    b.WriteString(fmt.Sprintf("Total: %dms\n", totalDuration))
+
+    // Show agent timeline bars
+    if len(msg.AgentResponses) > 0 {
+        b.WriteString("\n")
+        b.WriteString(lipgloss.NewStyle().Bold(true).Render("Agents"))
+        b.WriteString("\n")
+
+        // Calculate max tokens for bar scaling
+        maxTokens := 0
+        for _, resp := range msg.AgentResponses {
+            if resp.TokenCount > maxTokens {
+                maxTokens = resp.TokenCount
+            }
+        }
+
+        // Sort agents for stable display
+        agentIDs := make([]string, 0, len(msg.AgentResponses))
+        for id := range msg.AgentResponses {
+            agentIDs = append(agentIDs, id)
+        }
+        sort.Strings(agentIDs)
+
+        for _, agentID := range agentIDs {
+            resp := msg.AgentResponses[agentID]
+            status := "⏳"
+            if resp.Completed {
+                status = "✓"
+            }
+
+            // Calculate bar width proportional to tokens
+            barWidth := 0
+            if maxTokens > 0 && resp.TokenCount > 0 {
+                barWidth = (resp.TokenCount * 30) / maxTokens
+                if barWidth < 1 {
+                    barWidth = 1
+                }
+            }
+
+            bar := strings.Repeat("▓", barWidth)
+            agentColor := m.getAgentColor(agentID)
+            barStyled := lipgloss.NewStyle().Foreground(agentColor).Render(bar)
+
+            b.WriteString(fmt.Sprintf("%s %-15s %s %d tokens\n", status, agentID, barStyled, resp.TokenCount))
+        }
+    }
+
+    return b.String()
+}
+
+// renderEventsPane renders the Events pane (F5) showing SSE events
+func (m InteractiveModel) renderEventsPane() string {
+    var b strings.Builder
+
+    headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
+    dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+
+    tokensLabel := "OFF"
+    if m.showTokens {
+        tokensLabel = "ON"
+    }
+
+    b.WriteString(headerStyle.Render("Events"))
+    b.WriteString(fmt.Sprintf(" (Tokens: %s)", tokensLabel))
+    b.WriteString("\n")
+    b.WriteString(dimStyle.Render("─────────────────────────────────────────"))
+    b.WriteString("\n")
+    b.WriteString(dimStyle.Render("t: toggle token events"))
+    b.WriteString("\n\n")
+
+    if len(m.messages) == 0 {
+        b.WriteString(dimStyle.Render("No messages yet."))
+        return b.String()
+    }
+
+    msg := m.messages[len(m.messages)-1]
+
+    if len(msg.Events) == 0 {
+        b.WriteString(dimStyle.Render("No events in latest message."))
+        return b.String()
+    }
+
+    // Filter events based on showTokens flag
+    eventStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+    tokenStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+
+    for _, evt := range msg.Events {
+        // Skip token events if showTokens is false
+        isTokenEvent := evt.Type == events.AgentContent || evt.Type == events.WizardContent
+        if isTokenEvent && !m.showTokens {
+            continue
+        }
+
+        // Format event
+        line := fmt.Sprintf("[%s]", evt.Type)
+
+        // Add relevant details
+        switch evt.Type {
+        case events.FlowStepStart:
+            if evt.FlowStepStart != nil {
+                line += fmt.Sprintf(" step=%s enabled=%v", evt.FlowStepStart.Step, evt.FlowStepStart.Enabled)
+            }
+        case events.FlowStepEnd:
+            if evt.FlowStepEnd != nil {
+                line += fmt.Sprintf(" step=%s duration=%dms", evt.FlowStepEnd.Step, evt.FlowStepEnd.DurationMs)
+            }
+        case events.AgentStreamStart:
+            if evt.AgentStreamStart != nil {
+                line += fmt.Sprintf(" agent=%s", evt.AgentStreamStart.AgentID)
+            }
+        case events.AgentStreamComplete:
+            if evt.AgentStreamComplete != nil {
+                line += fmt.Sprintf(" agent=%s tokens=%d", evt.AgentStreamComplete.AgentID, evt.AgentStreamComplete.TokenCount)
+            }
+        case events.AgentContent:
+            if evt.AgentContent != nil {
+                content := evt.AgentContent.Content
+                if len(content) > 30 {
+                    content = content[:30] + "..."
+                }
+                line += fmt.Sprintf(" agent=%s content=%q", evt.AgentContent.AgentID, content)
+            }
+        case events.WizardContent:
+            if evt.WizardContent != nil {
+                content := evt.WizardContent.Content
+                if len(content) > 30 {
+                    content = content[:30] + "..."
+                }
+                line += fmt.Sprintf(" content=%q", content)
+            }
+        }
+
+        if isTokenEvent {
+            b.WriteString(tokenStyle.Render(line))
+        } else {
+            b.WriteString(eventStyle.Render(line))
+        }
+        b.WriteString("\n")
+    }
 
     return b.String()
 }

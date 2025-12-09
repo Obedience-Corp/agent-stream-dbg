@@ -94,6 +94,7 @@ type FlowStepEndEvent struct {
     Step       string `json:"step"`
     Enabled    bool   `json:"enabled"`
     AgentCount int    `json:"agent_count,omitempty"`
+    FilteredCount int `json:"filtered_count,omitempty"`
     // Optional routing details (for step==routing)
     RoutingMode string `json:"routing_mode,omitempty"`
     RouteTaken  string `json:"route_taken,omitempty"`
