@@ -206,7 +206,7 @@ func NewInteractiveModel(cfg *config.EnhancedConfig, apiKey string) InteractiveM
         showPromptRef:     false,
         flowContinuous:    true,
         // App pane defaults
-        appFocus:       AppFocusWizard,
+        appFocus:       AppFocusAgents,
         agentCollapsed: make(map[string]bool),
         // YAML pane
         configClient: client.NewConfigAPIClient(cfg, apiKey),
@@ -268,9 +268,10 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
         // Global ctrl bindings
         if msg.Type == tea.KeyCtrlC { return m, tea.Quit }
         if msg.Type == tea.KeyCtrlT {
-            // Toggle view mode (used by Events pane to switch RAW↔PARSED views)
+            // Toggle view mode (used by Events and Messages panes to switch RAW↔PARSED views)
             if m.viewMode == ViewModeRaw { m.viewMode = ViewModeParsed } else { m.viewMode = ViewModeRaw }
             m.contentDirty = true
+            m.refreshViewportContent()
             return m, nil
         }
         if msg.Type == tea.KeyCtrlF {
@@ -434,6 +435,14 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                         m.contentDirty = true
                         m.refreshViewportContent()
                     }
+                }
+                return m, nil
+            case "f":
+                // App pane: toggle focus between Agents and Wizard
+                if m.activePane == PaneApp {
+                    if m.appFocus == AppFocusAgents { m.appFocus = AppFocusWizard } else { m.appFocus = AppFocusAgents }
+                    m.contentDirty = true
+                    m.refreshViewportContent()
                 }
                 return m, nil
             case "p":
@@ -957,18 +966,26 @@ func (m InteractiveModel) getAgentColor(agentID string) lipgloss.Color {
 
 // renderRawView renders the raw SSE stream
 func (m InteractiveModel) renderRawView(msg Message) string {
-	if msg.RawSSE == "" {
-		return ""
-	}
+    if msg.RawSSE == "" {
+        return ""
+    }
 
-	var b strings.Builder
+    var b strings.Builder
 
-	responseStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("13")).
-		Bold(true)
+    // While streaming, render the raw SSE as-is for responsiveness;
+    // pretty printing on every chunk is expensive.
+    if msg.Streaming {
+        b.WriteString(msg.RawSSE)
+        b.WriteString("\n")
+        return b.String()
+    }
 
-	b.WriteString(responseStyle.Render("Raw SSE Stream (JSON Pretty-Printed):"))
-	b.WriteString("\n\n")
+    responseStyle := lipgloss.NewStyle().
+        Foreground(lipgloss.Color("13")).
+        Bold(true)
+
+    b.WriteString(responseStyle.Render("Raw SSE Stream (JSON Pretty-Printed):"))
+    b.WriteString("\n\n")
 
 	// Parse and pretty-print JSON in data fields
 	lines := strings.Split(msg.RawSSE, "\n")
@@ -1312,8 +1329,11 @@ func (m InteractiveModel) renderFlowAllPane() string {
         }
         nodes := m.buildFlowNodes(evts)
 
-        // Agent list: prefer routing.route_agents; else from AgentStreamStart
-        agents := nodes["routing"].RouteAgents
+        // Agent list: prefer routing.route_agents; else derive from AgentStreamStart
+        var agents []string
+        if rn := nodes["routing"]; rn != nil && len(rn.RouteAgents) > 0 {
+            agents = append(agents, rn.RouteAgents...)
+        }
         if len(agents) == 0 {
             // derive from events
             uniq := map[string]struct{}{}
@@ -1348,6 +1368,11 @@ func (m InteractiveModel) renderFlowAllPane() string {
                 if len(n.RouteAgents) > 0 { line.WriteString(fmt.Sprintf(" [%s]", strings.Join(n.RouteAgents, ", "))) }
             }
             b.WriteString("  " + line.String() + "\n")
+
+            // Expanded details across all turns for the selected step
+            if m.flowExpanded[step] {
+                b.WriteString(m.renderFlowNodeDetails(n))
+            }
         }
 
         // Spacer between turns
