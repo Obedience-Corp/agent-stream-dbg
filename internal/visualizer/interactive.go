@@ -693,13 +693,18 @@ func parseSSEStream(rawSSE string) ([]*events.Event, error) {
 
 // buildAgentResponses builds agent response map from parsed events
 func buildAgentResponses(events []*events.Event) map[string]*AgentResponse {
-	responses := make(map[string]*AgentResponse)
+    responses := make(map[string]*AgentResponse)
 
-	for _, event := range events {
-		agentID := event.GetAgentID()
-		if agentID == "" {
-			continue
-		}
+    for _, event := range events {
+        agentID := event.GetAgentID()
+        if agentID == "" {
+            // Treat wizard events as coming from a pseudo-agent "wizard"
+            if event.WizardStreamStart != nil || event.WizardContent != nil || event.WizardStreamComplete != nil {
+                agentID = "wizard"
+            } else {
+                continue
+            }
+        }
 
 		// Initialize agent response if needed
 		if _, exists := responses[agentID]; !exists {
@@ -712,25 +717,25 @@ func buildAgentResponses(events []*events.Event) map[string]*AgentResponse {
 		agent := responses[agentID]
 
 		// Handle different event types
-		switch {
-		case event.AgentStreamStart != nil || event.WizardStreamStart != nil:
-			agent.StartTime = time.Now()
+        switch {
+        case event.AgentStreamStart != nil || event.WizardStreamStart != nil:
+            agent.StartTime = time.Now()
 
-		case event.AgentContent != nil || event.WizardContent != nil:
-			content := event.GetContent()
-			if content != "" {
-				agent.ContentChunks = append(agent.ContentChunks, content)
-				agent.FullContent += content
-				agent.TokenCount++
-			}
+        case event.AgentContent != nil || event.WizardContent != nil:
+            content := event.GetContent()
+            if content != "" {
+                agent.ContentChunks = append(agent.ContentChunks, content)
+                agent.FullContent += content
+                agent.TokenCount++
+            }
 
-		case event.AgentStreamComplete != nil || event.WizardStreamComplete != nil:
-			agent.EndTime = time.Now()
-			agent.Completed = true
-		}
-	}
+        case event.AgentStreamComplete != nil || event.WizardStreamComplete != nil:
+            agent.EndTime = time.Now()
+            agent.Completed = true
+        }
+    }
 
-	return responses
+    return responses
 }
 
 // getAgentColor returns the lipgloss color for an agent
