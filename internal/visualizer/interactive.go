@@ -42,6 +42,7 @@ const (
     PaneYAML
     PaneTimeline
     PaneEvents
+    PaneMessages
 )
 
 // AppFocus represents the focused section in App pane
@@ -172,7 +173,7 @@ func NewInteractiveModel(cfg *config.EnhancedConfig, apiKey string) InteractiveM
         }
     }
 
-    return InteractiveModel{
+    m := InteractiveModel{
         cfg:      cfg,
         apiKey:   apiKey,
         textarea: ta,
@@ -198,6 +199,11 @@ func NewInteractiveModel(cfg *config.EnhancedConfig, apiKey string) InteractiveM
         // YAML pane
         configClient: client.NewConfigAPIClient(cfg, apiKey),
     }
+    // Set an initial placeholder so the viewport isn't blank before first refresh
+    m.viewport.SetContent(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
+        "Press 1–5 to switch panes • i to type • Ctrl+T toggles RAW/PARSED in Events",
+    ))
+    return m
 }
 
 func (m InteractiveModel) Init() tea.Cmd {
@@ -220,6 +226,9 @@ func (m *InteractiveModel) refreshViewportContent() {
         viewportContent = m.renderTimelinePane()
     case PaneEvents:
         viewportContent = m.renderEventsPane()
+    case PaneMessages:
+        // Reuse the combined RAW/PARSED message renderer
+        viewportContent = m.renderMessages()
     default:
         viewportContent = m.renderMessages()
     }
@@ -302,6 +311,10 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                 return m, nil
             case "5", "f5":
                 m.activePane = PaneEvents
+                m.contentDirty = true
+                return m, nil
+            case "6", "f6":
+                m.activePane = PaneMessages
                 m.contentDirty = true
                 return m, nil
             }
@@ -512,6 +525,8 @@ func (m InteractiveModel) currentPaneName() string {
         return "Timeline"
     case PaneEvents:
         return "Events"
+    case PaneMessages:
+        return "Messages"
     default:
         return "?"
     }
@@ -533,7 +548,7 @@ func (m InteractiveModel) View() string {
         Padding(0, 1)
 
     // Pane tabs
-    paneNames := []string{"Flow", "App", "YAML", "Timeline", "Events"}
+    paneNames := []string{"Flow", "App", "YAML", "Timeline", "Events", "Messages"}
     var tabs strings.Builder
     for i, name := range paneNames {
         if Pane(i) == m.activePane {
@@ -597,12 +612,14 @@ func (m InteractiveModel) View() string {
         paneHints = fmt.Sprintf("t:tokens(%s)", tokensStr)
     case PaneYAML:
         paneHints = "R:reload y:snapshot"
+    case PaneMessages:
+        paneHints = "Ctrl+T:raw/parsed"
     default:
         paneHints = ""
     }
 
     status := fmt.Sprintf(
-        "Mode:%s Pane:%s Msgs:%d | 1-5:panes %s Ctrl+T:raw/parsed i:insert Esc:normal Ctrl+C:quit",
+        "Mode:%s Pane:%s Msgs:%d | 1-6:panes %s Ctrl+T:raw/parsed i:insert Esc:normal Ctrl+C:quit",
         mode, m.currentPaneName(), len(m.messages), paneHints,
     )
 	b.WriteString(statusStyle.Render(status))
