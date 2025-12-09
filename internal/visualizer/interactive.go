@@ -18,7 +18,7 @@ import (
     "github.com/charmbracelet/bubbles/viewport"
     tea "github.com/charmbracelet/bubbletea"
     "github.com/charmbracelet/lipgloss"
-    "github.com/lancekrogers/stream-debugger/internal/client"
+    clientapi "github.com/lancekrogers/stream-debugger/internal/client"
     "github.com/lancekrogers/stream-debugger/internal/config"
     dblogger "github.com/lancekrogers/stream-debugger/internal/logger"
     "github.com/lancekrogers/stream-debugger/internal/events"
@@ -124,7 +124,7 @@ type InteractiveModel struct {
     yamlPrevSnapshot string
     yamlReloadStatus string
     yamlDiff         string
-    configClient     *client.ConfigAPIClient
+    configClient     *clientapi.ConfigAPIClient
 
     // Streaming (incremental) state
     streamBody   io.ReadCloser
@@ -209,7 +209,7 @@ func NewInteractiveModel(cfg *config.EnhancedConfig, apiKey string) InteractiveM
         appFocus:       AppFocusAgents,
         agentCollapsed: make(map[string]bool),
         // YAML pane
-        configClient: client.NewConfigAPIClient(cfg, apiKey),
+        configClient: clientapi.NewConfigAPIClient(cfg, apiKey),
     }
     // Set an initial placeholder so the viewport isn't blank before first refresh
     m.viewport.SetContent(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
@@ -273,6 +273,10 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
             m.contentDirty = true
             m.refreshViewportContent()
             return m, nil
+        }
+        if msg.Type == tea.KeyCtrlN {
+            // Start a new session
+            return m, m.newSessionCmd()
         }
         if msg.Type == tea.KeyCtrlF {
             m.follow = !m.follow
@@ -479,7 +483,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                     } else if status/100 != 2 {
                         m.yamlReloadStatus = fmt.Sprintf("HTTP %d", status)
                     } else {
-                        m.yamlSnapshot = client.PrettyJSON(data)
+                        m.yamlSnapshot = clientapi.PrettyJSON(data)
                         m.yamlReloadStatus = fmt.Sprintf("Snapshot taken at %s", time.Now().Format("15:04:05"))
                         // Compute diff if we have a previous snapshot
                         if m.yamlPrevSnapshot != "" {
@@ -499,7 +503,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                     if err != nil {
                         m.yamlReloadStatus = fmt.Sprintf("Reload error: %v", err)
                     } else {
-                        m.yamlReloadStatus = fmt.Sprintf("HTTP %d\n%s", status, client.PrettyJSON(data))
+                        m.yamlReloadStatus = fmt.Sprintf("HTTP %d\n%s", status, clientapi.PrettyJSON(data))
                     }
                     m.contentDirty = true
                     m.refreshViewportContent()
@@ -682,10 +686,12 @@ func (m InteractiveModel) View() string {
         }
     }
 
-	b.WriteString(headerStyle.Render("🚀 Stream Debugger"))
+    b.WriteString(headerStyle.Render("🚀 Stream Debugger"))
     b.WriteString(" ")
     b.WriteString(tabs.String())
-	b.WriteString("\n\n")
+    b.WriteString("  ")
+    b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(fmt.Sprintf("(session: %s)", m.cfg.Session.ID)))
+    b.WriteString("\n\n")
 
     // Display viewport (scrollable message history)
     // Content is set in Update() via refreshViewportContent()
@@ -745,7 +751,7 @@ func (m InteractiveModel) View() string {
     }
 
     status := fmt.Sprintf(
-        "Mode:%s Pane:%s Msgs:%d | 1-6:panes %s Ctrl+T:raw/parsed i:insert Esc:normal Ctrl+C:quit",
+        "Mode:%s Pane:%s Msgs:%d | 1-6:panes %s Ctrl+N:new-session Ctrl+T:raw/parsed i:insert Esc:normal Ctrl+C:quit",
         mode, m.currentPaneName(), len(m.messages), paneHints,
     )
 	b.WriteString(statusStyle.Render(status))
@@ -2034,3 +2040,43 @@ type streamChunkMsg struct {
     err   error
 }
         
+// newSessionCmd generates a fresh session id, sets it, calls setup, and resets state
+func (m InteractiveModel) newSessionCmd() tea.Cmd {
+    return func() tea.Msg {
+        // Generate new session id
+        newID := fmt.Sprintf("debug-session-%s", time.Now().Format("20060102-150405"))
+        m.cfg.Session.ID = newID
+
+        // Recreate logger for new session
+        if m.slog != nil { _ = m.slog.Close() }
+        legacy := &config.Config{
+            BackendURL:       m.cfg.Backend.BaseURL,
+            APIKey:           m.cfg.APIKey,
+            SessionID:        m.cfg.Session.ID,
+            LogDir:           m.cfg.LogDir,
+            EnableColors:     m.cfg.EnableColors,
+            MaxAgentsVisible: m.cfg.MaxAgentsVisible,
+        }
+        if l, err := dblogger.NewStructuredLogger(legacy); err == nil {
+            m.slog = l
+        }
+
+        // Call session setup (auto create)
+        setupClient := clientapi.NewSessionSetupClient(m.cfg, m.cfg.APIKey)
+        if resp, err := setupClient.CreateOrGetSession(); err == nil {
+            // Ensure we track the actual backend session id
+            m.cfg.Session.ID = resp.SessionID
+        }
+
+        // Reset UI state
+        m.messages = make([]Message, 0)
+        m.flowTurnIndex = 0
+        m.flowContinuous = true
+        m.selectedStepIndex = 0
+        m.flowExpanded = make(map[string]bool)
+        m.appFocus = AppFocusAgents
+        m.contentDirty = true
+        m.refreshViewportContent()
+        return nil
+    }
+}
