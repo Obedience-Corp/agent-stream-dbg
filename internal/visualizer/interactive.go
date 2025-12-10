@@ -193,7 +193,7 @@ func NewInteractiveModel(cfg *config.EnhancedConfig, apiKey string) InteractiveM
         messages:    make([]Message, 0),
         follow:      true,
         showHistory: true,
-        wrap:        false,
+        wrap:        true,
         xOffset:     0,
         insertMode:  false,
         slog:        slog,
@@ -750,9 +750,11 @@ func (m InteractiveModel) View() string {
         paneHints = ""
     }
 
+    wrapStr := "OFF"
+    if m.wrap { wrapStr = "ON" }
     status := fmt.Sprintf(
-        "Mode:%s Pane:%s Msgs:%d | 1-6:panes %s Ctrl+N:new-session Ctrl+T:raw/parsed i:insert Esc:normal Ctrl+C:quit",
-        mode, m.currentPaneName(), len(m.messages), paneHints,
+        "Mode:%s Pane:%s Msgs:%d | 1-6:panes %s w:wrap(%s) Ctrl+N:new-session Ctrl+T:raw/parsed i:insert Esc:normal Ctrl+C:quit",
+        mode, m.currentPaneName(), len(m.messages), paneHints, wrapStr,
     )
 	b.WriteString(statusStyle.Render(status))
 
