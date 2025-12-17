@@ -16,11 +16,12 @@ import (
 
 // Model represents the TUI application state
 type Model struct {
-	config *config.Config
-	client *client.SSEClient
-	logger *logger.StructuredLogger
-	ctx    context.Context
-	cancel context.CancelFunc
+    config *config.Config
+    client *client.SSEClient
+    logger *logger.StructuredLogger
+    ctx    context.Context
+    cancel context.CancelFunc
+    message string
 
 	// State
 	agents        map[string]*AgentState
@@ -102,21 +103,22 @@ type errorMsg struct {
 type tickMsg time.Time
 
 // NewModel creates a new TUI model
-func NewModel(cfg *config.Config, sseClient *client.SSEClient, structuredLogger *logger.StructuredLogger) *Model {
-	ctx, cancel := context.WithCancel(context.Background())
+func NewModel(cfg *config.Config, sseClient *client.SSEClient, structuredLogger *logger.StructuredLogger, message string) *Model {
+    ctx, cancel := context.WithCancel(context.Background())
 
-	return &Model{
-		config:        cfg,
-		client:        sseClient,
-		logger:        structuredLogger,
-		ctx:           ctx,
-		cancel:        cancel,
-		agents:        make(map[string]*AgentState),
-		wizardState:   &WizardState{BufferedTokens: make(map[int]string)},
-		sessionActive: false,
-		startTime:     time.Now(),
-		flow:          make(map[string]*FlowStepStatus),
-	}
+    return &Model{
+        config:        cfg,
+        client:        sseClient,
+        logger:        structuredLogger,
+        ctx:           ctx,
+        cancel:        cancel,
+        message:       message,
+        agents:        make(map[string]*AgentState),
+        wizardState:   &WizardState{BufferedTokens: make(map[int]string)},
+        sessionActive: false,
+        startTime:     time.Now(),
+        flow:          make(map[string]*FlowStepStatus),
+    }
 }
 
 // Init initializes the bubbletea application
@@ -230,7 +232,9 @@ func (m *Model) View() string {
 	))
 
 	// Build controls
-	controls := statsStyle.Render("[p] pause/resume | [a] agents view | [r] prompt refs | [q] quit | [s] save session")
+    dbg := m.config.DebugLevel
+    if dbg == "" { dbg = "off" }
+    controls := statsStyle.Render(fmt.Sprintf("[p] pause/resume | [a] agents view | [r] prompt refs | [v] verbose | [f] full | [n] debug off | [q] quit | [s] save session | debug=%s", dbg))
 
 	// Combine all sections
 	sections := []string{header}
@@ -328,7 +332,7 @@ func (m *Model) renderWizard() string {
 
 // handleKeyPress handles keyboard input
 func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
+    switch msg.String() {
 	case "q", "ctrl+c":
 		m.cancel()
 		return m, tea.Quit
@@ -345,12 +349,46 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.showAgentsExpanded = !m.showAgentsExpanded
 		return m, nil
 
-	case "r":
-		m.showPromptRef = !m.showPromptRef
-		return m, nil
-	}
+    case "r":
+        m.showPromptRef = !m.showPromptRef
+        return m, nil
 
-	return m, nil
+    case "v":
+        // Toggle verbose debug and reconnect
+        m.config.DebugLevel = "verbose"
+        return m, m.reconnect()
+
+    case "f":
+        // Toggle full debug and reconnect
+        m.config.DebugLevel = "full"
+        return m, m.reconnect()
+
+    case "n":
+        // Turn off debug and reconnect
+        m.config.DebugLevel = ""
+        return m, m.reconnect()
+    }
+
+    return m, nil
+}
+
+// reconnect restarts the SSE connection with current debug level
+func (m *Model) reconnect() tea.Cmd {
+    return func() tea.Msg {
+        // Cancel current subscriptions
+        if m.cancel != nil {
+            m.cancel()
+        }
+        // Create new context and connect
+        m.ctx, m.cancel = context.WithCancel(context.Background())
+        // Reset session state minimally; keep logs and counters
+        // Reconnect SSE client with new debug param
+        if err := m.client.Connect(m.ctx, m.message); err != nil {
+            return errorMsg{err: fmt.Errorf("reconnect failed: %w", err)}
+        }
+        // Resume listeners
+        return nil
+    }
 }
 
 // handleEvent processes an SSE event
