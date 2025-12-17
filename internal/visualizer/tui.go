@@ -28,27 +28,27 @@ type Model struct {
 	sessionActive bool
 	errorCount    int
 
-    // UI State
-    width         int
-    height        int
-    selectedAgent string
-    paused        bool
+	// UI State
+	width         int
+	height        int
+	selectedAgent string
+	paused        bool
 
-    // Stats
-    startTime   time.Time
-    totalTokens int
-    totalEvents int
+	// Stats
+	startTime   time.Time
+	totalTokens int
+	totalEvents int
 
-    // Flow status
-    flow map[string]*FlowStepStatus
-    // Flow metadata
-    FlowID string
-    // Debug toggles
-    showAgentsExpanded bool
-    showPromptRef      bool
-    // Last prompt_ref received
-    lastPromptRef  map[string]interface{}
-    lastPromptStep string
+	// Flow status
+	flow map[string]*FlowStepStatus
+	// Flow metadata
+	FlowID string
+	// Debug toggles
+	showAgentsExpanded bool
+	showPromptRef      bool
+	// Last prompt_ref received
+	lastPromptRef  map[string]interface{}
+	lastPromptStep string
 }
 
 // AgentState tracks the state of a single agent
@@ -77,16 +77,16 @@ type WizardState struct {
 
 // FlowStepStatus tracks the state of a flow step
 type FlowStepStatus struct {
-    Step         string
-    Enabled      bool
-    Started      bool
-    Ended        bool
-    AgentCount   int
-    RoutingMode  string
-    RouteTaken   string
-    RouteReason  string
-    RouteAgents  []string
-    DurationMs   int
+	Step        string
+	Enabled     bool
+	Started     bool
+	Ended       bool
+	AgentCount  int
+	RoutingMode string
+	RouteTaken  string
+	RouteReason string
+	RouteAgents []string
+	DurationMs  int
 }
 
 // eventMsg wraps an SSE event for bubbletea
@@ -113,11 +113,11 @@ func NewModel(cfg *config.Config, sseClient *client.SSEClient, structuredLogger 
 		ctx:           ctx,
 		cancel:        cancel,
 		agents:        make(map[string]*AgentState),
-        wizardState:   &WizardState{BufferedTokens: make(map[int]string)},
-        sessionActive: false,
-        startTime:     time.Now(),
-        flow:          make(map[string]*FlowStepStatus),
-    }
+		wizardState:   &WizardState{BufferedTokens: make(map[int]string)},
+		sessionActive: false,
+		startTime:     time.Now(),
+		flow:          make(map[string]*FlowStepStatus),
+	}
 }
 
 // Init initializes the bubbletea application
@@ -184,28 +184,28 @@ func (m *Model) View() string {
 		Foreground(lipgloss.Color("8")).
 		Padding(0, 1)
 
-    // Build header
-    headerText := fmt.Sprintf("Stream Debugger - Session: %s", m.config.SessionID)
-    if m.FlowID != "" {
-        headerText = fmt.Sprintf("%s (flow: %s)", headerText, m.FlowID)
-    }
-    header := headerStyle.Render(headerText)
+	// Build header
+	headerText := fmt.Sprintf("Stream Debugger - Session: %s", m.config.SessionID)
+	if m.FlowID != "" {
+		headerText = fmt.Sprintf("%s (flow: %s)", headerText, m.FlowID)
+	}
+	header := headerStyle.Render(headerText)
 
-    // Build flow status line
-    flowView := m.renderFlowStatus()
-    // Optional prompt_ref view
-    promptView := ""
-    if m.showPromptRef && m.lastPromptRef != nil {
-        pairs := []string{}
-        for k, v := range m.lastPromptRef {
-            pairs = append(pairs, fmt.Sprintf("%s=%v", k, v))
-        }
-        if len(pairs) > 0 {
-            promptView = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
-                fmt.Sprintf("prompt_ref(%s): %s", m.lastPromptStep, strings.Join(pairs, ", ")),
-            )
-        }
-    }
+	// Build flow status line
+	flowView := m.renderFlowStatus()
+	// Optional prompt_ref view
+	promptView := ""
+	if m.showPromptRef && m.lastPromptRef != nil {
+		pairs := []string{}
+		for k, v := range m.lastPromptRef {
+			pairs = append(pairs, fmt.Sprintf("%s=%v", k, v))
+		}
+		if len(pairs) > 0 {
+			promptView = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
+				fmt.Sprintf("prompt_ref(%s): %s", m.lastPromptStep, strings.Join(pairs, ", ")),
+			)
+		}
+	}
 
 	// Build agent views
 	var agentViews []string
@@ -231,12 +231,16 @@ func (m *Model) View() string {
 	))
 
 	// Build controls
-    controls := statsStyle.Render("[p] pause/resume | [a] agents view | [r] prompt refs | [q] quit | [s] save session")
+	controls := statsStyle.Render("[p] pause/resume | [a] agents view | [r] prompt refs | [q] quit | [s] save session")
 
 	// Combine all sections
-    sections := []string{header}
-    if flowView != "" { sections = append(sections, flowView) }
-    if promptView != "" { sections = append(sections, promptView) }
+	sections := []string{header}
+	if flowView != "" {
+		sections = append(sections, flowView)
+	}
+	if promptView != "" {
+		sections = append(sections, promptView)
+	}
 
 	// Add agent views (side by side)
 	if len(agentViews) > 0 {
@@ -334,18 +338,18 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.paused = !m.paused
 		return m, nil
 
-    case "s":
-        // Save session logic would go here
-        return m, nil
+	case "s":
+		// Save session logic would go here
+		return m, nil
 
-    case "a":
-        m.showAgentsExpanded = !m.showAgentsExpanded
-        return m, nil
+	case "a":
+		m.showAgentsExpanded = !m.showAgentsExpanded
+		return m, nil
 
-    case "r":
-        m.showPromptRef = !m.showPromptRef
-        return m, nil
-    }
+	case "r":
+		m.showPromptRef = !m.showPromptRef
+		return m, nil
+	}
 
 	return m, nil
 }
@@ -364,11 +368,11 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 	}
 
 	switch event.Type {
-    case events.SessionStart:
-        m.sessionActive = true
-        if event.SessionStart.FlowID != "" {
-            m.FlowID = event.SessionStart.FlowID
-        }
+	case events.SessionStart:
+		m.sessionActive = true
+		if event.SessionStart.FlowID != "" {
+			m.FlowID = event.SessionStart.FlowID
+		}
 
 	case events.SessionComplete:
 		m.sessionActive = false
@@ -410,133 +414,139 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 		m.wizardState.Sequence = event.WizardContent.Sequence
 		m.totalTokens++
 
-    case events.WizardStreamComplete:
-        m.wizardState.Active = false
-        m.wizardState.EndTime = time.Now()
+	case events.WizardStreamComplete:
+		m.wizardState.Active = false
+		m.wizardState.EndTime = time.Now()
 
-    case events.Error:
-        m.errorCount++
+	case events.Error:
+		m.errorCount++
 
-    case events.FlowStepStart:
-        if s := event.FlowStepStart; s != nil {
-            step := s.Step
-            st := m.flow[step]
-            if st == nil {
-                st = &FlowStepStatus{Step: step}
-                m.flow[step] = st
-            }
-            st.Enabled = s.Enabled
-            st.Started = true
-            st.Ended = false
-            if step == "agent_exec" {
-                st.AgentCount = s.NonWizardCount
-            }
-        }
+	case events.FlowStepStart:
+		if s := event.FlowStepStart; s != nil {
+			step := s.Step
+			st := m.flow[step]
+			if st == nil {
+				st = &FlowStepStatus{Step: step}
+				m.flow[step] = st
+			}
+			st.Enabled = s.Enabled
+			st.Started = true
+			st.Ended = false
+			if step == "agent_exec" {
+				st.AgentCount = s.NonWizardCount
+			}
+		}
 
-    case events.FlowStepEnd:
-        if s := event.FlowStepEnd; s != nil {
-            step := s.Step
-            st := m.flow[step]
-            if st == nil {
-                st = &FlowStepStatus{Step: step}
-                m.flow[step] = st
-            }
-            st.Enabled = s.Enabled
-            st.Ended = true
-            if s.AgentCount > 0 {
-                st.AgentCount = s.AgentCount
-            }
-            if step == "routing" {
-                st.RoutingMode = s.RoutingMode
-                st.RouteTaken = s.RouteTaken
-                st.RouteReason = s.RouteReason
-                st.RouteAgents = s.RouteAgents
-            }
-            if s.DurationMs > 0 { st.DurationMs = s.DurationMs }
-            if s.PromptRef != nil {
-                m.lastPromptRef = s.PromptRef
-                m.lastPromptStep = s.Step
-            }
-        }
-    }
+	case events.FlowStepEnd:
+		if s := event.FlowStepEnd; s != nil {
+			step := s.Step
+			st := m.flow[step]
+			if st == nil {
+				st = &FlowStepStatus{Step: step}
+				m.flow[step] = st
+			}
+			st.Enabled = s.Enabled
+			st.Ended = true
+			if s.AgentCount > 0 {
+				st.AgentCount = s.AgentCount
+			}
+			if step == "routing" {
+				st.RoutingMode = s.RoutingMode
+				st.RouteTaken = s.RouteTaken
+				st.RouteReason = s.RouteReason
+				st.RouteAgents = s.RouteAgents
+			}
+			if s.DurationMs > 0 {
+				st.DurationMs = s.DurationMs
+			}
+			if s.PromptRef != nil {
+				m.lastPromptRef = s.PromptRef
+				m.lastPromptStep = s.Step
+			}
+		}
+	}
 
 	return m, m.waitForEvent()
 }
 
 // renderFlowStatus renders a one-line flow status overview
 func (m *Model) renderFlowStatus() string {
-    if m.width == 0 {
-        return ""
-    }
+	if m.width == 0 {
+		return ""
+	}
 
-    // Order of steps to show
-    steps := []string{"routing", "discovery", "agent_exec", "synthesis", "wizard"}
-    var parts []string
+	// Order of steps to show
+	steps := []string{"routing", "discovery", "agent_exec", "synthesis", "wizard"}
+	var parts []string
 
-    for _, step := range steps {
-        st, ok := m.flow[step]
-        label := step
-        if step == "agent_exec" {
-            label = "agents"
-        }
+	for _, step := range steps {
+		st, ok := m.flow[step]
+		label := step
+		if step == "agent_exec" {
+			label = "agents"
+		}
 
-        style := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-        sym := "·" // not started / disabled
-        if ok {
-            if !st.Enabled {
-                sym = "–" // explicitly disabled
-                style = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-            } else if st.Ended {
-                sym = "✓"
-                style = lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
-            } else if st.Started {
-                sym = "…"
-                style = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
-            }
-        }
+		style := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+		sym := "·" // not started / disabled
+		if ok {
+			if !st.Enabled {
+				sym = "–" // explicitly disabled
+				style = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+			} else if st.Ended {
+				sym = "✓"
+				style = lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
+			} else if st.Started {
+				sym = "…"
+				style = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+			}
+		}
 
-        text := fmt.Sprintf("%s %s", sym, label)
+		text := fmt.Sprintf("%s %s", sym, label)
 
-        // Routing details
-        if step == "routing" && ok && st.Enabled {
-            det := st.RouteTaken
-            if det == "" { det = "—" }
-            // Show agents (full when expanded; else trim to first 2)
-            agents := ""
-            if len(st.RouteAgents) > 0 {
-                if m.showAgentsExpanded {
-                    agents = strings.Join(st.RouteAgents, ",")
-                } else {
-                    max := 2
-                    if len(st.RouteAgents) < max { max = len(st.RouteAgents) }
-                    agents = strings.Join(st.RouteAgents[:max], ",")
-                    if len(st.RouteAgents) > max {
-                        agents = fmt.Sprintf("%s,+%d", agents, len(st.RouteAgents)-max)
-                    }
-                }
-            }
-            // Compose details (type:reason [agents])
-            if st.RouteReason != "" && agents != "" {
-                text = fmt.Sprintf("%s(%s:%s [%s])", text, det, st.RouteReason, agents)
-            } else if st.RouteReason != "" {
-                text = fmt.Sprintf("%s(%s:%s)", text, det, st.RouteReason)
-            } else if agents != "" {
-                text = fmt.Sprintf("%s(%s [%s])", text, det, agents)
-            } else {
-                text = fmt.Sprintf("%s(%s)", text, det)
-            }
-        }
+		// Routing details
+		if step == "routing" && ok && st.Enabled {
+			det := st.RouteTaken
+			if det == "" {
+				det = "—"
+			}
+			// Show agents (full when expanded; else trim to first 2)
+			agents := ""
+			if len(st.RouteAgents) > 0 {
+				if m.showAgentsExpanded {
+					agents = strings.Join(st.RouteAgents, ",")
+				} else {
+					max := 2
+					if len(st.RouteAgents) < max {
+						max = len(st.RouteAgents)
+					}
+					agents = strings.Join(st.RouteAgents[:max], ",")
+					if len(st.RouteAgents) > max {
+						agents = fmt.Sprintf("%s,+%d", agents, len(st.RouteAgents)-max)
+					}
+				}
+			}
+			// Compose details (type:reason [agents])
+			if st.RouteReason != "" && agents != "" {
+				text = fmt.Sprintf("%s(%s:%s [%s])", text, det, st.RouteReason, agents)
+			} else if st.RouteReason != "" {
+				text = fmt.Sprintf("%s(%s:%s)", text, det, st.RouteReason)
+			} else if agents != "" {
+				text = fmt.Sprintf("%s(%s [%s])", text, det, agents)
+			} else {
+				text = fmt.Sprintf("%s(%s)", text, det)
+			}
+		}
 
-        // Append duration if available
-        if ok && st.DurationMs > 0 {
-            text = fmt.Sprintf("%s [%dms]", text, st.DurationMs)
-        }
+		// Append duration if available
+		if ok && st.DurationMs > 0 {
+			text = fmt.Sprintf("%s [%dms]", text, st.DurationMs)
+		}
 
-        parts = append(parts, style.Render(text))
-    }
+		parts = append(parts, style.Render(text))
+	}
 
-    sep := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  |  ")
-    return lipgloss.JoinHorizontal(lipgloss.Top, parts[0], sep, parts[1], sep, parts[2], sep, parts[3], sep, parts[4])
+	sep := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  |  ")
+	return lipgloss.JoinHorizontal(lipgloss.Top, parts[0], sep, parts[1], sep, parts[2], sep, parts[3], sep, parts[4])
 }
 
 // waitForEvent waits for the next SSE event

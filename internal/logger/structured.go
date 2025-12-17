@@ -193,13 +193,13 @@ func (sl *StructuredLogger) LogAPICall(method, url string, statusCode int, durat
 
 // WizardTurnMetrics contains computed metrics for a wizard turn
 type WizardTurnMetrics struct {
-	SessionID    string `json:"session_id"`
-	TurnID       int    `json:"turn_id"`
-	TokenCount   int    `json:"token_count"`
-	FirstTokenMs int64  `json:"first_token_ms"`
-	DurationMs   int64  `json:"duration_ms"`
+	SessionID    string  `json:"session_id"`
+	TurnID       int     `json:"turn_id"`
+	TokenCount   int     `json:"token_count"`
+	FirstTokenMs int64   `json:"first_token_ms"`
+	DurationMs   int64   `json:"duration_ms"`
 	TokensPerSec float64 `json:"tokens_per_sec,omitempty"`
-	PlanID       string `json:"plan_id,omitempty"`
+	PlanID       string  `json:"plan_id,omitempty"`
 }
 
 // LogWizardTurnMetrics logs computed wizard metrics for a turn

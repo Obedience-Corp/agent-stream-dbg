@@ -13,32 +13,32 @@ import (
 var (
 	// Header styles
 	titleStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("6")). // Cyan - matches TUI headers
-		MarginTop(1).
-		MarginBottom(1)
+			Bold(true).
+			Foreground(lipgloss.Color("6")). // Cyan - matches TUI headers
+			MarginTop(1).
+			MarginBottom(1)
 
 	sectionStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("6")) // Cyan
+			Bold(true).
+			Foreground(lipgloss.Color("6")) // Cyan
 
 	// Content styles
 	commandStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("10")). // Green - active/interactive
-		Bold(true)
+			Foreground(lipgloss.Color("10")). // Green - active/interactive
+			Bold(true)
 
 	descriptionStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("7")) // Light gray
+				Foreground(lipgloss.Color("7")) // Light gray
 
 	flagStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("14")) // Cyan - matches event types
+			Foreground(lipgloss.Color("14")) // Cyan - matches event types
 
 	usageStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("8")) // Gray - secondary text
+			Foreground(lipgloss.Color("8")) // Gray - secondary text
 
 	warningStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("11")). // Yellow - important
-		Bold(true)
+			Foreground(lipgloss.Color("11")). // Yellow - important
+			Bold(true)
 )
 
 // CustomHelpPrinter is the styled help printer for the CLI
