@@ -749,11 +749,13 @@ func (m InteractiveModel) View() string {
     case PaneFlow:
         toggle := "off"
         if m.flowContinuous { toggle = "on" }
-        paneHints = fmt.Sprintf("j/k:select Enter:expand p:prompt [/]:turn a:all(%s)", toggle)
+        paneHints = fmt.Sprintf("j/k:select Enter:expand(wizard details) p:prompt [/]:turn a:all(%s)", toggle)
     case PaneEvents:
         tokensStr := "OFF"
         if m.showTokens { tokensStr = "ON" }
-        paneHints = fmt.Sprintf("t:tokens(%s)", tokensStr)
+        wizardStr := "OFF"
+        if m.eventsWizardOnly { wizardStr = "ON" }
+        paneHints = fmt.Sprintf("t:tokens(%s) W:wizard-only(%s)", tokensStr, wizardStr)
     case PaneYAML:
         paneHints = "R:reload y:snapshot"
     case PaneMessages:
