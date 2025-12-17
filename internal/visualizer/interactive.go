@@ -117,6 +117,7 @@ type InteractiveModel struct {
     flowExpanded      map[string]bool // track expanded/collapsed state per step
     showTokens        bool            // Events pane: show token events
     showPromptRef     bool            // Flow pane: show prompt references
+    eventsWizardOnly  bool            // Events pane: show only wizard events when true
 
     // App pane state
     appFocus       AppFocus
@@ -472,6 +473,14 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                 // Events pane: toggle token visibility
                 if m.activePane == PaneEvents {
                     m.showTokens = !m.showTokens
+                    m.contentDirty = true
+                    m.refreshViewportContent()
+                }
+                return m, nil
+            case "W":
+                // Events pane: toggle wizard-only filter
+                if m.activePane == PaneEvents {
+                    m.eventsWizardOnly = !m.eventsWizardOnly
                     m.contentDirty = true
                     m.refreshViewportContent()
                 }
@@ -1865,6 +1874,7 @@ func (m InteractiveModel) renderEventsPane() string {
 
     headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
     dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+    wizardStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("13")).Bold(true)
 
     viewLabel := "PARSED"
     if m.viewMode == ViewModeRaw {
@@ -1872,22 +1882,51 @@ func (m InteractiveModel) renderEventsPane() string {
     }
     tokensLabel := "OFF"
     if m.showTokens { tokensLabel = "ON" }
+    wizardOnlyLabel := "OFF"
+    if m.eventsWizardOnly { wizardOnlyLabel = "ON" }
 
     b.WriteString(headerStyle.Render("Events"))
     b.WriteString(fmt.Sprintf(" (View: %s)", viewLabel))
     if m.viewMode == ViewModeParsed {
         b.WriteString(fmt.Sprintf(" (Tokens: %s)", tokensLabel))
+        b.WriteString(fmt.Sprintf(" (Wizard: %s)", wizardOnlyLabel))
     }
     b.WriteString("\n")
     b.WriteString(dimStyle.Render("─────────────────────────────────────────"))
     b.WriteString("\n")
     // Hints
     if m.viewMode == ViewModeParsed {
-        b.WriteString(dimStyle.Render("Ctrl+T: RAW view, t: toggle token events"))
+        b.WriteString(dimStyle.Render("Ctrl+T: RAW view, t: tokens, W: wizard-only"))
     } else {
         b.WriteString(dimStyle.Render("Ctrl+T: PARSED view"))
     }
-    b.WriteString("\n\n")
+    b.WriteString("\n")
+
+    // Show wizard metrics summary when in parsed mode
+    if m.viewMode == ViewModeParsed && len(m.messages) > 0 {
+        msg := m.messages[len(m.messages)-1]
+        if msg.AgentResponses != nil {
+            if wizardResp := msg.AgentResponses["wizard"]; wizardResp != nil {
+                var metricsLine strings.Builder
+                metricsLine.WriteString(fmt.Sprintf("🧙 Wizard: %d tokens", wizardResp.TokenCount))
+                if wizardResp.DurationMs > 0 && wizardResp.TokenCount > 0 {
+                    tokensPerSec := float64(wizardResp.TokenCount) * 1000.0 / float64(wizardResp.DurationMs)
+                    metricsLine.WriteString(fmt.Sprintf(" | %.1f tok/s", tokensPerSec))
+                }
+                if wizardResp.FirstTokenMs > 0 {
+                    metricsLine.WriteString(fmt.Sprintf(" | first: %dms", wizardResp.FirstTokenMs))
+                }
+                if !wizardResp.Completed {
+                    metricsLine.WriteString(" ⏳")
+                } else {
+                    metricsLine.WriteString(" ✓")
+                }
+                b.WriteString(wizardStyle.Render(metricsLine.String()))
+                b.WriteString("\n")
+            }
+        }
+    }
+    b.WriteString("\n")
 
     if len(m.messages) == 0 {
         b.WriteString(dimStyle.Render("No messages yet."))
@@ -1912,11 +1951,26 @@ func (m InteractiveModel) renderEventsPane() string {
         return b.String()
     }
 
-    // Filter events based on showTokens flag
+    // Filter events based on showTokens and eventsWizardOnly flags
     eventStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
     tokenStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+    wizardEventStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("13"))
 
     for _, evt := range msg.Events {
+        // Check if this is a wizard-related event
+        isWizardEvent := evt.Type == events.WizardStreamStart ||
+            evt.Type == events.WizardContent ||
+            evt.Type == events.WizardStreamComplete
+        // synthesis flow_step events are also relevant for wizard-only view
+        isSynthesisFlowEvent := (evt.Type == events.FlowStepStart || evt.Type == events.FlowStepEnd) &&
+            ((evt.FlowStepStart != nil && (evt.FlowStepStart.Step == "synthesis" || evt.FlowStepStart.Step == "wizard")) ||
+             (evt.FlowStepEnd != nil && (evt.FlowStepEnd.Step == "synthesis" || evt.FlowStepEnd.Step == "wizard")))
+
+        // Skip non-wizard events if wizard-only filter is on
+        if m.eventsWizardOnly && !isWizardEvent && !isSynthesisFlowEvent {
+            continue
+        }
+
         // Skip token events if showTokens is false
         isTokenEvent := evt.Type == events.AgentContent || evt.Type == events.WizardContent
         if isTokenEvent && !m.showTokens {
@@ -1962,8 +2016,11 @@ func (m InteractiveModel) renderEventsPane() string {
             }
         }
 
-        if isTokenEvent {
+        // Apply appropriate styling
+        if isTokenEvent && !isWizardEvent {
             b.WriteString(tokenStyle.Render(line))
+        } else if isWizardEvent || isSynthesisFlowEvent {
+            b.WriteString(wizardEventStyle.Render(line))
         } else {
             b.WriteString(eventStyle.Render(line))
         }
