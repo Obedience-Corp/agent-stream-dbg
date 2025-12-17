@@ -16,8 +16,10 @@ const (
 	WizardStreamComplete EventType = "wizard_stream_complete"
 	Error                EventType = "error"
 	// Flow control step events (BrainyardV3 extension)
-	FlowStepStart EventType = "flow_step_start"
-	FlowStepEnd   EventType = "flow_step_end"
+    FlowStepStart EventType = "flow_step_start"
+    FlowStepEnd   EventType = "flow_step_end"
+    // Flow step detail (BrainyardV3 extension) — compact, step-specific payloads
+    FlowStepDetail EventType = "flow_step_detail"
 )
 
 // BaseEvent contains fields common to all events
@@ -105,6 +107,31 @@ type FlowStepEndEvent struct {
 	PromptRef map[string]interface{} `json:"prompt_ref,omitempty"`
 }
 
+// FlowStepDetailEvent provides structured, step-specific debug details
+// This event is emitted only when the backend is called with debug flags
+// and is intended for developer tooling like stream-debugger.
+type FlowStepDetailEvent struct {
+    BaseEvent
+    Step string `json:"step"`
+
+    // Synthesis details
+    PlanID           string `json:"plan_id,omitempty"`
+    SynthesisPreview string `json:"synthesis_preview,omitempty"`
+    SynthesisFull    string `json:"synthesis_full,omitempty"`
+    Perspectives     []struct {
+        AgentID string `json:"agent_id"`
+        Summary string `json:"summary"`
+    } `json:"perspectives,omitempty"`
+
+    // Filter details
+    FilteredAgents      []string `json:"filtered_agents,omitempty"`
+    ThinkingCharsTotal  int      `json:"thinking_chars_total,omitempty"`
+    ThinkingPreview     string   `json:"thinking_preview,omitempty"`
+
+    // Agent execution details
+    Agents []string `json:"agents,omitempty"`
+}
+
 // ErrorType represents different categories of errors
 type ErrorType string
 
@@ -144,8 +171,9 @@ type Event struct {
 	WizardContent        *WizardContentEvent
 	WizardStreamComplete *WizardStreamCompleteEvent
 	Error                *ErrorEvent
-	FlowStepStart        *FlowStepStartEvent
-	FlowStepEnd          *FlowStepEndEvent
+    FlowStepStart        *FlowStepStartEvent
+    FlowStepEnd          *FlowStepEndEvent
+    FlowStepDetail       *FlowStepDetailEvent
 }
 
 // GetAgentID returns the agent ID if the event is agent-related

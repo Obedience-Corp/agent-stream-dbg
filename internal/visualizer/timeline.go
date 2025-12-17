@@ -69,6 +69,31 @@ func (tv *TimelineVisualizer) AddEvent(event *events.Event) {
 	case events.Error:
 		entry.Timestamp = event.Error.Timestamp
 		entry.AgentID = event.Error.AgentID
+	case events.FlowStepDetail:
+		entry.Timestamp = event.FlowStepDetail.Timestamp
+		entry.AgentID = "system"
+		// Build a concise content line based on step
+		step := event.FlowStepDetail.Step
+		switch step {
+		case "synthesis":
+			plan := event.FlowStepDetail.PlanID
+			prev := event.FlowStepDetail.SynthesisPreview
+			if len(prev) > 80 {
+				prev = prev[:77] + "..."
+			}
+			if plan != "" {
+				entry.Content = fmt.Sprintf("synthesis (plan=%s): %q", plan, prev)
+			} else {
+				entry.Content = fmt.Sprintf("synthesis: %q", prev)
+			}
+		case "filter":
+			changed := len(event.FlowStepDetail.FilteredAgents)
+			entry.Content = fmt.Sprintf("filter changed=%d", changed)
+		case "agent_exec":
+			entry.Content = fmt.Sprintf("agents=%v", event.FlowStepDetail.Agents)
+		default:
+			entry.Content = step
+		}
 	}
 
 	tv.entries = append(tv.entries, entry)

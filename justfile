@@ -94,3 +94,67 @@ init:
     @echo "✅ Created .env file"
     @echo "📝 Please edit .env with your API key and backend URL"
     @echo "🚀 Ready to run: just build (dependencies will be downloaded automatically)"
+
+# ============================================================================
+# Cross-Platform Distribution
+# ============================================================================
+
+# Target directory for BrainyardV3 distribution
+BRAINYARD_TOOLS := parent_directory(justfile_directory()) + "/BrainyardV3/tools/stream-debugger"
+
+# Build binaries for all target platforms
+build-all-platforms:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p bin
+
+    echo "🔨 Building for darwin/arm64 (M1/M2/M3 Macs)..."
+    GOOS=darwin GOARCH=arm64 go build -o bin/stream-debugger-darwin-arm64 ./cmd/stream-debugger
+
+    echo "🔨 Building for darwin/amd64 (Intel Macs)..."
+    GOOS=darwin GOARCH=amd64 go build -o bin/stream-debugger-darwin-amd64 ./cmd/stream-debugger
+
+    echo "🔨 Building for linux/amd64 (Docker/Railway)..."
+    GOOS=linux GOARCH=amd64 go build -o bin/stream-debugger-linux-amd64 ./cmd/stream-debugger
+
+    echo "✅ All platforms built:"
+    ls -la bin/stream-debugger-*
+
+# Build multi-arch binaries and copy to BrainyardV3
+release-to-brainyard: build-all-platforms
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    DEST="{{BRAINYARD_TOOLS}}/bin"
+    echo "📦 Distributing binaries to BrainyardV3..."
+
+    # Create destination directories
+    mkdir -p "$DEST/darwin-arm64"
+    mkdir -p "$DEST/darwin-amd64"
+    mkdir -p "$DEST/linux-amd64"
+
+    # Copy binaries
+    cp bin/stream-debugger-darwin-arm64 "$DEST/darwin-arm64/stream-debugger"
+    cp bin/stream-debugger-darwin-amd64 "$DEST/darwin-amd64/stream-debugger"
+    cp bin/stream-debugger-linux-amd64 "$DEST/linux-amd64/stream-debugger"
+
+    # Sign macOS binaries (ad-hoc for local use)
+    echo "🔏 Signing macOS binaries..."
+    codesign --sign - --force --deep "$DEST/darwin-arm64/stream-debugger" 2>/dev/null || true
+    codesign --sign - --force --deep "$DEST/darwin-amd64/stream-debugger" 2>/dev/null || true
+
+    # Copy .env.example if source exists
+    if [ -f ".env.example" ]; then
+        cp .env.example "{{BRAINYARD_TOOLS}}/.env.example"
+        echo "📄 Copied .env.example"
+    fi
+
+    echo ""
+    echo "✅ Release complete!"
+    echo ""
+    echo "Binaries distributed to:"
+    ls -la "$DEST"/*/stream-debugger 2>/dev/null || ls -la "$DEST"
+    echo ""
+    echo "💡 Non-Go developers can now use stream-debugger from BrainyardV3:"
+    echo "   cd BrainyardV3"
+    echo "   just sdebug stream \"Hello\""

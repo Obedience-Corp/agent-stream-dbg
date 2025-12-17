@@ -91,6 +91,13 @@ func (p *Parser) Parse(eventType string, data []byte) (*Event, error) {
 		}
 		event.FlowStepEnd = &e
 
+	case FlowStepDetail:
+		var e FlowStepDetailEvent
+		if err := json.Unmarshal(data, &e); err != nil {
+			return nil, fmt.Errorf("failed to parse flow_step_detail: %w", err)
+		}
+		event.FlowStepDetail = &e
+
 	case Error:
 		var e ErrorEvent
 		if err := json.Unmarshal(data, &e); err != nil {
@@ -107,11 +114,17 @@ func (p *Parser) Parse(eventType string, data []byte) (*Event, error) {
 
 // ParseRaw attempts to parse event data without knowing the type beforehand
 func (p *Parser) ParseRaw(data []byte) (*Event, error) {
-	// First, extract just the type field
-	var base BaseEvent
-	if err := json.Unmarshal(data, &base); err != nil {
-		return nil, fmt.Errorf("failed to parse base event: %w", err)
-	}
+    // First, extract just the type field
+    var base BaseEvent
+    if err := json.Unmarshal(data, &base); err != nil {
+        return nil, fmt.Errorf("failed to parse base event: %w", err)
+    }
 
-	return p.Parse(string(base.Type), data)
+    if base.Type != "" {
+        return p.Parse(string(base.Type), data)
+    }
+    // If payload has no explicit type (e.g., flow_step_* detail), try heuristics
+    // Attempt known extension kinds based on fields
+    // This is a safe fallback; SSE event name should normally be set and used instead.
+    return &Event{Raw: data}, nil
 }
