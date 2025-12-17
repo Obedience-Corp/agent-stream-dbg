@@ -191,6 +191,53 @@ func (sl *StructuredLogger) LogAPICall(method, url string, statusCode int, durat
 	logEvent.Msg("api_call")
 }
 
+// WizardTurnMetrics contains computed metrics for a wizard turn
+type WizardTurnMetrics struct {
+	SessionID    string `json:"session_id"`
+	TurnID       int    `json:"turn_id"`
+	TokenCount   int    `json:"token_count"`
+	FirstTokenMs int64  `json:"first_token_ms"`
+	DurationMs   int64  `json:"duration_ms"`
+	TokensPerSec float64 `json:"tokens_per_sec,omitempty"`
+	PlanID       string `json:"plan_id,omitempty"`
+}
+
+// LogWizardTurnMetrics logs computed wizard metrics for a turn
+func (sl *StructuredLogger) LogWizardTurnMetrics(metrics WizardTurnMetrics) error {
+	sl.mu.Lock()
+	defer sl.mu.Unlock()
+
+	// Get or create wizard logger
+	logger, exists := sl.agentLoggers["wizard"]
+	if !exists {
+		logPath := filepath.Join(sl.config.LogDir, "by-agent", "wizard.jsonl")
+		file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			return fmt.Errorf("failed to create wizard log file: %w", err)
+		}
+		sl.agentFiles["wizard"] = file
+		logger = zerolog.New(file).With().Timestamp().Logger()
+		sl.agentLoggers["wizard"] = logger
+	}
+
+	logEvent := logger.Info().
+		Str("session_id", metrics.SessionID).
+		Int("turn_id", metrics.TurnID).
+		Int("token_count", metrics.TokenCount).
+		Int64("first_token_ms", metrics.FirstTokenMs).
+		Int64("duration_ms", metrics.DurationMs)
+
+	if metrics.TokensPerSec > 0 {
+		logEvent = logEvent.Float64("tokens_per_sec", metrics.TokensPerSec)
+	}
+	if metrics.PlanID != "" {
+		logEvent = logEvent.Str("plan_id", metrics.PlanID)
+	}
+
+	logEvent.Msg("wizard_turn_metrics")
+	return nil
+}
+
 // Close closes all log files
 func (sl *StructuredLogger) Close() error {
 	sl.mu.Lock()

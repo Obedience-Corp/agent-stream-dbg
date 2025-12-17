@@ -937,6 +937,21 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
         if evt.WizardStreamComplete != nil && evt.WizardStreamComplete.TokenCount > 0 {
             ar.TokenCount = evt.WizardStreamComplete.TokenCount
         }
+        // Log wizard turn metrics
+        if m.slog != nil && m.cfg != nil {
+            var tokensPerSec float64
+            if ar.DurationMs > 0 && ar.TokenCount > 0 {
+                tokensPerSec = float64(ar.TokenCount) * 1000.0 / float64(ar.DurationMs)
+            }
+            _ = m.slog.LogWizardTurnMetrics(dblogger.WizardTurnMetrics{
+                SessionID:    m.cfg.Session.ID,
+                TurnID:       idx,
+                TokenCount:   ar.TokenCount,
+                FirstTokenMs: ar.FirstTokenMs,
+                DurationMs:   ar.DurationMs,
+                TokensPerSec: tokensPerSec,
+            })
+        }
     default:
         // ignore others
     }
