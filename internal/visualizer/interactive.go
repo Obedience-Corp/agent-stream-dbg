@@ -76,6 +76,9 @@ type AgentResponse struct {
 	StartTime     time.Time
 	EndTime       time.Time
 	Completed     bool
+	// Wizard-specific metrics (only populated for wizard responses)
+	FirstTokenMs  int64 // Time from stream_start to first content event (ms)
+	DurationMs    int64 // Total duration from stream_start to stream_complete (ms)
 }
 
 // InteractiveModel represents the interactive TUI state
@@ -891,13 +894,19 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
         if ar == nil { ar = &AgentResponse{AgentID: aid}; m.messages[idx].AgentResponses[aid] = ar }
         ar.Completed = true
     case events.WizardStreamStart:
-        // ensure wizard entry exists
+        // ensure wizard entry exists and record start time
         if m.messages[idx].AgentResponses["wizard"] == nil {
-            m.messages[idx].AgentResponses["wizard"] = &AgentResponse{AgentID: "wizard"}
+            m.messages[idx].AgentResponses["wizard"] = &AgentResponse{AgentID: "wizard", StartTime: time.Now()}
+        } else {
+            m.messages[idx].AgentResponses["wizard"].StartTime = time.Now()
         }
     case events.WizardContent:
         ar := m.messages[idx].AgentResponses["wizard"]
-        if ar == nil { ar = &AgentResponse{AgentID: "wizard"}; m.messages[idx].AgentResponses["wizard"] = ar }
+        if ar == nil { ar = &AgentResponse{AgentID: "wizard", StartTime: time.Now()}; m.messages[idx].AgentResponses["wizard"] = ar }
+        // Track first token latency
+        if ar.TokenCount == 0 && !ar.StartTime.IsZero() {
+            ar.FirstTokenMs = time.Since(ar.StartTime).Milliseconds()
+        }
         c := evt.WizardContent.Content
         ar.ContentChunks = append(ar.ContentChunks, c)
         ar.FullContent += c
@@ -905,7 +914,20 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
     case events.WizardStreamComplete:
         ar := m.messages[idx].AgentResponses["wizard"]
         if ar == nil { ar = &AgentResponse{AgentID: "wizard"}; m.messages[idx].AgentResponses["wizard"] = ar }
+        // Skip duplicate completion events
+        if ar.Completed {
+            return
+        }
         ar.Completed = true
+        ar.EndTime = time.Now()
+        // Calculate total duration using EndTime - StartTime (not time.Since)
+        if !ar.StartTime.IsZero() {
+            ar.DurationMs = ar.EndTime.Sub(ar.StartTime).Milliseconds()
+        }
+        // Also capture token count from event if available
+        if evt.WizardStreamComplete != nil && evt.WizardStreamComplete.TokenCount > 0 {
+            ar.TokenCount = evt.WizardStreamComplete.TokenCount
+        }
     default:
         // ignore others
     }
@@ -1282,6 +1304,17 @@ func (m InteractiveModel) renderFlowPane() string {
                     line.WriteString(fmt.Sprintf(" [%s]", strings.Join(n.RouteAgents, ", ")))
                 }
             }
+
+            // Wizard inline metrics (tokens, tokens/sec)
+            if step == "wizard" && msg.AgentResponses != nil {
+                if wizardResp := msg.AgentResponses["wizard"]; wizardResp != nil {
+                    line.WriteString(fmt.Sprintf(" tokens:%d", wizardResp.TokenCount))
+                    if wizardResp.DurationMs > 0 && wizardResp.TokenCount > 0 {
+                        tokensPerSec := float64(wizardResp.TokenCount) * 1000.0 / float64(wizardResp.DurationMs)
+                        line.WriteString(fmt.Sprintf(" %.1ftok/s", tokensPerSec))
+                    }
+                }
+            }
         }
 
         // Render with selection highlight
@@ -1310,7 +1343,12 @@ func (m InteractiveModel) renderFlowPane() string {
                     b.WriteString("\n")
                 }
             }
-            b.WriteString(m.renderFlowNodeDetails(n))
+            // Pass wizard response for wizard step metrics
+            var wizardResp *AgentResponse
+            if step == "wizard" && msg.AgentResponses != nil {
+                wizardResp = msg.AgentResponses["wizard"]
+            }
+            b.WriteString(m.renderFlowNodeDetails(n, wizardResp))
         }
     }
 
@@ -1390,6 +1428,16 @@ func (m InteractiveModel) renderFlowAllPane() string {
                 line.WriteString(fmt.Sprintf(" → %s", n.RouteTaken))
                 if len(n.RouteAgents) > 0 { line.WriteString(fmt.Sprintf(" [%s]", strings.Join(n.RouteAgents, ", "))) }
             }
+            // Wizard inline metrics (tokens, tokens/sec)
+            if step == "wizard" && msg.AgentResponses != nil {
+                if wizardResp := msg.AgentResponses["wizard"]; wizardResp != nil {
+                    line.WriteString(fmt.Sprintf(" tokens:%d", wizardResp.TokenCount))
+                    if wizardResp.DurationMs > 0 && wizardResp.TokenCount > 0 {
+                        tokensPerSec := float64(wizardResp.TokenCount) * 1000.0 / float64(wizardResp.DurationMs)
+                        line.WriteString(fmt.Sprintf(" %.1ftok/s", tokensPerSec))
+                    }
+                }
+            }
             b.WriteString("  " + line.String() + "\n")
 
             // Expanded details across all turns for the selected step
@@ -1403,7 +1451,12 @@ func (m InteractiveModel) renderFlowAllPane() string {
                         b.WriteString("\n")
                     }
                 }
-                b.WriteString(m.renderFlowNodeDetails(n))
+                // Pass wizard response for wizard step metrics
+                var wizardResp *AgentResponse
+                if step == "wizard" && msg.AgentResponses != nil {
+                    wizardResp = msg.AgentResponses["wizard"]
+                }
+                b.WriteString(m.renderFlowNodeDetails(n, wizardResp))
             }
         }
 
@@ -1431,9 +1484,11 @@ func (m InteractiveModel) deriveAgentsFromEvents(evts []*events.Event) []string 
 }
 
 // renderFlowNodeDetails renders expanded details for a flow node
-func (m InteractiveModel) renderFlowNodeDetails(n *FlowNode) string {
+// wizardResp is optional and only used when step is "wizard" to show metrics
+func (m InteractiveModel) renderFlowNodeDetails(n *FlowNode, wizardResp *AgentResponse) string {
     var b strings.Builder
     detailStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).PaddingLeft(4)
+    wizardStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("13")).PaddingLeft(4)
     wrote := false
 
     // Basic fields always useful
@@ -1447,6 +1502,36 @@ func (m InteractiveModel) renderFlowNodeDetails(n *FlowNode) string {
     if n.AgentCount > 0 {
         b.WriteString(detailStyle.Render(fmt.Sprintf("agent_count: %d", n.AgentCount)))
         b.WriteString("\n")
+    }
+
+    // Wizard-specific metrics (only for wizard step)
+    if n.Step == "wizard" && wizardResp != nil {
+        b.WriteString(wizardStyle.Render("── Wizard Metrics ──"))
+        b.WriteString("\n")
+        b.WriteString(wizardStyle.Render(fmt.Sprintf("token_count: %d", wizardResp.TokenCount)))
+        b.WriteString("\n")
+        if wizardResp.FirstTokenMs > 0 {
+            b.WriteString(wizardStyle.Render(fmt.Sprintf("first_token_ms: %d", wizardResp.FirstTokenMs)))
+            b.WriteString("\n")
+        }
+        if wizardResp.DurationMs > 0 {
+            b.WriteString(wizardStyle.Render(fmt.Sprintf("duration_ms: %d", wizardResp.DurationMs)))
+            b.WriteString("\n")
+            // Calculate tokens/sec (cleaner formula: tokens * 1000 / ms)
+            if wizardResp.TokenCount > 0 {
+                tokensPerSec := float64(wizardResp.TokenCount) * 1000.0 / float64(wizardResp.DurationMs)
+                b.WriteString(wizardStyle.Render(fmt.Sprintf("tokens/sec: %.1f", tokensPerSec)))
+                b.WriteString("\n")
+            }
+        }
+        // Show plan_id from synthesis step prompt_ref if available
+        if n.PromptRef != nil {
+            if planID, ok := n.PromptRef["synthesis_plan_id"]; ok {
+                b.WriteString(wizardStyle.Render(fmt.Sprintf("plan_id: %v", planID)))
+                b.WriteString("\n")
+            }
+        }
+        wrote = true
     }
 
     if n.RoutingMode != "" {
@@ -1975,19 +2060,30 @@ func (m InteractiveModel) startStreamingCmd(message string, index int) tea.Cmd {
         req = req.WithContext(ctx)
 
         resp, err := clientHTTP.Do(req)
-        if err != nil { return streamErrorMsg{err: fmt.Errorf("failed to send request: %w", err)} }
+        if err != nil {
+            cancel() // Cancel context on error to avoid leak
+            return streamErrorMsg{err: fmt.Errorf("failed to send request: %w", err)}
+        }
 
         if resp.StatusCode == http.StatusMethodNotAllowed {
             resp.Body.Close()
             getURL := fmt.Sprintf("%s?message=%s", url, urlQueryEscape(message))
             req, err = http.NewRequest("GET", getURL, nil)
-            if err != nil { return streamErrorMsg{err: fmt.Errorf("failed to create GET request: %w", err)} }
+            if err != nil {
+                cancel() // Cancel context on error to avoid leak
+                return streamErrorMsg{err: fmt.Errorf("failed to create GET request: %w", err)}
+            }
             req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", m.apiKey))
             req.Header.Set("Accept", "text/event-stream")
+            req = req.WithContext(ctx) // Ensure GET request also uses the cancellable context
             resp, err = clientHTTP.Do(req)
-            if err != nil { return streamErrorMsg{err: fmt.Errorf("failed to send GET request: %w", err)} }
+            if err != nil {
+                cancel() // Cancel context on error to avoid leak
+                return streamErrorMsg{err: fmt.Errorf("failed to send GET request: %w", err)}
+            }
         }
         if resp.StatusCode != http.StatusOK {
+            cancel() // Cancel context on error to avoid leak
             body, _ := io.ReadAll(resp.Body)
             resp.Body.Close()
             return streamErrorMsg{err: fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))}
