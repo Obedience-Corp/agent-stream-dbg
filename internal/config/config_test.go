@@ -7,8 +7,8 @@ import (
 
 func TestLoad_WithDefaults(t *testing.T) {
 	// Set required env var
-	os.Setenv("API_KEY", "test-key")
-	defer os.Unsetenv("API_KEY")
+	_ = os.Setenv("API_KEY", "test-key")
+	defer func() { _ = os.Unsetenv("API_KEY") }()
 
 	cfg, err := Load()
 	if err != nil {
@@ -38,7 +38,7 @@ func TestLoad_WithDefaults(t *testing.T) {
 }
 
 func TestLoad_MissingAPIKey(t *testing.T) {
-	os.Unsetenv("API_KEY")
+	_ = os.Unsetenv("API_KEY")
 
 	_, err := Load()
 	if err == nil {
@@ -47,22 +47,22 @@ func TestLoad_MissingAPIKey(t *testing.T) {
 }
 
 func TestLoad_CustomValues(t *testing.T) {
-	os.Setenv("API_KEY", "custom-key")
-	os.Setenv("BACKEND_URL", "http://custom:8080")
-	os.Setenv("SESSION_ID", "custom-session")
-	os.Setenv("LOG_DIR", "/tmp/logs")
-	os.Setenv("LOG_LEVEL", "debug")
-	os.Setenv("ENABLE_COLORS", "false")
-	os.Setenv("MAX_AGENTS_VISIBLE", "10")
+	_ = os.Setenv("API_KEY", "custom-key")
+	_ = os.Setenv("BACKEND_URL", "http://custom:8080")
+	_ = os.Setenv("SESSION_ID", "custom-session")
+	_ = os.Setenv("LOG_DIR", "/tmp/logs")
+	_ = os.Setenv("LOG_LEVEL", "debug")
+	_ = os.Setenv("ENABLE_COLORS", "false")
+	_ = os.Setenv("MAX_AGENTS_VISIBLE", "10")
 
 	defer func() {
-		os.Unsetenv("API_KEY")
-		os.Unsetenv("BACKEND_URL")
-		os.Unsetenv("SESSION_ID")
-		os.Unsetenv("LOG_DIR")
-		os.Unsetenv("LOG_LEVEL")
-		os.Unsetenv("ENABLE_COLORS")
-		os.Unsetenv("MAX_AGENTS_VISIBLE")
+		_ = os.Unsetenv("API_KEY")
+		_ = os.Unsetenv("BACKEND_URL")
+		_ = os.Unsetenv("SESSION_ID")
+		_ = os.Unsetenv("LOG_DIR")
+		_ = os.Unsetenv("LOG_LEVEL")
+		_ = os.Unsetenv("ENABLE_COLORS")
+		_ = os.Unsetenv("MAX_AGENTS_VISIBLE")
 	}()
 
 	cfg, err := Load()
@@ -96,8 +96,8 @@ func TestLoad_CustomValues(t *testing.T) {
 }
 
 func TestStreamEndpoint(t *testing.T) {
-	os.Setenv("API_KEY", "test-key")
-	defer os.Unsetenv("API_KEY")
+	_ = os.Setenv("API_KEY", "test-key")
+	defer func() { _ = os.Unsetenv("API_KEY") }()
 
 	cfg, err := Load()
 	if err != nil {
@@ -113,8 +113,8 @@ func TestStreamEndpoint(t *testing.T) {
 }
 
 func TestGetEnv(t *testing.T) {
-	os.Setenv("TEST_VAR", "test-value")
-	defer os.Unsetenv("TEST_VAR")
+	_ = os.Setenv("TEST_VAR", "test-value")
+	defer func() { _ = os.Unsetenv("TEST_VAR") }()
 
 	value := getEnv("TEST_VAR", "default")
 	if value != "test-value" {
@@ -145,8 +145,8 @@ func TestGetEnvBool(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.value, func(t *testing.T) {
-			os.Setenv("TEST_BOOL", tt.value)
-			defer os.Unsetenv("TEST_BOOL")
+			_ = os.Setenv("TEST_BOOL", tt.value)
+			defer func() { _ = os.Unsetenv("TEST_BOOL") }()
 
 			result := getEnvBool("TEST_BOOL", true)
 			if result != tt.expected {
@@ -169,8 +169,8 @@ func TestGetEnvInt(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.value, func(t *testing.T) {
-			os.Setenv("TEST_INT", tt.value)
-			defer os.Unsetenv("TEST_INT")
+			_ = os.Setenv("TEST_INT", tt.value)
+			defer func() { _ = os.Unsetenv("TEST_INT") }()
 
 			result := getEnvInt("TEST_INT", 10)
 			if result != tt.expected {

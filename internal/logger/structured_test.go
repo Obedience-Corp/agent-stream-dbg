@@ -23,7 +23,7 @@ func TestNewStructuredLogger(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 
 	// Verify directories were created
 	dirs := []string{
@@ -52,7 +52,7 @@ func TestLogEvent_AgentContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 
 	// Create test event
 	event := &events.Event{
@@ -98,7 +98,7 @@ func TestLogEvent_WizardContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 
 	event := &events.Event{
 		Type: events.WizardContent,
@@ -136,7 +136,7 @@ func TestLogEvent_SessionEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 
 	event := &events.Event{
 		Type: events.SessionStart,
@@ -174,7 +174,7 @@ func TestLogAPICall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 
 	logger.LogAPICall("POST", "http://localhost:5003/api/stream", 200, 123*time.Millisecond, nil)
 
@@ -211,7 +211,7 @@ func TestClose(t *testing.T) {
 			AgentID: "test_agent",
 		},
 	}
-	logger.LogEvent(event)
+	_ = logger.LogEvent(event)
 
 	// Close should not error
 	err = logger.Close()
@@ -220,7 +220,7 @@ func TestClose(t *testing.T) {
 	}
 
 	// Second close should not panic
-	err = logger.Close()
+	_ = logger.Close()
 	// We allow double close to error or succeed
 }
 
@@ -236,7 +236,7 @@ func TestMultiDimensionalLogging(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 
 	// Log multiple agents
 	agents := []string{"sam_harris", "tony_robbins", "wizard"}
@@ -248,7 +248,7 @@ func TestMultiDimensionalLogging(t *testing.T) {
 				AgentID: agentID,
 			},
 		}
-		logger.LogEvent(event)
+		_ = logger.LogEvent(event)
 	}
 
 	// Verify all agent logs were created

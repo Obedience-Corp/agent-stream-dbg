@@ -29,10 +29,9 @@ type Model struct {
 	errorCount    int
 
 	// UI State
-	width         int
-	height        int
-	selectedAgent string
-	paused        bool
+	width  int
+	height int
+	paused bool
 
 	// Stats
 	startTime   time.Time
@@ -362,10 +361,8 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 
 	m.totalEvents++
 
-	// Log event to structured logger
-	if err := m.logger.LogEvent(event); err != nil {
-		// Handle logging error silently for now
-	}
+	// Log event to structured logger (errors are silently ignored)
+	_ = m.logger.LogEvent(event)
 
 	switch event.Type {
 	case events.SessionStart:

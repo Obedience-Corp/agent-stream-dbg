@@ -59,7 +59,7 @@ func CustomHelpPrinter(w io.Writer, templ string, data interface{}) {
 		return
 	}
 
-	fmt.Fprint(w, styled)
+	_, _ = fmt.Fprint(w, styled)
 }
 
 // styleAppHelp styles the main app help

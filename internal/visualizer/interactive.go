@@ -170,7 +170,6 @@ func NewInteractiveModel(cfg *config.EnhancedConfig, apiKey string) InteractiveM
 
 	// Initialize viewport for scrolling
 	vp := viewport.New(80, 20)
-	vp.HighPerformanceRendering = false
 
 	// Initialize structured logger (using legacy config wrapper)
 	var slog *dblogger.StructuredLogger
@@ -367,19 +366,19 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.insertMode {
 			switch msg.Type {
 			case tea.KeyUp:
-				m.viewport.LineUp(1)
+				m.viewport.ScrollUp(1)
 				m.follow = false
 				return m, nil
 			case tea.KeyDown:
-				m.viewport.LineDown(1)
+				m.viewport.ScrollDown(1)
 				m.follow = false
 				return m, nil
 			case tea.KeyPgUp:
-				m.viewport.HalfViewUp()
+				m.viewport.HalfPageUp()
 				m.follow = false
 				return m, nil
 			case tea.KeyPgDown:
-				m.viewport.HalfViewDown()
+				m.viewport.HalfPageDown()
 				m.follow = false
 				return m, nil
 			case tea.KeyHome:
@@ -411,7 +410,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.refreshViewportContent()
 					}
 				} else {
-					m.viewport.LineDown(1)
+					m.viewport.ScrollDown(1)
 					m.follow = false
 				}
 				return m, nil
@@ -424,7 +423,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.refreshViewportContent()
 					}
 				} else {
-					m.viewport.LineUp(1)
+					m.viewport.ScrollUp(1)
 					m.follow = false
 				}
 				return m, nil
@@ -569,11 +568,11 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.follow = true
 				return m, nil
 			case " ":
-				m.viewport.HalfViewDown()
+				m.viewport.HalfPageDown()
 				m.follow = false
 				return m, nil
 			case "b":
-				m.viewport.HalfViewUp()
+				m.viewport.HalfPageUp()
 				m.follow = false
 				return m, nil
 			case "H":
@@ -692,7 +691,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Append raw and incrementally parse
 		if m.streamIndex < len(m.messages) {
-			if msg.chunk != nil && len(msg.chunk) > 0 {
+			if len(msg.chunk) > 0 {
 				m.messages[m.streamIndex].RawSSE += string(msg.chunk)
 				m.incrementalParseSSE(msg.chunk)
 				m.contentDirty = true
@@ -964,9 +963,8 @@ func (m *InteractiveModel) incrementalParseSSE(chunk []byte) {
 			}
 			m.sseEvent = ""
 			m.sseDataBuf.Reset()
-		} else {
-			// Unknown line; ignore
 		}
+		// Unknown lines are silently ignored
 	}
 	m.sseBuf = carry
 }
@@ -2355,7 +2353,7 @@ func (m InteractiveModel) startStreamingCmd(message string, index int) tea.Cmd {
 		}
 
 		if resp.StatusCode == http.StatusMethodNotAllowed {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			getURL := fmt.Sprintf("%s?message=%s", url, urlQueryEscape(message))
 			req, err = http.NewRequest("GET", getURL, nil)
 			if err != nil {
@@ -2374,7 +2372,7 @@ func (m InteractiveModel) startStreamingCmd(message string, index int) tea.Cmd {
 		if resp.StatusCode != http.StatusOK {
 			cancel() // Cancel context on error to avoid leak
 			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return streamErrorMsg{err: fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))}
 		}
 		return streamStartMsg{index: index, body: resp.Body, cancel: cancel}

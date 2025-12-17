@@ -76,7 +76,7 @@ func NewStructuredLogger(cfg *config.Config) (*StructuredLogger, error) {
 	)
 	apiFile, err := os.OpenFile(apiLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		sessionFile.Close()
+		_ = sessionFile.Close()
 		return nil, fmt.Errorf("failed to create API log file: %w", err)
 	}
 	sl.apiCallFile = apiFile

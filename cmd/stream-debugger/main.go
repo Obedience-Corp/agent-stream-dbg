@@ -232,7 +232,7 @@ func runLegacyStream(configPath string, message string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create logger: %w", err)
 	}
-	defer structuredLogger.Close()
+	defer func() { _ = structuredLogger.Close() }()
 
 	fmt.Printf("📝 Structured logging initialized\n")
 	fmt.Printf("   Event types: %s/by-event-type/\n", cfg.LogDir)
@@ -347,7 +347,7 @@ func loadEventsFromFile(filePath string) ([]*events.Event, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	parser := events.NewParser()
 	var result []*events.Event
