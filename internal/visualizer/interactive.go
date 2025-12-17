@@ -1098,6 +1098,12 @@ func (m InteractiveModel) renderParsedView(msg Message) string {
 
     var b strings.Builder
 
+    // Wizard debug summary at top
+    if wizardResp := msg.AgentResponses["wizard"]; wizardResp != nil {
+        b.WriteString(m.renderWizardDebugSummary(wizardResp))
+        b.WriteString("\n")
+    }
+
     // Render each agent's response (deterministic order)
     // Collect and sort agent IDs for stable rendering to avoid flicker
     keys := make([]string, 0, len(msg.AgentResponses))
@@ -1616,9 +1622,48 @@ func (m InteractiveModel) renderWizardSection(msg Message, titleStyle lipgloss.S
         b.WriteString(wizardStyle.Render("Wizard Output"))
     }
     b.WriteString("\n")
+
+    // Show wizard debug summary above content
+    b.WriteString(m.renderWizardDebugSummary(wizard))
+    b.WriteString("\n")
+
     b.WriteString(wizard.FullContent)
     b.WriteString("\n\n")
     return b.String()
+}
+
+// renderWizardDebugSummary renders a compact one-line wizard metrics summary
+func (m InteractiveModel) renderWizardDebugSummary(wizard *AgentResponse) string {
+    if wizard == nil {
+        return ""
+    }
+
+    summaryStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("13")).Italic(true)
+
+    var parts []string
+
+    // Token count
+    parts = append(parts, fmt.Sprintf("tokens: %d", wizard.TokenCount))
+
+    // Tokens per second (only if we have duration)
+    if wizard.DurationMs > 0 && wizard.TokenCount > 0 {
+        tokensPerSec := float64(wizard.TokenCount) * 1000.0 / float64(wizard.DurationMs)
+        parts = append(parts, fmt.Sprintf("rate: %.1f tok/s", tokensPerSec))
+    }
+
+    // First token latency
+    if wizard.FirstTokenMs > 0 {
+        parts = append(parts, fmt.Sprintf("first-token: %dms", wizard.FirstTokenMs))
+    }
+
+    // Status indicator
+    if wizard.Completed {
+        parts = append(parts, "✓")
+    } else {
+        parts = append(parts, "⏳")
+    }
+
+    return summaryStyle.Render("[Wizard] " + strings.Join(parts, ", "))
 }
 
 // renderAgentSummaries renders the agent summaries section with collapse/expand
