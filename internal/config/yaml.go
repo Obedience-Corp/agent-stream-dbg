@@ -127,11 +127,11 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 
 // EnhancedConfig is the unified configuration structure
 type EnhancedConfig struct {
-    Backend BackendConfig
-    Session SessionConfig
-    Display *DisplayConfig
-    APIKey  string
-    Debug   DebugConfig
+	Backend BackendConfig
+	Session SessionConfig
+	Display *DisplayConfig
+	APIKey  string
+	Debug   DebugConfig
 
 	// Logging
 	LogDir string
@@ -150,8 +150,8 @@ type DisplayConfig struct {
 
 // DebugConfig holds debug settings for streaming (e.g., synthesis visibility)
 type DebugConfig struct {
-    // Level can be "" (off), "verbose", or "full"
-    Level string `yaml:"level"`
+	// Level can be "" (off), "verbose", or "full"
+	Level string `yaml:"level"`
 }
 
 // BackendConfig holds backend API configuration

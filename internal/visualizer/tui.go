@@ -16,12 +16,12 @@ import (
 
 // Model represents the TUI application state
 type Model struct {
-    config *config.Config
-    client *client.SSEClient
-    logger *logger.StructuredLogger
-    ctx    context.Context
-    cancel context.CancelFunc
-    message string
+	config  *config.Config
+	client  *client.SSEClient
+	logger  *logger.StructuredLogger
+	ctx     context.Context
+	cancel  context.CancelFunc
+	message string
 
 	// State
 	agents        map[string]*AgentState
@@ -46,9 +46,13 @@ type Model struct {
 	// Debug toggles
 	showAgentsExpanded bool
 	showPromptRef      bool
+	showPromptPanel    bool
 	// Last prompt_ref received
 	lastPromptRef  map[string]interface{}
 	lastPromptStep string
+	// Prompt/Flow debug info (debug mode only)
+	promptInfo map[string]*PromptInfoState // agent_id -> prompt info
+	flowConfig *FlowConfigState
 }
 
 // AgentState tracks the state of a single agent
@@ -89,6 +93,26 @@ type FlowStepStatus struct {
 	DurationMs  int
 }
 
+// PromptInfoState tracks prompt info for an agent (debug mode)
+type PromptInfoState struct {
+	AgentID       string
+	PromptFile    string
+	PromptSnippet string
+	PromptLength  int
+	SystemPrompt  string // Only populated when debug=full
+}
+
+// FlowConfigState tracks flow configuration (debug mode)
+type FlowConfigState struct {
+	FlowID         string
+	FlowFile       string
+	StagesOrder    []string
+	StagesEnabled  map[string]bool
+	RoutingMode    string
+	AgentCount     int
+	NonWizardCount int
+}
+
 // eventMsg wraps an SSE event for bubbletea
 type eventMsg struct {
 	event *events.Event
@@ -104,21 +128,22 @@ type tickMsg time.Time
 
 // NewModel creates a new TUI model
 func NewModel(cfg *config.Config, sseClient *client.SSEClient, structuredLogger *logger.StructuredLogger, message string) *Model {
-    ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
 
-    return &Model{
-        config:        cfg,
-        client:        sseClient,
-        logger:        structuredLogger,
-        ctx:           ctx,
-        cancel:        cancel,
-        message:       message,
-        agents:        make(map[string]*AgentState),
-        wizardState:   &WizardState{BufferedTokens: make(map[int]string)},
-        sessionActive: false,
-        startTime:     time.Now(),
-        flow:          make(map[string]*FlowStepStatus),
-    }
+	return &Model{
+		config:        cfg,
+		client:        sseClient,
+		logger:        structuredLogger,
+		ctx:           ctx,
+		cancel:        cancel,
+		message:       message,
+		agents:        make(map[string]*AgentState),
+		wizardState:   &WizardState{BufferedTokens: make(map[int]string)},
+		sessionActive: false,
+		startTime:     time.Now(),
+		flow:          make(map[string]*FlowStepStatus),
+		promptInfo:    make(map[string]*PromptInfoState),
+	}
 }
 
 // Init initializes the bubbletea application
@@ -232,9 +257,14 @@ func (m *Model) View() string {
 	))
 
 	// Build controls
-    dbg := m.config.DebugLevel
-    if dbg == "" { dbg = "off" }
-    controls := statsStyle.Render(fmt.Sprintf("[p] pause/resume | [a] agents view | [r] prompt refs | [v] verbose | [f] full | [n] debug off | [q] quit | [s] save session | debug=%s", dbg))
+	dbg := m.config.DebugLevel
+	if dbg == "" {
+		dbg = "off"
+	}
+	controls := statsStyle.Render(fmt.Sprintf("[p] pause | [a] agents | [r] refs | [i] prompts | [v] verbose | [f] full | [n] off | [q] quit | debug=%s", dbg))
+
+	// Build prompt panel (debug mode only)
+	promptPanelView := m.renderPromptPanel()
 
 	// Combine all sections
 	sections := []string{header}
@@ -243,6 +273,9 @@ func (m *Model) View() string {
 	}
 	if promptView != "" {
 		sections = append(sections, promptView)
+	}
+	if promptPanelView != "" {
+		sections = append(sections, promptPanelView)
 	}
 
 	// Add agent views (side by side)
@@ -332,7 +365,7 @@ func (m *Model) renderWizard() string {
 
 // handleKeyPress handles keyboard input
 func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-    switch msg.String() {
+	switch msg.String() {
 	case "q", "ctrl+c":
 		m.cancel()
 		return m, tea.Quit
@@ -349,46 +382,63 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.showAgentsExpanded = !m.showAgentsExpanded
 		return m, nil
 
-    case "r":
-        m.showPromptRef = !m.showPromptRef
-        return m, nil
+	case "r":
+		m.showPromptRef = !m.showPromptRef
+		return m, nil
 
-    case "v":
-        // Toggle verbose debug and reconnect
-        m.config.DebugLevel = "verbose"
-        return m, m.reconnect()
+	case "i":
+		m.showPromptPanel = !m.showPromptPanel
+		return m, nil
 
-    case "f":
-        // Toggle full debug and reconnect
-        m.config.DebugLevel = "full"
-        return m, m.reconnect()
+	case "v":
+		// Toggle verbose debug and reconnect
+		m.config.DebugLevel = "verbose"
+		return m, m.reconnect()
 
-    case "n":
-        // Turn off debug and reconnect
-        m.config.DebugLevel = ""
-        return m, m.reconnect()
-    }
+	case "f":
+		// Toggle full debug and reconnect
+		m.config.DebugLevel = "full"
+		return m, m.reconnect()
 
-    return m, nil
+	case "n":
+		// Turn off debug and reconnect
+		m.config.DebugLevel = ""
+		return m, m.reconnect()
+	}
+
+	return m, nil
 }
 
 // reconnect restarts the SSE connection with current debug level
 func (m *Model) reconnect() tea.Cmd {
-    return func() tea.Msg {
-        // Cancel current subscriptions
-        if m.cancel != nil {
-            m.cancel()
-        }
-        // Create new context and connect
-        m.ctx, m.cancel = context.WithCancel(context.Background())
-        // Reset session state minimally; keep logs and counters
-        // Reconnect SSE client with new debug param
-        if err := m.client.Connect(m.ctx, m.message); err != nil {
-            return errorMsg{err: fmt.Errorf("reconnect failed: %w", err)}
-        }
-        // Resume listeners
-        return nil
-    }
+	return func() tea.Msg {
+		// Cancel current subscriptions
+		if m.cancel != nil {
+			m.cancel()
+		}
+		// Create new context and connect
+		m.ctx, m.cancel = context.WithCancel(context.Background())
+		// Reset UI state so new stream doesn't append to previous content
+		m.agents = make(map[string]*AgentState)
+		m.wizardState = &WizardState{BufferedTokens: make(map[int]string)}
+		m.totalTokens = 0
+		m.totalEvents = 0
+		m.errorCount = 0
+		m.startTime = time.Now()
+		m.flow = make(map[string]*FlowStepStatus)
+		m.lastPromptRef = nil
+		m.lastPromptStep = ""
+		m.sessionActive = false
+		m.paused = false
+		m.promptInfo = make(map[string]*PromptInfoState)
+		m.flowConfig = nil
+		// Reconnect SSE client with new debug param
+		if err := m.client.Connect(m.ctx, m.message); err != nil {
+			return errorMsg{err: fmt.Errorf("reconnect failed: %w", err)}
+		}
+		// Resume listeners
+		return nil
+	}
 }
 
 // handleEvent processes an SSE event
@@ -499,6 +549,45 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 				m.lastPromptStep = s.Step
 			}
 		}
+
+	case events.PromptInfo:
+		if pi := event.PromptInfo; pi != nil {
+			state := m.promptInfo[pi.AgentID]
+			if state == nil {
+				state = &PromptInfoState{AgentID: pi.AgentID}
+				m.promptInfo[pi.AgentID] = state
+			}
+			state.PromptFile = pi.PromptFile
+			state.PromptSnippet = pi.PromptSnippet
+			state.PromptLength = pi.PromptLength
+		}
+
+	case events.PromptFull:
+		if pf := event.PromptFull; pf != nil {
+			state := m.promptInfo[pf.AgentID]
+			if state == nil {
+				state = &PromptInfoState{AgentID: pf.AgentID}
+				m.promptInfo[pf.AgentID] = state
+			}
+			state.SystemPrompt = pf.SystemPrompt
+		}
+
+	case events.FlowConfig:
+		if fc := event.FlowConfig; fc != nil {
+			m.flowConfig = &FlowConfigState{
+				FlowID:         fc.FlowID,
+				FlowFile:       fc.FlowFile,
+				StagesOrder:    fc.StagesOrder,
+				StagesEnabled:  fc.StagesEnabled,
+				RoutingMode:    fc.RoutingMode,
+				AgentCount:     fc.AgentCount,
+				NonWizardCount: fc.NonWizardCount,
+			}
+			// Also set FlowID if not already set
+			if m.FlowID == "" && fc.FlowID != "" {
+				m.FlowID = fc.FlowID
+			}
+		}
 	}
 
 	return m, m.waitForEvent()
@@ -582,6 +671,91 @@ func (m *Model) renderFlowStatus() string {
 
 	sep := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("  |  ")
 	return lipgloss.JoinHorizontal(lipgloss.Top, parts[0], sep, parts[1], sep, parts[2], sep, parts[3], sep, parts[4])
+}
+
+// renderPromptPanel renders the prompt info panel (debug mode only)
+func (m *Model) renderPromptPanel() string {
+	if !m.showPromptPanel {
+		return ""
+	}
+
+	panelStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("5")).
+		Padding(0, 1).
+		Width(m.width - 4)
+
+	headerStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("5"))
+
+	labelStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("8"))
+
+	valueStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("7"))
+
+	snippetStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("8")).
+		Italic(true)
+
+	var lines []string
+
+	// Flow config section
+	if m.flowConfig != nil {
+		lines = append(lines, headerStyle.Render("Flow Configuration"))
+		lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("ID:"), valueStyle.Render(m.flowConfig.FlowID)))
+		lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("File:"), valueStyle.Render(m.flowConfig.FlowFile)))
+		if m.flowConfig.RoutingMode != "" {
+			lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("Routing:"), valueStyle.Render(m.flowConfig.RoutingMode)))
+		}
+		lines = append(lines, fmt.Sprintf("  %s %d agents (%d non-wizard)", labelStyle.Render("Agents:"), m.flowConfig.AgentCount, m.flowConfig.NonWizardCount))
+		if len(m.flowConfig.StagesOrder) > 0 {
+			lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("Stages:"), valueStyle.Render(strings.Join(m.flowConfig.StagesOrder, " → "))))
+		}
+		lines = append(lines, "")
+	}
+
+	// Agent prompts section
+	if len(m.promptInfo) > 0 {
+		lines = append(lines, headerStyle.Render("Agent Prompts"))
+		for agentID, info := range m.promptInfo {
+			color := getAgentColor(agentID)
+			agentName := lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(agentID)
+
+			line := fmt.Sprintf("  %s", agentName)
+			if info.PromptFile != "" {
+				line += fmt.Sprintf(" %s %s", labelStyle.Render("→"), valueStyle.Render(info.PromptFile))
+			}
+			if info.PromptLength > 0 {
+				line += fmt.Sprintf(" %s", labelStyle.Render(fmt.Sprintf("(%d chars)", info.PromptLength)))
+			}
+			lines = append(lines, line)
+
+			// Show snippet if available
+			if info.PromptSnippet != "" {
+				snippet := info.PromptSnippet
+				if len(snippet) > 100 {
+					snippet = snippet[:100] + "..."
+				}
+				// Replace newlines with spaces for single-line display
+				snippet = strings.ReplaceAll(snippet, "\n", " ")
+				lines = append(lines, fmt.Sprintf("    %s", snippetStyle.Render(snippet)))
+			}
+
+			// Show full prompt indicator if available
+			if info.SystemPrompt != "" {
+				fullLen := len(info.SystemPrompt)
+				lines = append(lines, fmt.Sprintf("    %s", labelStyle.Render(fmt.Sprintf("[Full prompt loaded: %d chars]", fullLen))))
+			}
+		}
+	}
+
+	if len(lines) == 0 {
+		lines = append(lines, labelStyle.Render("No prompt info available. Use [v] for verbose or [f] for full debug mode."))
+	}
+
+	return panelStyle.Render(strings.Join(lines, "\n"))
 }
 
 // waitForEvent waits for the next SSE event

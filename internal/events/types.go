@@ -16,10 +16,15 @@ const (
 	WizardStreamComplete EventType = "wizard_stream_complete"
 	Error                EventType = "error"
 	// Flow control step events (BrainyardV3 extension)
-    FlowStepStart EventType = "flow_step_start"
-    FlowStepEnd   EventType = "flow_step_end"
-    // Flow step detail (BrainyardV3 extension) — compact, step-specific payloads
-    FlowStepDetail EventType = "flow_step_detail"
+	FlowStepStart EventType = "flow_step_start"
+	FlowStepEnd   EventType = "flow_step_end"
+	// Flow step detail (BrainyardV3 extension) — compact, step-specific payloads
+	FlowStepDetail EventType = "flow_step_detail"
+
+	// Prompt/flow debug events (only emitted when backend is in debug mode)
+	PromptInfo EventType = "prompt_info"
+	PromptFull EventType = "prompt_full"
+	FlowConfig EventType = "flow_config"
 )
 
 // BaseEvent contains fields common to all events
@@ -111,25 +116,56 @@ type FlowStepEndEvent struct {
 // This event is emitted only when the backend is called with debug flags
 // and is intended for developer tooling like stream-debugger.
 type FlowStepDetailEvent struct {
-    BaseEvent
-    Step string `json:"step"`
+	BaseEvent
+	Step string `json:"step"`
 
-    // Synthesis details
-    PlanID           string `json:"plan_id,omitempty"`
-    SynthesisPreview string `json:"synthesis_preview,omitempty"`
-    SynthesisFull    string `json:"synthesis_full,omitempty"`
-    Perspectives     []struct {
-        AgentID string `json:"agent_id"`
-        Summary string `json:"summary"`
-    } `json:"perspectives,omitempty"`
+	// Synthesis details
+	PlanID           string `json:"plan_id,omitempty"`
+	SynthesisPreview string `json:"synthesis_preview,omitempty"`
+	SynthesisFull    string `json:"synthesis_full,omitempty"`
+	Perspectives     []struct {
+		AgentID string `json:"agent_id"`
+		Summary string `json:"summary"`
+	} `json:"perspectives,omitempty"`
 
-    // Filter details
-    FilteredAgents      []string `json:"filtered_agents,omitempty"`
-    ThinkingCharsTotal  int      `json:"thinking_chars_total,omitempty"`
-    ThinkingPreview     string   `json:"thinking_preview,omitempty"`
+	// Filter details
+	FilteredAgents     []string `json:"filtered_agents,omitempty"`
+	ThinkingCharsTotal int      `json:"thinking_chars_total,omitempty"`
+	ThinkingPreview    string   `json:"thinking_preview,omitempty"`
 
-    // Agent execution details
-    Agents []string `json:"agents,omitempty"`
+	// Agent execution details
+	Agents []string `json:"agents,omitempty"`
+}
+
+// PromptInfoEvent contains agent prompt metadata (debug=verbose)
+// Only emitted when backend is in debug mode
+type PromptInfoEvent struct {
+	BaseEvent
+	AgentID       string `json:"agent_id"`
+	PromptFile    string `json:"prompt_file"`
+	PromptSnippet string `json:"prompt_snippet,omitempty"`
+	PromptLength  int    `json:"prompt_length,omitempty"`
+}
+
+// PromptFullEvent contains complete system prompt (debug=full only)
+// Only emitted when backend is in debug mode with full verbosity
+type PromptFullEvent struct {
+	BaseEvent
+	AgentID      string `json:"agent_id"`
+	SystemPrompt string `json:"system_prompt"`
+}
+
+// FlowConfigEvent contains flow configuration snapshot (debug=verbose)
+// Emitted at session start when backend is in debug mode
+type FlowConfigEvent struct {
+	BaseEvent
+	FlowID         string          `json:"flow_id"`
+	FlowFile       string          `json:"flow_file"`
+	StagesOrder    []string        `json:"stages_order"`
+	StagesEnabled  map[string]bool `json:"stages_enabled"`
+	RoutingMode    string          `json:"routing_mode,omitempty"`
+	AgentCount     int             `json:"agent_count"`
+	NonWizardCount int             `json:"non_wizard_count"`
 }
 
 // ErrorType represents different categories of errors
@@ -171,9 +207,13 @@ type Event struct {
 	WizardContent        *WizardContentEvent
 	WizardStreamComplete *WizardStreamCompleteEvent
 	Error                *ErrorEvent
-    FlowStepStart        *FlowStepStartEvent
-    FlowStepEnd          *FlowStepEndEvent
-    FlowStepDetail       *FlowStepDetailEvent
+	FlowStepStart        *FlowStepStartEvent
+	FlowStepEnd          *FlowStepEndEvent
+	FlowStepDetail       *FlowStepDetailEvent
+	// Debug-only events (prompt/flow visibility)
+	PromptInfo *PromptInfoEvent
+	PromptFull *PromptFullEvent
+	FlowConfig *FlowConfigEvent
 }
 
 // GetAgentID returns the agent ID if the event is agent-related

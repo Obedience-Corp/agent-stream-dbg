@@ -267,7 +267,7 @@ func runLegacyStream(configPath string, message string) error {
 	fmt.Printf("✅ Connected! Starting TUI...\n\n")
 
 	// Create TUI model
-    model := visualizer.NewModel(oldCfg, sseClient, structuredLogger, message)
+	model := visualizer.NewModel(oldCfg, sseClient, structuredLogger, message)
 
 	// Start bubbletea program
 	p := tea.NewProgram(model, tea.WithAltScreen())

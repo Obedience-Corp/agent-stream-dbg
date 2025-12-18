@@ -49,12 +49,12 @@ func (c *SSEClient) Connect(ctx context.Context, message string) error {
 		return fmt.Errorf("invalid endpoint URL: %w", err)
 	}
 
-    q := u.Query()
-    q.Set("message", message)
-    if c.config.DebugLevel != "" {
-        q.Set("debug", c.config.DebugLevel)
-    }
-    u.RawQuery = q.Encode()
+	q := u.Query()
+	q.Set("message", message)
+	if c.config.DebugLevel != "" {
+		q.Set("debug", c.config.DebugLevel)
+	}
+	u.RawQuery = q.Encode()
 
 	// Update client URL
 	c.client = sse.NewClient(u.String())
@@ -64,20 +64,20 @@ func (c *SSEClient) Connect(ctx context.Context, message string) error {
 	}
 
 	// Subscribe to all event types
-    eventTypes := []string{
-        "session_start",
-        "session_complete",
-        "agent_stream_start",
-        "agent_content",
-        "agent_stream_complete",
-        "wizard_stream_start",
-        "wizard_content",
-        "wizard_stream_complete",
-        "error",
-        "flow_step_start",
-        "flow_step_end",
-        "flow_step_detail",
-    }
+	eventTypes := []string{
+		"session_start",
+		"session_complete",
+		"agent_stream_start",
+		"agent_content",
+		"agent_stream_complete",
+		"wizard_stream_start",
+		"wizard_content",
+		"wizard_stream_complete",
+		"error",
+		"flow_step_start",
+		"flow_step_end",
+		"flow_step_detail",
+	}
 
 	for _, eventType := range eventTypes {
 		c.subscribeToEvent(ctx, eventType)

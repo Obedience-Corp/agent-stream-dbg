@@ -41,6 +41,11 @@ events:
     - "error"
     - "flow_step_start"
     - "flow_step_end"
+    - "flow_step_detail"
+    # Debug-only events (emitted when backend is in debug mode)
+    - "prompt_info"      # Agent prompt file paths and snippets (debug=verbose)
+    - "prompt_full"      # Complete system prompts (debug=full)
+    - "flow_config"      # Flow configuration at session start (debug=verbose)
 
 logging:
   dir: "./logs"

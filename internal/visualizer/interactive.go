@@ -326,28 +326,28 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-        // Debug toggles (apply to subsequent streams)
-        switch msg.String() {
-        case "v":
-            m.cfg.Debug.Level = "verbose"
-            m.contentDirty = true
-            m.refreshViewportContent()
-            return m, nil
-        case "f":
-            m.cfg.Debug.Level = "full"
-            m.contentDirty = true
-            m.refreshViewportContent()
-            return m, nil
-        case "n":
-            m.cfg.Debug.Level = ""
-            m.contentDirty = true
-            m.refreshViewportContent()
-            return m, nil
-        }
+		// Debug toggles (apply to subsequent streams)
+		switch msg.String() {
+		case "v":
+			m.cfg.Debug.Level = "verbose"
+			m.contentDirty = true
+			m.refreshViewportContent()
+			return m, nil
+		case "f":
+			m.cfg.Debug.Level = "full"
+			m.contentDirty = true
+			m.refreshViewportContent()
+			return m, nil
+		case "n":
+			m.cfg.Debug.Level = ""
+			m.contentDirty = true
+			m.refreshViewportContent()
+			return m, nil
+		}
 
-        // Pane switching (works in normal mode only)
-        if !m.insertMode {
-            switch msg.String() {
+		// Pane switching (works in normal mode only)
+		if !m.insertMode {
+			switch msg.String() {
 			case "1", "f1":
 				m.activePane = PaneFlow
 				m.contentDirty = true
@@ -796,9 +796,11 @@ func (m InteractiveModel) View() string {
 		}
 	}
 
-    dbg := m.cfg.Debug.Level
-    if dbg == "" { dbg = "off" }
-    b.WriteString(headerStyle.Render(fmt.Sprintf("🚀 Stream Debugger (debug=%s)", dbg)))
+	dbg := m.cfg.Debug.Level
+	if dbg == "" {
+		dbg = "off"
+	}
+	b.WriteString(headerStyle.Render(fmt.Sprintf("🚀 Stream Debugger (debug=%s)", dbg)))
 	b.WriteString(" ")
 	b.WriteString(tabs.String())
 	b.WriteString("  ")
@@ -2349,11 +2351,11 @@ func (m InteractiveModel) startStreamingCmd(message string, index int) tea.Cmd {
 		fmt.Fprintf(os.Stderr, "DEBUG: BaseURL=%q Endpoint=%q SessionID=%q\n",
 			m.cfg.Backend.BaseURL, m.cfg.Backend.StreamEndpoint, m.cfg.Session.ID)
 
-    requestBody := map[string]interface{}{"message": message, "stream": true}
-    // Pass through stream debug level if set (enables flow_step_detail synthesis output)
-    if lvl := m.cfg.Debug.Level; lvl != "" {
-        requestBody["debug"] = lvl
-    }
+		requestBody := map[string]interface{}{"message": message, "stream": true}
+		// Pass through stream debug level if set (enables flow_step_detail synthesis output)
+		if lvl := m.cfg.Debug.Level; lvl != "" {
+			requestBody["debug"] = lvl
+		}
 		jsonData, err := json.Marshal(requestBody)
 		if err != nil {
 			return streamErrorMsg{err: fmt.Errorf("failed to marshal request: %w", err)}
@@ -2482,13 +2484,17 @@ func (m InteractiveModel) newSessionCmd() tea.Cmd {
 			m.cfg.Session.ID = resp.SessionID
 		}
 
-		// Reset UI state
+		// Reset UI state (clear all prior content and counters)
 		m.messages = make([]Message, 0)
+		m.err = nil
 		m.flowTurnIndex = 0
 		m.flowContinuous = true
 		m.selectedStepIndex = 0
 		m.flowExpanded = make(map[string]bool)
+		m.showTokens = false
+		m.eventsWizardOnly = false
 		m.appFocus = AppFocusAgents
+		m.viewport.SetContent("")
 		m.contentDirty = true
 		m.refreshViewportContent()
 		return nil

@@ -24,9 +24,9 @@ type Config struct {
 
 	// Display Configuration
 	EnableColors     bool
-    MaxAgentsVisible int
-    // Debug level passed to backend stream endpoint: "", "verbose", or "full"
-    DebugLevel string
+	MaxAgentsVisible int
+	// Debug level passed to backend stream endpoint: "", "verbose", or "full"
+	DebugLevel string
 }
 
 // Load reads configuration from environment and .env file
@@ -34,16 +34,16 @@ func Load() (*Config, error) {
 	// Load .env file if it exists (optional)
 	_ = godotenv.Load()
 
-    cfg := &Config{
-        BackendURL:       getEnv("BACKEND_URL", "http://localhost:5003"),
-        APIKey:           getEnv("API_KEY", ""),
-        SessionID:        getEnv("SESSION_ID", "test-session-001"),
-        LogDir:           getEnv("LOG_DIR", "./logs"),
-        LogLevel:         getEnv("LOG_LEVEL", "info"),
-        EnableColors:     getEnvBool("ENABLE_COLORS", true),
-        MaxAgentsVisible: getEnvInt("MAX_AGENTS_VISIBLE", 5),
-        DebugLevel:       getEnv("STREAM_DEBUG_LEVEL", ""),
-    }
+	cfg := &Config{
+		BackendURL:       getEnv("BACKEND_URL", "http://localhost:5003"),
+		APIKey:           getEnv("API_KEY", ""),
+		SessionID:        getEnv("SESSION_ID", "test-session-001"),
+		LogDir:           getEnv("LOG_DIR", "./logs"),
+		LogLevel:         getEnv("LOG_LEVEL", "info"),
+		EnableColors:     getEnvBool("ENABLE_COLORS", true),
+		MaxAgentsVisible: getEnvInt("MAX_AGENTS_VISIBLE", 5),
+		DebugLevel:       getEnv("STREAM_DEBUG_LEVEL", ""),
+	}
 
 	// Validate required fields
 	if cfg.APIKey == "" {

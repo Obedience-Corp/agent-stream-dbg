@@ -105,6 +105,27 @@ func (p *Parser) Parse(eventType string, data []byte) (*Event, error) {
 		}
 		event.Error = &e
 
+	case PromptInfo:
+		var e PromptInfoEvent
+		if err := json.Unmarshal(data, &e); err != nil {
+			return nil, fmt.Errorf("failed to parse prompt_info: %w", err)
+		}
+		event.PromptInfo = &e
+
+	case PromptFull:
+		var e PromptFullEvent
+		if err := json.Unmarshal(data, &e); err != nil {
+			return nil, fmt.Errorf("failed to parse prompt_full: %w", err)
+		}
+		event.PromptFull = &e
+
+	case FlowConfig:
+		var e FlowConfigEvent
+		if err := json.Unmarshal(data, &e); err != nil {
+			return nil, fmt.Errorf("failed to parse flow_config: %w", err)
+		}
+		event.FlowConfig = &e
+
 	default:
 		return nil, fmt.Errorf("unknown event type: %s", eventType)
 	}
@@ -114,17 +135,17 @@ func (p *Parser) Parse(eventType string, data []byte) (*Event, error) {
 
 // ParseRaw attempts to parse event data without knowing the type beforehand
 func (p *Parser) ParseRaw(data []byte) (*Event, error) {
-    // First, extract just the type field
-    var base BaseEvent
-    if err := json.Unmarshal(data, &base); err != nil {
-        return nil, fmt.Errorf("failed to parse base event: %w", err)
-    }
+	// First, extract just the type field
+	var base BaseEvent
+	if err := json.Unmarshal(data, &base); err != nil {
+		return nil, fmt.Errorf("failed to parse base event: %w", err)
+	}
 
-    if base.Type != "" {
-        return p.Parse(string(base.Type), data)
-    }
-    // If payload has no explicit type (e.g., flow_step_* detail), try heuristics
-    // Attempt known extension kinds based on fields
-    // This is a safe fallback; SSE event name should normally be set and used instead.
-    return &Event{Raw: data}, nil
+	if base.Type != "" {
+		return p.Parse(string(base.Type), data)
+	}
+	// If payload has no explicit type (e.g., flow_step_* detail), try heuristics
+	// Attempt known extension kinds based on fields
+	// This is a safe fallback; SSE event name should normally be set and used instead.
+	return &Event{Raw: data}, nil
 }
