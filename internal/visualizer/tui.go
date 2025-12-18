@@ -261,7 +261,7 @@ func (m *Model) View() string {
 	if dbg == "" {
 		dbg = "off"
 	}
-	controls := statsStyle.Render(fmt.Sprintf("[p] pause | [a] agents | [r] refs | [i] prompts | [v] verbose | [f] full | [n] off | [q] quit | debug=%s", dbg))
+	controls := statsStyle.Render(fmt.Sprintf("^P pause | ^A agents | ^R refs | ^I prompts | F1 verbose | F2 full | F3 off | ^C quit | debug=%s", dbg))
 
 	// Build prompt panel (debug mode only)
 	promptPanelView := m.renderPromptPanel()
@@ -366,42 +366,38 @@ func (m *Model) renderWizard() string {
 // handleKeyPress handles keyboard input
 func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "q", "ctrl+c":
+	case "ctrl+c":
 		m.cancel()
 		return m, tea.Quit
 
-	case "p":
+	case "ctrl+p":
 		m.paused = !m.paused
 		return m, nil
 
-	case "s":
-		// Save session logic would go here
-		return m, nil
-
-	case "a":
+	case "ctrl+a":
 		m.showAgentsExpanded = !m.showAgentsExpanded
 		return m, nil
 
-	case "r":
+	case "ctrl+r":
 		m.showPromptRef = !m.showPromptRef
 		return m, nil
 
-	case "i":
+	case "ctrl+i":
 		m.showPromptPanel = !m.showPromptPanel
 		return m, nil
 
-	case "v":
-		// Toggle verbose debug and reconnect
+	case "F1":
+		// Verbose debug mode
 		m.config.DebugLevel = "verbose"
 		return m, m.reconnect()
 
-	case "f":
-		// Toggle full debug and reconnect
+	case "F2":
+		// Full debug mode
 		m.config.DebugLevel = "full"
 		return m, m.reconnect()
 
-	case "n":
-		// Turn off debug and reconnect
+	case "F3":
+		// Turn off debug mode
 		m.config.DebugLevel = ""
 		return m, m.reconnect()
 	}
