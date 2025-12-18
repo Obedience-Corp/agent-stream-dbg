@@ -148,6 +148,9 @@ type InteractiveModel struct {
 
 	// Synthesis content for App pane attribution
 	synthesisContent string
+
+	// Save status message
+	saveStatus string
 }
 
 type Message struct {
@@ -199,7 +202,7 @@ func NewInteractiveModel(cfg *config.EnhancedConfig, apiKey string) InteractiveM
 		apiKey:       apiKey,
 		textarea:     ta,
 		viewport:     vp,
-		viewMode:     ViewModeRaw, // Default to raw view
+		viewMode:     ViewModeParsed, // Default to parsed view (Ctrl+T to toggle to raw)
 		messages:     make([]Message, 0),
 		follow:       true,
 		showHistory:  true,
@@ -301,6 +304,43 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.follow = !m.follow
 			if m.follow {
 				m.viewport.GotoBottom()
+			}
+			return m, nil
+		}
+		if msg.Type == tea.KeyCtrlS {
+			// Save events to file
+			if len(m.messages) > 0 {
+				msg := m.messages[len(m.messages)-1]
+				filename := fmt.Sprintf("events_%s.json", time.Now().Format("20060102_150405"))
+
+				// Build export data with all events
+				exportData := struct {
+					Timestamp    string                    `json:"timestamp"`
+					EventCount   int                       `json:"event_count"`
+					RawSSE       string                    `json:"raw_sse,omitempty"`
+					Events       []json.RawMessage         `json:"events"`
+				}{
+					Timestamp:  time.Now().Format(time.RFC3339),
+					EventCount: len(msg.Events),
+					RawSSE:     msg.RawSSE,
+					Events:     make([]json.RawMessage, 0, len(msg.Events)),
+				}
+				for _, evt := range msg.Events {
+					if len(evt.Raw) > 0 {
+						exportData.Events = append(exportData.Events, evt.Raw)
+					}
+				}
+
+				data, err := json.MarshalIndent(exportData, "", "  ")
+				if err != nil {
+					m.saveStatus = fmt.Sprintf("Save failed: %v", err)
+				} else if err := os.WriteFile(filename, data, 0644); err != nil {
+					m.saveStatus = fmt.Sprintf("Save failed: %v", err)
+				} else {
+					m.saveStatus = fmt.Sprintf("Saved to %s", filename)
+				}
+				m.contentDirty = true
+				m.refreshViewportContent()
 			}
 			return m, nil
 		}
@@ -442,6 +482,8 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.selectedEventIdx++
 						m.contentDirty = true
 						m.refreshViewportContent()
+						// Scroll viewport down to keep selection visible
+						m.viewport.ScrollDown(3)
 					}
 				} else {
 					m.viewport.ScrollDown(1)
@@ -462,6 +504,8 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.selectedEventIdx--
 						m.contentDirty = true
 						m.refreshViewportContent()
+						// Scroll viewport up to keep selection visible
+						m.viewport.ScrollUp(3)
 					}
 				} else {
 					m.viewport.ScrollUp(1)
@@ -906,10 +950,17 @@ func (m InteractiveModel) View() string {
 		wrapStr = "ON"
 	}
 	status := fmt.Sprintf(
-		"Mode:%s Pane:%s Msgs:%d | 1-6:panes %s w:wrap(%s) F7:verbose F8:full F9:off Ctrl+N:new-se",
+		"Mode:%s Pane:%s Msgs:%d | 1-6:panes %s w:wrap(%s) F7:verbose F8:full F9:off Ctrl+S:save",
 		mode, m.currentPaneName(), len(m.messages), paneHints, wrapStr,
 	)
 	b.WriteString(statusStyle.Render(status))
+
+	// Show save status if present
+	if m.saveStatus != "" {
+		b.WriteString("\n")
+		saveStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
+		b.WriteString(saveStyle.Render(m.saveStatus))
+	}
 
 	return b.String()
 }
@@ -2329,15 +2380,8 @@ func (m InteractiveModel) renderEventsPane() string {
 				(evt.FlowStepEnd != nil && (evt.FlowStepEnd.Step == "synthesis" || evt.FlowStepEnd.Step == "wizard")))
 		isTokenEvent := evt.Type == events.AgentContent || evt.Type == events.WizardContent
 
-		// Check if this event is expandable (has detailed content)
-		isExpandable := evt.Type == events.FilterDetail ||
-			evt.Type == events.PerspectiveDetail ||
-			evt.Type == events.SynthesisDetail ||
-			evt.Type == events.AgentMetadata ||
-			evt.Type == events.PromptInfo ||
-			evt.Type == events.PromptFull ||
-			evt.Type == events.FlowConfig ||
-			evt.Type == events.FlowStepDetail
+		// All events are expandable - show raw JSON when expanded
+		isExpandable := true
 
 		isExpanded := m.eventExpanded[visibleIdx]
 		isSelected := visibleIdx == m.selectedEventIdx
@@ -2547,6 +2591,31 @@ func (m InteractiveModel) renderEventsPane() string {
 							expandedContent.WriteString(expandedContentStyle.Render(fmt.Sprintf("• %s: %s", p.AgentID, p.Summary)))
 							expandedContent.WriteString("\n")
 						}
+					}
+				}
+			case events.WizardStreamComplete:
+				// Show full wizard response from AgentResponses
+				if wizard := msg.AgentResponses["wizard"]; wizard != nil && wizard.FullContent != "" {
+					expandedContent.WriteString(labelStyle.Render("Wizard Response:"))
+					expandedContent.WriteString("\n")
+					expandedContent.WriteString(expandedContentStyle.Render(wizard.FullContent))
+					expandedContent.WriteString("\n")
+					if wizard.TokenCount > 0 {
+						expandedContent.WriteString(labelStyle.Render("Tokens:"))
+						expandedContent.WriteString(fmt.Sprintf(" %d\n", wizard.TokenCount))
+					}
+				}
+			default:
+				// For any event type, show the raw JSON
+				if len(evt.Raw) > 0 {
+					expandedContent.WriteString(labelStyle.Render("Raw Event Data:"))
+					expandedContent.WriteString("\n")
+					// Pretty-print the JSON
+					var prettyJSON bytes.Buffer
+					if err := json.Indent(&prettyJSON, evt.Raw, "", "  "); err == nil {
+						expandedContent.WriteString(expandedContentStyle.Render(prettyJSON.String()))
+					} else {
+						expandedContent.WriteString(expandedContentStyle.Render(string(evt.Raw)))
 					}
 				}
 			}
