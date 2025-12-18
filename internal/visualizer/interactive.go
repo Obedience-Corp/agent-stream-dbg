@@ -436,12 +436,9 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.refreshViewportContent()
 					}
 				} else if m.activePane == PaneEvents {
-					// Navigate down in events list
-					maxEvents := 0
-					if len(m.messages) > 0 {
-						maxEvents = len(m.messages[len(m.messages)-1].Events)
-					}
-					if m.selectedEventIdx < maxEvents-1 {
+					// Navigate down in visible events list
+					visibleCount := m.countVisibleEvents()
+					if m.selectedEventIdx < visibleCount-1 {
 						m.selectedEventIdx++
 						m.contentDirty = true
 						m.refreshViewportContent()
@@ -460,7 +457,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.refreshViewportContent()
 					}
 				} else if m.activePane == PaneEvents {
-					// Navigate up in events list
+					// Navigate up in visible events list
 					if m.selectedEventIdx > 0 {
 						m.selectedEventIdx--
 						m.contentDirty = true
@@ -2179,6 +2176,46 @@ func (m InteractiveModel) renderTimelinePane() string {
 	return b.String()
 }
 
+// isEventVisible checks if an event should be visible based on current filter settings
+func (m InteractiveModel) isEventVisible(evt *events.Event) bool {
+	// Check if this is a wizard-related event
+	isWizardEvent := evt.Type == events.WizardStreamStart ||
+		evt.Type == events.WizardContent ||
+		evt.Type == events.WizardStreamComplete
+	// synthesis flow_step events are also relevant for wizard-only view
+	isSynthesisFlowEvent := (evt.Type == events.FlowStepStart || evt.Type == events.FlowStepEnd) &&
+		((evt.FlowStepStart != nil && (evt.FlowStepStart.Step == "synthesis" || evt.FlowStepStart.Step == "wizard")) ||
+			(evt.FlowStepEnd != nil && (evt.FlowStepEnd.Step == "synthesis" || evt.FlowStepEnd.Step == "wizard")))
+
+	// Skip non-wizard events if wizard-only filter is on
+	if m.eventsWizardOnly && !isWizardEvent && !isSynthesisFlowEvent {
+		return false
+	}
+
+	// Skip token events if showTokens is false
+	isTokenEvent := evt.Type == events.AgentContent || evt.Type == events.WizardContent
+	if isTokenEvent && !m.showTokens {
+		return false
+	}
+
+	return true
+}
+
+// countVisibleEvents counts events that are visible after filtering
+func (m InteractiveModel) countVisibleEvents() int {
+	if len(m.messages) == 0 {
+		return 0
+	}
+	msg := m.messages[len(m.messages)-1]
+	count := 0
+	for _, evt := range msg.Events {
+		if m.isEventVisible(evt) {
+			count++
+		}
+	}
+	return count
+}
+
 // renderEventsPane renders the Events pane (F5) showing SSE events
 func (m InteractiveModel) renderEventsPane() string {
 	var b strings.Builder
@@ -2274,26 +2311,23 @@ func (m InteractiveModel) renderEventsPane() string {
 	expandedContentStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7")).PaddingLeft(4)
 	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true)
 
-	for idx, evt := range msg.Events {
-		// Check if this is a wizard-related event
+	// Track visible event index (for selection/expansion which counts visible events only)
+	visibleIdx := 0
+
+	for _, evt := range msg.Events {
+		// Skip events that don't pass the filter
+		if !m.isEventVisible(evt) {
+			continue
+		}
+
+		// Check if this is a wizard-related event (for styling)
 		isWizardEvent := evt.Type == events.WizardStreamStart ||
 			evt.Type == events.WizardContent ||
 			evt.Type == events.WizardStreamComplete
-		// synthesis flow_step events are also relevant for wizard-only view
 		isSynthesisFlowEvent := (evt.Type == events.FlowStepStart || evt.Type == events.FlowStepEnd) &&
 			((evt.FlowStepStart != nil && (evt.FlowStepStart.Step == "synthesis" || evt.FlowStepStart.Step == "wizard")) ||
 				(evt.FlowStepEnd != nil && (evt.FlowStepEnd.Step == "synthesis" || evt.FlowStepEnd.Step == "wizard")))
-
-		// Skip non-wizard events if wizard-only filter is on
-		if m.eventsWizardOnly && !isWizardEvent && !isSynthesisFlowEvent {
-			continue
-		}
-
-		// Skip token events if showTokens is false
 		isTokenEvent := evt.Type == events.AgentContent || evt.Type == events.WizardContent
-		if isTokenEvent && !m.showTokens {
-			continue
-		}
 
 		// Check if this event is expandable (has detailed content)
 		isExpandable := evt.Type == events.FilterDetail ||
@@ -2305,8 +2339,8 @@ func (m InteractiveModel) renderEventsPane() string {
 			evt.Type == events.FlowConfig ||
 			evt.Type == events.FlowStepDetail
 
-		isExpanded := m.eventExpanded[idx]
-		isSelected := idx == m.selectedEventIdx
+		isExpanded := m.eventExpanded[visibleIdx]
+		isSelected := visibleIdx == m.selectedEventIdx
 
 		// Selection cursor and expand/collapse icon
 		var prefix string
@@ -2521,6 +2555,9 @@ func (m InteractiveModel) renderEventsPane() string {
 				b.WriteString("\n")
 			}
 		}
+
+		// Increment visible index for next iteration
+		visibleIdx++
 	}
 
 	return b.String()
