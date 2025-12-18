@@ -308,33 +308,31 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if msg.Type == tea.KeyCtrlS {
-			// Save events to file
+			// Save events to file with full expanded content (human-readable)
 			if len(m.messages) > 0 {
-				msg := m.messages[len(m.messages)-1]
-				filename := fmt.Sprintf("events_%s.json", time.Now().Format("20060102_150405"))
+				lastMsg := m.messages[len(m.messages)-1]
+				filename := fmt.Sprintf("events_%s.txt", time.Now().Format("20060102_150405"))
 
-				// Build export data with all events
-				exportData := struct {
-					Timestamp    string                    `json:"timestamp"`
-					EventCount   int                       `json:"event_count"`
-					RawSSE       string                    `json:"raw_sse,omitempty"`
-					Events       []json.RawMessage         `json:"events"`
-				}{
-					Timestamp:  time.Now().Format(time.RFC3339),
-					EventCount: len(msg.Events),
-					RawSSE:     msg.RawSSE,
-					Events:     make([]json.RawMessage, 0, len(msg.Events)),
-				}
-				for _, evt := range msg.Events {
-					if len(evt.Raw) > 0 {
-						exportData.Events = append(exportData.Events, evt.Raw)
-					}
+				var output strings.Builder
+				output.WriteString("# Stream Debugger Event Export\n")
+				output.WriteString(fmt.Sprintf("# Timestamp: %s\n", time.Now().Format(time.RFC3339)))
+				output.WriteString(fmt.Sprintf("# Session: %s\n", m.cfg.Session.ID))
+				output.WriteString(fmt.Sprintf("# Event Count: %d\n\n", len(lastMsg.Events)))
+				output.WriteString(strings.Repeat("=", 80) + "\n\n")
+
+				for i, evt := range lastMsg.Events {
+					// Event header
+					output.WriteString(fmt.Sprintf("## Event %d: %s\n", i+1, evt.Type))
+					output.WriteString(strings.Repeat("-", 40) + "\n")
+
+					// Expanded content (same as TUI shows when expanded)
+					expanded := m.renderEventExpandedPlainText(evt, &lastMsg)
+					output.WriteString(expanded)
+					output.WriteString("\n\n")
 				}
 
-				data, err := json.MarshalIndent(exportData, "", "  ")
+				err := os.WriteFile(filename, []byte(output.String()), 0644)
 				if err != nil {
-					m.saveStatus = fmt.Sprintf("Save failed: %v", err)
-				} else if err := os.WriteFile(filename, data, 0644); err != nil {
 					m.saveStatus = fmt.Sprintf("Save failed: %v", err)
 				} else {
 					m.saveStatus = fmt.Sprintf("Saved to %s", filename)
@@ -2709,6 +2707,211 @@ func clipRunesLeft(line string, n int) string {
 		i++
 	}
 	return ""
+}
+
+// renderEventExpandedPlainText returns the human-readable expanded content for an event
+// This is the plain-text version of what the TUI shows when a node is expanded
+// Used for Ctrl+S export to file
+func (m InteractiveModel) renderEventExpandedPlainText(evt *events.Event, msg *Message) string {
+	var b strings.Builder
+
+	switch evt.Type {
+	case events.FilterDetail:
+		if evt.FilterDetail != nil {
+			b.WriteString("Thinking (full):\n")
+			b.WriteString(evt.FilterDetail.ThinkingFull)
+			b.WriteString("\n\nFiltered Response:\n")
+			b.WriteString(evt.FilterDetail.FilteredResponse)
+		}
+	case events.PerspectiveDetail:
+		if evt.PerspectiveDetail != nil {
+			b.WriteString("Perspective (full):\n")
+			b.WriteString(evt.PerspectiveDetail.PerspectiveFull)
+			b.WriteString("\n\nSummary:\n")
+			b.WriteString(evt.PerspectiveDetail.Summary)
+			if len(evt.PerspectiveDetail.KeyInsights) > 0 {
+				b.WriteString("\n\nKey Insights:\n")
+				for _, insight := range evt.PerspectiveDetail.KeyInsights {
+					b.WriteString("• " + insight + "\n")
+				}
+			}
+		}
+	case events.SynthesisDetail:
+		if evt.SynthesisDetail != nil {
+			b.WriteString("Plan ID: ")
+			b.WriteString(evt.SynthesisDetail.PlanID)
+			b.WriteString("\nMethod: ")
+			b.WriteString(evt.SynthesisDetail.SynthesisMethod)
+			b.WriteString(fmt.Sprintf("\nSources Combined: %d", evt.SynthesisDetail.SourcesCombined))
+			b.WriteString("\n\nSynthesis (full):\n")
+			b.WriteString(evt.SynthesisDetail.SynthesisFull)
+		}
+	case events.AgentMetadata:
+		if evt.AgentMetadata != nil {
+			b.WriteString("Model: " + evt.AgentMetadata.Model + "\n")
+			b.WriteString(fmt.Sprintf("Total Tokens: %d\n", evt.AgentMetadata.TotalTokens))
+			b.WriteString(fmt.Sprintf("Response Length: %d chars\n", evt.AgentMetadata.ResponseLength))
+			b.WriteString(fmt.Sprintf("Latency: %dms\n", evt.AgentMetadata.LatencyMs))
+		}
+	case events.PromptInfo:
+		if evt.PromptInfo != nil {
+			b.WriteString("Prompt File: " + evt.PromptInfo.PromptFile + "\n")
+			b.WriteString(fmt.Sprintf("Prompt Length: %d chars\n", evt.PromptInfo.PromptLength))
+			b.WriteString("\nSnippet:\n")
+			b.WriteString(evt.PromptInfo.PromptSnippet)
+		}
+	case events.PromptFull:
+		if evt.PromptFull != nil {
+			b.WriteString("Agent: " + evt.PromptFull.AgentID + "\n")
+			b.WriteString("\nSystem Prompt (full):\n")
+			b.WriteString(evt.PromptFull.SystemPrompt)
+		}
+	case events.FlowConfig:
+		if evt.FlowConfig != nil {
+			b.WriteString("Flow ID: " + evt.FlowConfig.FlowID + "\n")
+			b.WriteString("Flow File: " + evt.FlowConfig.FlowFile + "\n")
+			b.WriteString("Stages Order: " + strings.Join(evt.FlowConfig.StagesOrder, " → ") + "\n")
+			b.WriteString("Routing Mode: " + evt.FlowConfig.RoutingMode + "\n")
+			b.WriteString(fmt.Sprintf("Agent Count: %d\n", evt.FlowConfig.AgentCount))
+			b.WriteString(fmt.Sprintf("Non-Wizard Count: %d\n", evt.FlowConfig.NonWizardCount))
+			if len(evt.FlowConfig.StagesEnabled) > 0 {
+				b.WriteString("Stages Enabled:\n")
+				for stage, enabled := range evt.FlowConfig.StagesEnabled {
+					b.WriteString(fmt.Sprintf("  %s: %v\n", stage, enabled))
+				}
+			}
+		}
+	case events.FlowStepStart:
+		if evt.FlowStepStart != nil {
+			b.WriteString("Step: " + evt.FlowStepStart.Step + "\n")
+			b.WriteString(fmt.Sprintf("Enabled: %v\n", evt.FlowStepStart.Enabled))
+			if evt.FlowStepStart.AgentCount > 0 {
+				b.WriteString(fmt.Sprintf("Agent Count: %d\n", evt.FlowStepStart.AgentCount))
+			}
+			if evt.FlowStepStart.NonWizardCount > 0 {
+				b.WriteString(fmt.Sprintf("Non-Wizard Count: %d\n", evt.FlowStepStart.NonWizardCount))
+			}
+		}
+	case events.FlowStepEnd:
+		if evt.FlowStepEnd != nil {
+			b.WriteString("Step: " + evt.FlowStepEnd.Step + "\n")
+			b.WriteString(fmt.Sprintf("Enabled: %v\n", evt.FlowStepEnd.Enabled))
+			if evt.FlowStepEnd.DurationMs > 0 {
+				b.WriteString(fmt.Sprintf("Duration: %dms\n", evt.FlowStepEnd.DurationMs))
+			}
+			if evt.FlowStepEnd.RoutingMode != "" {
+				b.WriteString("Routing Mode: " + evt.FlowStepEnd.RoutingMode + "\n")
+			}
+			if evt.FlowStepEnd.RouteTaken != "" {
+				b.WriteString("Route Taken: " + evt.FlowStepEnd.RouteTaken + "\n")
+			}
+			if evt.FlowStepEnd.RouteReason != "" {
+				b.WriteString("Route Reason: " + evt.FlowStepEnd.RouteReason + "\n")
+			}
+			if len(evt.FlowStepEnd.RouteAgents) > 0 {
+				b.WriteString("Route Agents: " + strings.Join(evt.FlowStepEnd.RouteAgents, ", ") + "\n")
+			}
+		}
+	case events.FlowStepDetail:
+		if evt.FlowStepDetail != nil {
+			b.WriteString("Step: " + evt.FlowStepDetail.Step + "\n")
+			if evt.FlowStepDetail.PlanID != "" {
+				b.WriteString("Plan ID: " + evt.FlowStepDetail.PlanID + "\n")
+			}
+			if evt.FlowStepDetail.SynthesisPreview != "" {
+				b.WriteString("\nSynthesis Preview:\n")
+				b.WriteString(evt.FlowStepDetail.SynthesisPreview)
+				b.WriteString("\n")
+			}
+			if evt.FlowStepDetail.SynthesisFull != "" {
+				b.WriteString("\nSynthesis Full:\n")
+				b.WriteString(evt.FlowStepDetail.SynthesisFull)
+				b.WriteString("\n")
+			}
+			if evt.FlowStepDetail.ThinkingPreview != "" {
+				b.WriteString("\nThinking Preview:\n")
+				b.WriteString(evt.FlowStepDetail.ThinkingPreview)
+				b.WriteString("\n")
+			}
+			if len(evt.FlowStepDetail.Perspectives) > 0 {
+				b.WriteString("\nPerspectives:\n")
+				for _, p := range evt.FlowStepDetail.Perspectives {
+					b.WriteString(fmt.Sprintf("• %s: %s\n", p.AgentID, p.Summary))
+				}
+			}
+			if len(evt.FlowStepDetail.Agents) > 0 {
+				b.WriteString("\nAgents: " + strings.Join(evt.FlowStepDetail.Agents, ", ") + "\n")
+			}
+		}
+	case events.WizardStreamStart:
+		if evt.WizardStreamStart != nil {
+			b.WriteString("Message ID: " + evt.WizardStreamStart.MessageID + "\n")
+		}
+	case events.WizardStreamComplete:
+		// Show full wizard response from AgentResponses
+		if msg != nil {
+			if wizard := msg.AgentResponses["wizard"]; wizard != nil && wizard.FullContent != "" {
+				b.WriteString("Wizard Response:\n")
+				b.WriteString(wizard.FullContent)
+				b.WriteString("\n")
+				if wizard.TokenCount > 0 {
+					b.WriteString(fmt.Sprintf("\nTokens: %d\n", wizard.TokenCount))
+				}
+			}
+		}
+	case events.AgentStreamStart:
+		if evt.AgentStreamStart != nil {
+			b.WriteString("Agent: " + evt.AgentStreamStart.AgentID + "\n")
+			b.WriteString("Message ID: " + evt.AgentStreamStart.MessageID + "\n")
+		}
+	case events.AgentStreamComplete:
+		if evt.AgentStreamComplete != nil {
+			b.WriteString("Agent: " + evt.AgentStreamComplete.AgentID + "\n")
+			b.WriteString(fmt.Sprintf("Token Count: %d\n", evt.AgentStreamComplete.TokenCount))
+			// Show full agent response from AgentResponses
+			if msg != nil {
+				if agent := msg.AgentResponses[evt.AgentStreamComplete.AgentID]; agent != nil && agent.FullContent != "" {
+					b.WriteString("\nFull Response:\n")
+					b.WriteString(agent.FullContent)
+				}
+			}
+		}
+	case events.SessionStart:
+		if evt.SessionStart != nil {
+			b.WriteString("Session ID: " + evt.SessionStart.SessionID + "\n")
+			b.WriteString("Message ID: " + evt.SessionStart.MessageID + "\n")
+			if evt.SessionStart.FlowID != "" {
+				b.WriteString("Flow ID: " + evt.SessionStart.FlowID + "\n")
+			}
+		}
+	case events.SessionComplete:
+		if evt.SessionComplete != nil {
+			b.WriteString("Session ID: " + evt.SessionComplete.SessionID + "\n")
+		}
+	case events.Error:
+		if evt.Error != nil {
+			b.WriteString("Error Type: " + string(evt.Error.ErrorType) + "\n")
+			b.WriteString("Message: " + evt.Error.Message + "\n")
+			if evt.Error.Details != "" {
+				b.WriteString("Details: " + evt.Error.Details + "\n")
+			}
+			if evt.Error.AgentID != "" {
+				b.WriteString("Agent: " + evt.Error.AgentID + "\n")
+			}
+		}
+	default:
+		// For any unknown event type, show the raw JSON (pretty-printed)
+		if len(evt.Raw) > 0 {
+			b.WriteString("Raw Event Data:\n")
+			var prettyJSON bytes.Buffer
+			if err := json.Indent(&prettyJSON, evt.Raw, "", "  "); err == nil {
+				b.WriteString(prettyJSON.String())
+			} else {
+				b.WriteString(string(evt.Raw))
+			}
+		}
+	}
+	return b.String()
 }
 
 // urlQueryEscape safely escapes a message for URL query use
