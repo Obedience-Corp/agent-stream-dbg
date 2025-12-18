@@ -90,7 +90,11 @@ func (tv *TimelineVisualizer) AddEvent(event *events.Event) {
 			changed := len(event.FlowStepDetail.FilteredAgents)
 			entry.Content = fmt.Sprintf("filter changed=%d", changed)
 		case "agent_exec":
-			entry.Content = fmt.Sprintf("agents=%v", event.FlowStepDetail.Agents)
+			if event.FlowStepDetail.AgentID != "" && event.FlowStepDetail.ProviderThreadID != "" {
+				entry.Content = fmt.Sprintf("agent=%s thread=%s provider=%s", event.FlowStepDetail.AgentID, event.FlowStepDetail.ProviderThreadID, event.FlowStepDetail.Provider)
+			} else {
+				entry.Content = fmt.Sprintf("agents=%v", event.FlowStepDetail.Agents)
+			}
 		default:
 			entry.Content = step
 		}

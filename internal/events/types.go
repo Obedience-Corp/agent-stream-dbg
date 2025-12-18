@@ -122,8 +122,8 @@ type FlowStepEndEvent struct {
 // This event is emitted only when the backend is called with debug flags
 // and is intended for developer tooling like stream-debugger.
 type FlowStepDetailEvent struct {
-	BaseEvent
-	Step string `json:"step"`
+    BaseEvent
+    Step string `json:"step"`
 
 	// Synthesis details
 	PlanID           string `json:"plan_id,omitempty"`
@@ -139,8 +139,13 @@ type FlowStepDetailEvent struct {
 	ThinkingCharsTotal int      `json:"thinking_chars_total,omitempty"`
 	ThinkingPreview    string   `json:"thinking_preview,omitempty"`
 
-	// Agent execution details
-	Agents []string `json:"agents,omitempty"`
+    // Agent execution details
+    Agents           []string `json:"agents,omitempty"`
+    // Optional provider-level details emitted during agent_exec
+    AgentID          string `json:"agent_id,omitempty"`
+    ProviderThreadID string `json:"provider_thread_id,omitempty"`
+    AssistantID      string `json:"assistant_id,omitempty"`
+    Provider         string `json:"provider,omitempty"`
 }
 
 // PromptInfoEvent contains agent prompt metadata (debug=verbose)
