@@ -25,6 +25,12 @@ const (
 	PromptInfo EventType = "prompt_info"
 	PromptFull EventType = "prompt_full"
 	FlowConfig EventType = "flow_config"
+
+	// Full transparency debug events (debug=verbose)
+	FilterDetail      EventType = "filter_detail"
+	PerspectiveDetail EventType = "perspective_detail"
+	SynthesisDetail   EventType = "synthesis_detail"
+	AgentMetadata     EventType = "agent_metadata"
 )
 
 // BaseEvent contains fields common to all events
@@ -168,6 +174,49 @@ type FlowConfigEvent struct {
 	NonWizardCount int             `json:"non_wizard_count"`
 }
 
+// FilterDetailEvent contains full thinking and filtered response for an agent
+// Emitted during filter stage when backend is in debug mode
+type FilterDetailEvent struct {
+	BaseEvent
+	AgentID          string `json:"agent_id"`
+	ThinkingFull     string `json:"thinking_full"`
+	FilteredResponse string `json:"filtered_response"`
+	OriginalLength   int    `json:"original_length"`
+	FilteredLength   int    `json:"filtered_length"`
+}
+
+// PerspectiveDetailEvent contains full agent perspective from synthesis
+// Emitted during synthesis stage when backend is in debug mode
+type PerspectiveDetailEvent struct {
+	BaseEvent
+	AgentID         string   `json:"agent_id"`
+	PerspectiveFull string   `json:"perspective_full"`
+	Summary         string   `json:"summary"`
+	KeyInsights     []string `json:"key_insights"`
+	RelevanceScore  float64  `json:"relevance_score"`
+}
+
+// SynthesisDetailEvent contains full synthesis output
+// Emitted during synthesis stage when backend is in debug mode
+type SynthesisDetailEvent struct {
+	BaseEvent
+	PlanID          string `json:"plan_id"`
+	SynthesisFull   string `json:"synthesis_full"`
+	SynthesisMethod string `json:"synthesis_method"`
+	SourcesCombined int    `json:"sources_combined"`
+}
+
+// AgentMetadataEvent contains LLM metadata for an agent response
+// Emitted after agent stream completes when backend is in debug mode
+type AgentMetadataEvent struct {
+	BaseEvent
+	AgentID        string `json:"agent_id"`
+	Model          string `json:"model"`
+	TotalTokens    int    `json:"total_tokens"`
+	ResponseLength int    `json:"response_length"`
+	LatencyMs      int    `json:"latency_ms"`
+}
+
 // ErrorType represents different categories of errors
 type ErrorType string
 
@@ -214,6 +263,11 @@ type Event struct {
 	PromptInfo *PromptInfoEvent
 	PromptFull *PromptFullEvent
 	FlowConfig *FlowConfigEvent
+	// Full transparency debug events
+	FilterDetail      *FilterDetailEvent
+	PerspectiveDetail *PerspectiveDetailEvent
+	SynthesisDetail   *SynthesisDetailEvent
+	AgentMetadata     *AgentMetadataEvent
 }
 
 // GetAgentID returns the agent ID if the event is agent-related

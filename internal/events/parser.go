@@ -126,6 +126,34 @@ func (p *Parser) Parse(eventType string, data []byte) (*Event, error) {
 		}
 		event.FlowConfig = &e
 
+	case FilterDetail:
+		var e FilterDetailEvent
+		if err := json.Unmarshal(data, &e); err != nil {
+			return nil, fmt.Errorf("failed to parse filter_detail: %w", err)
+		}
+		event.FilterDetail = &e
+
+	case PerspectiveDetail:
+		var e PerspectiveDetailEvent
+		if err := json.Unmarshal(data, &e); err != nil {
+			return nil, fmt.Errorf("failed to parse perspective_detail: %w", err)
+		}
+		event.PerspectiveDetail = &e
+
+	case SynthesisDetail:
+		var e SynthesisDetailEvent
+		if err := json.Unmarshal(data, &e); err != nil {
+			return nil, fmt.Errorf("failed to parse synthesis_detail: %w", err)
+		}
+		event.SynthesisDetail = &e
+
+	case AgentMetadata:
+		var e AgentMetadataEvent
+		if err := json.Unmarshal(data, &e); err != nil {
+			return nil, fmt.Errorf("failed to parse agent_metadata: %w", err)
+		}
+		event.AgentMetadata = &e
+
 	default:
 		return nil, fmt.Errorf("unknown event type: %s", eventType)
 	}

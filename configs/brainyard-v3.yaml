@@ -46,6 +46,11 @@ events:
     - "prompt_info"      # Agent prompt file paths and snippets (debug=verbose)
     - "prompt_full"      # Complete system prompts (debug=full)
     - "flow_config"      # Flow configuration at session start (debug=verbose)
+    # Full transparency debug events (debug=verbose)
+    - "filter_detail"    # Full thinking and filtered response per agent
+    - "perspective_detail" # Full agent perspectives from synthesis
+    - "synthesis_detail" # Full synthesis output
+    - "agent_metadata"   # LLM metadata (model, tokens, latency)
 
 logging:
   dir: "./logs"

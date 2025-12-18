@@ -141,6 +141,13 @@ type InteractiveModel struct {
 	// Flow pane state
 	flowTurnIndex  int  // which message index is displayed in Flow (default latest)
 	flowContinuous bool // when true, render all turns continuously
+
+	// Events pane state (expandable nodes)
+	eventExpanded    map[int]bool // event index -> expanded state
+	selectedEventIdx int          // cursor position in events list
+
+	// Synthesis content for App pane attribution
+	synthesisContent string
 }
 
 type Message struct {
@@ -213,6 +220,9 @@ func NewInteractiveModel(cfg *config.EnhancedConfig, apiKey string) InteractiveM
 		agentCollapsed: make(map[string]bool),
 		// YAML pane
 		configClient: clientapi.NewConfigAPIClient(cfg, apiKey),
+		// Events pane expandable nodes
+		eventExpanded:    make(map[int]bool),
+		selectedEventIdx: 0,
 	}
 	// Set an initial placeholder so the viewport isn't blank before first refresh
 	m.viewport.SetContent(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
@@ -418,10 +428,21 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			switch msg.String() {
 			case "j":
-				// Flow pane: move selection down; others: scroll viewport
+				// Flow pane: move selection down; Events pane: navigate events; others: scroll viewport
 				if m.activePane == PaneFlow {
 					if m.selectedStepIndex < 5 { // 6 steps: 0-5
 						m.selectedStepIndex++
+						m.contentDirty = true
+						m.refreshViewportContent()
+					}
+				} else if m.activePane == PaneEvents {
+					// Navigate down in events list
+					maxEvents := 0
+					if len(m.messages) > 0 {
+						maxEvents = len(m.messages[len(m.messages)-1].Events)
+					}
+					if m.selectedEventIdx < maxEvents-1 {
+						m.selectedEventIdx++
 						m.contentDirty = true
 						m.refreshViewportContent()
 					}
@@ -431,10 +452,17 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			case "k":
-				// Flow pane: move selection up; others: scroll viewport
+				// Flow pane: move selection up; Events pane: navigate events; others: scroll viewport
 				if m.activePane == PaneFlow {
 					if m.selectedStepIndex > 0 {
 						m.selectedStepIndex--
+						m.contentDirty = true
+						m.refreshViewportContent()
+					}
+				} else if m.activePane == PaneEvents {
+					// Navigate up in events list
+					if m.selectedEventIdx > 0 {
+						m.selectedEventIdx--
 						m.contentDirty = true
 						m.refreshViewportContent()
 					}
@@ -473,6 +501,11 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.contentDirty = true
 						m.refreshViewportContent()
 					}
+				} else if m.activePane == PaneEvents {
+					// Events pane: toggle expand/collapse for selected event
+					m.eventExpanded[m.selectedEventIdx] = !m.eventExpanded[m.selectedEventIdx]
+					m.contentDirty = true
+					m.refreshViewportContent()
 				}
 				return m, nil
 			case "o":
@@ -862,7 +895,7 @@ func (m InteractiveModel) View() string {
 		if m.eventsWizardOnly {
 			wizardStr = "ON"
 		}
-		paneHints = fmt.Sprintf("t:tokens(%s) W:wizard-only(%s)", tokensStr, wizardStr)
+		paneHints = fmt.Sprintf("j/k:navigate Enter:expand t:tokens(%s) W:wizard-only(%s)", tokensStr, wizardStr)
 	case PaneYAML:
 		paneHints = "R:reload y:snapshot"
 	case PaneMessages:
@@ -1776,13 +1809,67 @@ func (m InteractiveModel) renderAppPane() string {
 
 	// Render based on focus: wizard first if focused, agents first if focused
 	if m.appFocus == AppFocusWizard {
+		b.WriteString(m.renderSynthesisSection(msg))
 		b.WriteString(m.renderWizardSection(msg, focusStyle))
 		b.WriteString(m.renderAgentSummaries(msg))
 	} else {
 		b.WriteString(m.renderAgentSummaries(msg))
+		b.WriteString(m.renderSynthesisSection(msg))
 		b.WriteString(m.renderWizardSection(msg, lipgloss.NewStyle()))
 	}
 
+	return b.String()
+}
+
+// renderSynthesisSection renders the synthesis output (separate from wizard)
+func (m InteractiveModel) renderSynthesisSection(msg Message) string {
+	var b strings.Builder
+
+	// Look for synthesis_detail events in the message
+	var synthesisContent string
+	var synthesisPlanID string
+	var synthesisMethod string
+	var sourcesCombined int
+
+	for _, evt := range msg.Events {
+		if evt.Type == events.SynthesisDetail && evt.SynthesisDetail != nil {
+			synthesisContent = evt.SynthesisDetail.SynthesisFull
+			synthesisPlanID = evt.SynthesisDetail.PlanID
+			synthesisMethod = evt.SynthesisDetail.SynthesisMethod
+			sourcesCombined = evt.SynthesisDetail.SourcesCombined
+			break
+		}
+	}
+
+	if synthesisContent == "" {
+		return ""
+	}
+
+	synthesisStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Bold(true)
+	metaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Italic(true)
+
+	b.WriteString(synthesisStyle.Render("Synthesis Output"))
+	b.WriteString("\n")
+
+	// Show synthesis metadata
+	if synthesisPlanID != "" || synthesisMethod != "" {
+		var meta []string
+		if synthesisPlanID != "" {
+			meta = append(meta, fmt.Sprintf("plan: %s", synthesisPlanID))
+		}
+		if synthesisMethod != "" {
+			meta = append(meta, fmt.Sprintf("method: %s", synthesisMethod))
+		}
+		if sourcesCombined > 0 {
+			meta = append(meta, fmt.Sprintf("sources: %d", sourcesCombined))
+		}
+		b.WriteString(metaStyle.Render("[Synthesis] " + strings.Join(meta, ", ")))
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(synthesisContent)
+	b.WriteString("\n\n")
 	return b.String()
 }
 
@@ -2179,12 +2266,15 @@ func (m InteractiveModel) renderEventsPane() string {
 		return b.String()
 	}
 
-	// Filter events based on showTokens and eventsWizardOnly flags
+	// Styles for event rendering
 	eventStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 	tokenStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	wizardEventStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("13"))
+	selectedStyle := lipgloss.NewStyle().Background(lipgloss.Color("8")).Foreground(lipgloss.Color("15"))
+	expandedContentStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7")).PaddingLeft(4)
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true)
 
-	for _, evt := range msg.Events {
+	for idx, evt := range msg.Events {
 		// Check if this is a wizard-related event
 		isWizardEvent := evt.Type == events.WizardStreamStart ||
 			evt.Type == events.WizardContent ||
@@ -2205,10 +2295,40 @@ func (m InteractiveModel) renderEventsPane() string {
 			continue
 		}
 
-		// Format event
-		line := fmt.Sprintf("[%s]", evt.Type)
+		// Check if this event is expandable (has detailed content)
+		isExpandable := evt.Type == events.FilterDetail ||
+			evt.Type == events.PerspectiveDetail ||
+			evt.Type == events.SynthesisDetail ||
+			evt.Type == events.AgentMetadata ||
+			evt.Type == events.PromptInfo ||
+			evt.Type == events.PromptFull ||
+			evt.Type == events.FlowConfig ||
+			evt.Type == events.FlowStepDetail
 
-		// Add relevant details
+		isExpanded := m.eventExpanded[idx]
+		isSelected := idx == m.selectedEventIdx
+
+		// Selection cursor and expand/collapse icon
+		var prefix string
+		if isSelected {
+			prefix = "→ "
+		} else {
+			prefix = "  "
+		}
+		if isExpandable {
+			if isExpanded {
+				prefix += "▼ "
+			} else {
+				prefix += "▶ "
+			}
+		} else {
+			prefix += "  "
+		}
+
+		// Format event
+		line := fmt.Sprintf("%s[%s]", prefix, evt.Type)
+
+		// Add relevant details (compact summary on main line)
 		switch evt.Type {
 		case events.FlowStepStart:
 			if evt.FlowStepStart != nil {
@@ -2242,17 +2362,165 @@ func (m InteractiveModel) renderEventsPane() string {
 				}
 				line += fmt.Sprintf(" content=%q", content)
 			}
+		// New debug event types - show compact summary
+		case events.FilterDetail:
+			if evt.FilterDetail != nil {
+				line += fmt.Sprintf(" agent=%s thinking=%d filtered=%d", evt.FilterDetail.AgentID, evt.FilterDetail.OriginalLength, evt.FilterDetail.FilteredLength)
+			}
+		case events.PerspectiveDetail:
+			if evt.PerspectiveDetail != nil {
+				line += fmt.Sprintf(" agent=%s relevance=%.2f", evt.PerspectiveDetail.AgentID, evt.PerspectiveDetail.RelevanceScore)
+			}
+		case events.SynthesisDetail:
+			if evt.SynthesisDetail != nil {
+				line += fmt.Sprintf(" plan=%s method=%s sources=%d", evt.SynthesisDetail.PlanID, evt.SynthesisDetail.SynthesisMethod, evt.SynthesisDetail.SourcesCombined)
+			}
+		case events.AgentMetadata:
+			if evt.AgentMetadata != nil {
+				line += fmt.Sprintf(" agent=%s model=%s tokens=%d latency=%dms", evt.AgentMetadata.AgentID, evt.AgentMetadata.Model, evt.AgentMetadata.TotalTokens, evt.AgentMetadata.LatencyMs)
+			}
+		case events.PromptInfo:
+			if evt.PromptInfo != nil {
+				line += fmt.Sprintf(" agent=%s file=%s len=%d", evt.PromptInfo.AgentID, evt.PromptInfo.PromptFile, evt.PromptInfo.PromptLength)
+			}
+		case events.PromptFull:
+			if evt.PromptFull != nil {
+				line += fmt.Sprintf(" agent=%s len=%d", evt.PromptFull.AgentID, len(evt.PromptFull.SystemPrompt))
+			}
+		case events.FlowConfig:
+			if evt.FlowConfig != nil {
+				line += fmt.Sprintf(" flow=%s agents=%d stages=%d", evt.FlowConfig.FlowID, evt.FlowConfig.AgentCount, len(evt.FlowConfig.StagesOrder))
+			}
+		case events.FlowStepDetail:
+			if evt.FlowStepDetail != nil {
+				line += fmt.Sprintf(" step=%s", evt.FlowStepDetail.Step)
+			}
 		}
 
 		// Apply appropriate styling
-		if isTokenEvent && !isWizardEvent {
-			b.WriteString(tokenStyle.Render(line))
+		var styledLine string
+		if isSelected {
+			styledLine = selectedStyle.Render(line)
+		} else if isTokenEvent && !isWizardEvent {
+			styledLine = tokenStyle.Render(line)
 		} else if isWizardEvent || isSynthesisFlowEvent {
-			b.WriteString(wizardEventStyle.Render(line))
+			styledLine = wizardEventStyle.Render(line)
 		} else {
-			b.WriteString(eventStyle.Render(line))
+			styledLine = eventStyle.Render(line)
 		}
+		b.WriteString(styledLine)
 		b.WriteString("\n")
+
+		// Render expanded content if expanded
+		if isExpandable && isExpanded {
+			var expandedContent strings.Builder
+			switch evt.Type {
+			case events.FilterDetail:
+				if evt.FilterDetail != nil {
+					expandedContent.WriteString(labelStyle.Render("Thinking (full):"))
+					expandedContent.WriteString("\n")
+					expandedContent.WriteString(expandedContentStyle.Render(evt.FilterDetail.ThinkingFull))
+					expandedContent.WriteString("\n")
+					expandedContent.WriteString(labelStyle.Render("Filtered Response:"))
+					expandedContent.WriteString("\n")
+					expandedContent.WriteString(expandedContentStyle.Render(evt.FilterDetail.FilteredResponse))
+				}
+			case events.PerspectiveDetail:
+				if evt.PerspectiveDetail != nil {
+					expandedContent.WriteString(labelStyle.Render("Perspective (full):"))
+					expandedContent.WriteString("\n")
+					expandedContent.WriteString(expandedContentStyle.Render(evt.PerspectiveDetail.PerspectiveFull))
+					expandedContent.WriteString("\n")
+					expandedContent.WriteString(labelStyle.Render("Summary:"))
+					expandedContent.WriteString("\n")
+					expandedContent.WriteString(expandedContentStyle.Render(evt.PerspectiveDetail.Summary))
+					if len(evt.PerspectiveDetail.KeyInsights) > 0 {
+						expandedContent.WriteString("\n")
+						expandedContent.WriteString(labelStyle.Render("Key Insights:"))
+						expandedContent.WriteString("\n")
+						for _, insight := range evt.PerspectiveDetail.KeyInsights {
+							expandedContent.WriteString(expandedContentStyle.Render("• " + insight))
+							expandedContent.WriteString("\n")
+						}
+					}
+				}
+			case events.SynthesisDetail:
+				if evt.SynthesisDetail != nil {
+					expandedContent.WriteString(labelStyle.Render("Synthesis (full):"))
+					expandedContent.WriteString("\n")
+					expandedContent.WriteString(expandedContentStyle.Render(evt.SynthesisDetail.SynthesisFull))
+				}
+			case events.AgentMetadata:
+				if evt.AgentMetadata != nil {
+					expandedContent.WriteString(labelStyle.Render("Model:"))
+					expandedContent.WriteString(" " + evt.AgentMetadata.Model + "\n")
+					expandedContent.WriteString(labelStyle.Render("Total Tokens:"))
+					expandedContent.WriteString(fmt.Sprintf(" %d\n", evt.AgentMetadata.TotalTokens))
+					expandedContent.WriteString(labelStyle.Render("Response Length:"))
+					expandedContent.WriteString(fmt.Sprintf(" %d chars\n", evt.AgentMetadata.ResponseLength))
+					expandedContent.WriteString(labelStyle.Render("Latency:"))
+					expandedContent.WriteString(fmt.Sprintf(" %dms\n", evt.AgentMetadata.LatencyMs))
+				}
+			case events.PromptInfo:
+				if evt.PromptInfo != nil {
+					expandedContent.WriteString(labelStyle.Render("Prompt File:"))
+					expandedContent.WriteString(" " + evt.PromptInfo.PromptFile + "\n")
+					expandedContent.WriteString(labelStyle.Render("Snippet:"))
+					expandedContent.WriteString("\n")
+					expandedContent.WriteString(expandedContentStyle.Render(evt.PromptInfo.PromptSnippet))
+				}
+			case events.PromptFull:
+				if evt.PromptFull != nil {
+					expandedContent.WriteString(labelStyle.Render("System Prompt (full):"))
+					expandedContent.WriteString("\n")
+					expandedContent.WriteString(expandedContentStyle.Render(evt.PromptFull.SystemPrompt))
+				}
+			case events.FlowConfig:
+				if evt.FlowConfig != nil {
+					expandedContent.WriteString(labelStyle.Render("Flow File:"))
+					expandedContent.WriteString(" " + evt.FlowConfig.FlowFile + "\n")
+					expandedContent.WriteString(labelStyle.Render("Stages Order:"))
+					expandedContent.WriteString(" " + strings.Join(evt.FlowConfig.StagesOrder, " → ") + "\n")
+					expandedContent.WriteString(labelStyle.Render("Routing Mode:"))
+					expandedContent.WriteString(" " + evt.FlowConfig.RoutingMode + "\n")
+					expandedContent.WriteString(labelStyle.Render("Agent Count:"))
+					expandedContent.WriteString(fmt.Sprintf(" %d\n", evt.FlowConfig.AgentCount))
+				}
+			case events.FlowStepDetail:
+				if evt.FlowStepDetail != nil {
+					if evt.FlowStepDetail.SynthesisPreview != "" {
+						expandedContent.WriteString(labelStyle.Render("Synthesis Preview:"))
+						expandedContent.WriteString("\n")
+						expandedContent.WriteString(expandedContentStyle.Render(evt.FlowStepDetail.SynthesisPreview))
+						expandedContent.WriteString("\n")
+					}
+					if evt.FlowStepDetail.SynthesisFull != "" {
+						expandedContent.WriteString(labelStyle.Render("Synthesis Full:"))
+						expandedContent.WriteString("\n")
+						expandedContent.WriteString(expandedContentStyle.Render(evt.FlowStepDetail.SynthesisFull))
+						expandedContent.WriteString("\n")
+					}
+					if evt.FlowStepDetail.ThinkingPreview != "" {
+						expandedContent.WriteString(labelStyle.Render("Thinking Preview:"))
+						expandedContent.WriteString("\n")
+						expandedContent.WriteString(expandedContentStyle.Render(evt.FlowStepDetail.ThinkingPreview))
+						expandedContent.WriteString("\n")
+					}
+					if len(evt.FlowStepDetail.Perspectives) > 0 {
+						expandedContent.WriteString(labelStyle.Render("Perspectives:"))
+						expandedContent.WriteString("\n")
+						for _, p := range evt.FlowStepDetail.Perspectives {
+							expandedContent.WriteString(expandedContentStyle.Render(fmt.Sprintf("• %s: %s", p.AgentID, p.Summary)))
+							expandedContent.WriteString("\n")
+						}
+					}
+				}
+			}
+			if expandedContent.Len() > 0 {
+				b.WriteString(expandedContent.String())
+				b.WriteString("\n")
+			}
+		}
 	}
 
 	return b.String()
