@@ -326,26 +326,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// Debug toggles (apply to subsequent streams)
-		switch msg.String() {
-		case "v":
-			m.cfg.Debug.Level = "verbose"
-			m.contentDirty = true
-			m.refreshViewportContent()
-			return m, nil
-		case "f":
-			m.cfg.Debug.Level = "full"
-			m.contentDirty = true
-			m.refreshViewportContent()
-			return m, nil
-		case "n":
-			m.cfg.Debug.Level = ""
-			m.contentDirty = true
-			m.refreshViewportContent()
-			return m, nil
-		}
-
-		// Pane switching (works in normal mode only)
+		// Pane switching and debug toggles (works in normal mode only)
 		if !m.insertMode {
 			switch msg.String() {
 			case "1", "f1":
@@ -375,6 +356,22 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case "6", "f6":
 				m.activePane = PaneMessages
+				m.contentDirty = true
+				m.refreshViewportContent()
+				return m, nil
+			// Debug level toggles (F7=verbose, F8=full, F9=off)
+			case "f7":
+				m.cfg.Debug.Level = "verbose"
+				m.contentDirty = true
+				m.refreshViewportContent()
+				return m, nil
+			case "f8":
+				m.cfg.Debug.Level = "full"
+				m.contentDirty = true
+				m.refreshViewportContent()
+				return m, nil
+			case "f9":
+				m.cfg.Debug.Level = ""
 				m.contentDirty = true
 				m.refreshViewportContent()
 				return m, nil
@@ -879,7 +876,7 @@ func (m InteractiveModel) View() string {
 		wrapStr = "ON"
 	}
 	status := fmt.Sprintf(
-		"Mode:%s Pane:%s Msgs:%d | 1-6:panes %s w:wrap(%s) Ctrl+N:new-session Ctrl+T:raw/parsed i:insert Esc:normal Ctrl+C:quit",
+		"Mode:%s Pane:%s Msgs:%d | 1-6:panes %s w:wrap(%s) F7:verbose F8:full F9:off Ctrl+N:new-se",
 		mode, m.currentPaneName(), len(m.messages), paneHints, wrapStr,
 	)
 	b.WriteString(statusStyle.Render(status))
