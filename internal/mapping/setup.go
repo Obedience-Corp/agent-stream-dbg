@@ -72,8 +72,10 @@ func (s setupYAML) compile() SetupSpec {
 // the session ID extracted per response.session_id. If spec is nil (the
 // dialect declares no setup: block), RunSetup is a no-op returning ("", nil)
 // — watch-only dialects simply skip this step. httpClient defaults to
-// http.DefaultClient if nil.
-func RunSetup(ctx context.Context, spec *SetupSpec, vars InterpolationVars, httpClient *http.Client) (string, error) {
+// http.DefaultClient if nil. headers (typically config.Transport.
+// ResolvedHeaders()) carries auth and custom headers — the setup handshake
+// is authenticated exactly like every other backend request.
+func RunSetup(ctx context.Context, spec *SetupSpec, vars InterpolationVars, headers map[string]string, httpClient *http.Client) (string, error) {
 	if spec == nil {
 		return "", nil
 	}
@@ -101,6 +103,9 @@ func RunSetup(ctx context.Context, spec *SetupSpec, vars InterpolationVars, http
 	}
 	if bodyReader != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 
 	resp, err := httpClient.Do(req)

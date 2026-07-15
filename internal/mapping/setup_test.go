@@ -10,7 +10,7 @@ import (
 )
 
 func TestRunSetup_NilSpecIsNoOp(t *testing.T) {
-	sessionID, err := RunSetup(context.Background(), nil, InterpolationVars{}, nil)
+	sessionID, err := RunSetup(context.Background(), nil, InterpolationVars{}, nil, nil)
 	if err != nil {
 		t.Fatalf("expected no error for nil setup spec, got: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestRunSetup_HappyPath(t *testing.T) {
 		Agents:    []string{"a1", "a2"},
 	}
 
-	sessionID, err := RunSetup(context.Background(), spec, vars, srv.Client())
+	sessionID, err := RunSetup(context.Background(), spec, vars, nil, srv.Client())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestRunSetup_RequireFailure(t *testing.T) {
 	}
 	vars := InterpolationVars{BaseURL: srv.URL}
 
-	_, err := RunSetup(context.Background(), spec, vars, srv.Client())
+	_, err := RunSetup(context.Background(), spec, vars, nil, srv.Client())
 	if err == nil {
 		t.Fatal("expected error when require check fails, got nil")
 	}
@@ -111,7 +111,7 @@ func TestRunSetup_NetworkError(t *testing.T) {
 	}
 	vars := InterpolationVars{BaseURL: srv.URL}
 
-	_, err := RunSetup(context.Background(), spec, vars, srv.Client())
+	_, err := RunSetup(context.Background(), spec, vars, nil, srv.Client())
 	if err == nil {
 		t.Fatal("expected network error, got nil")
 	}
@@ -137,12 +137,36 @@ func TestRunSetup_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	_, err := RunSetup(ctx, spec, vars, srv.Client())
+	_, err := RunSetup(ctx, spec, vars, nil, srv.Client())
 	if err == nil {
 		t.Fatal("expected context deadline error, got nil")
 	}
 	if !strings.Contains(err.Error(), "setup: request failed") {
 		t.Errorf("expected wrapped 'setup: request failed' error, got: %v", err)
+	}
+}
+
+func TestRunSetup_HeadersAreApplied(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success": true}`))
+	}))
+	defer srv.Close()
+
+	spec := &SetupSpec{
+		Request:  SetupRequest{Method: "POST", URL: "{base_url}/setup"},
+		Response: SetupResponse{RequirePath: "success", RequireEquals: true},
+	}
+	vars := InterpolationVars{BaseURL: srv.URL}
+	headers := map[string]string{"Authorization": "Bearer test-token"}
+
+	if _, err := RunSetup(context.Background(), spec, vars, headers, srv.Client()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotAuth != "Bearer test-token" {
+		t.Errorf("expected Authorization header to reach the server, got %q", gotAuth)
 	}
 }
 
@@ -158,7 +182,7 @@ func TestRunSetup_UnknownPlaceholderErrorsBeforeNetworkCall(t *testing.T) {
 	}
 	vars := InterpolationVars{BaseURL: srv.URL}
 
-	_, err := RunSetup(context.Background(), spec, vars, srv.Client())
+	_, err := RunSetup(context.Background(), spec, vars, nil, srv.Client())
 	if err == nil {
 		t.Fatal("expected error for unknown placeholder, got nil")
 	}

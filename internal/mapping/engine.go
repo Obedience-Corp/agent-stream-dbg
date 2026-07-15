@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/lancekrogers/stream-debugger/internal/events"
 	"gopkg.in/yaml.v3"
@@ -75,6 +76,15 @@ type Engine struct {
 	Setup         *SetupSpec
 	Send          *SendSpec
 	Rules         []Rule
+}
+
+// LoadFile reads and parses a dialect YAML file. See Load.
+func LoadFile(path string) (*Engine, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read dialect file %s: %w", path, err)
+	}
+	return Load(data)
 }
 
 // Load parses and validates a dialect YAML document. Unknown top-level or

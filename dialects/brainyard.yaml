@@ -1,0 +1,105 @@
+# Brainyard reference dialect — the acid test: express the private backend
+# that motivated this whole project entirely as data, zero Go. Wire shapes
+# verified against testdata/fixtures/brainyard-session.jsonl, not memory.
+#
+# Fields not explicitly declared below still reach Event.Fields: the engine
+# merges a best-effort raw JSON parse under every rule's declared fields, so
+# omitting a field: entry here is a style choice (this file follows the
+# design's minimal-declaration style), not a way to hide data — nothing is
+# ever dropped.
+version: 1
+name: brainyard
+description: Reference dialect for the private multi-agent backend this tool was originally built against.
+discriminator: event
+
+setup:
+  request:
+    method: POST
+    url: "{base_url}/api/v3/debug/session"
+    body: '{"session_id": "{session_id}", "agents": {agents}, "reuse_existing": true}'
+  response:
+    require: {path: success, equals: true}
+    session_id: session_id
+
+send:
+  request:
+    method: GET
+    url: "{base_url}/api/v3/sessions/{session_id}/stream?message={message}"
+
+rules:
+  - match: {event: session_start}
+    kind: session_start
+    fields: {session_id: session_id, flow_id: flow_id}
+
+  - match: {event: session_complete}
+    kind: session_end
+    fields: {session_id: session_id}
+
+  - match: {event: agent_stream_start}
+    kind: stream_start
+    source: agent_id
+
+  - match: {event: agent_content}
+    kind: content
+    source: agent_id
+    content: content
+    seq: sequence
+
+  - match: {event: agent_stream_complete}
+    kind: stream_end
+    source: agent_id
+
+  # The pseudo-agent: no agent_id on the wire, so synthesize one. This one
+  # {const: wizard} line is what used to be ~177 hardcoded Go call sites.
+  - match: {event: wizard_stream_start}
+    kind: stream_start
+    source: {const: wizard}
+
+  - match: {event: wizard_content}
+    kind: content
+    source: {const: wizard}
+    content: content
+    seq: sequence
+
+  - match: {event: wizard_stream_complete}
+    kind: stream_end
+    source: {const: wizard}
+
+  - match: {event: flow_step_start}
+    kind: step_start
+    fields: {step: step}
+
+  - match: {event: flow_step_end}
+    kind: step_end
+    fields:
+      step: step
+      route_taken: route_taken
+      route_reason: route_reason
+      route_agents: route_agents
+
+  # Announced topology — no flow.stages needed; the renderer draws the
+  # skeleton from the stream itself.
+  - match: {event: flow_config}
+    kind: topology
+    fields: {stages_order: stages_order, stages_enabled: stages_enabled}
+
+  - match: {event: agent_metadata}
+    kind: usage
+    source: agent_id
+    fields: {model: model, total_tokens: total_tokens, latency_ms: latency_ms}
+
+  - match: {event: [prompt_info, prompt_full, filter_detail,
+                    perspective_detail, synthesis_detail, flow_step_detail]}
+    kind: detail
+
+  - match: {event: error}
+    kind: error
+    fields: {message: message}
+
+flow:
+  stages: [routing, discovery, agent_exec, filter, synthesis, wizard]
+  lanes:
+    - match: {source: wizard}
+      role: aggregator
+      label: Wizard (Synthesis)
+  default_role: worker

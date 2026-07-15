@@ -15,6 +15,7 @@ import (
 	"github.com/lancekrogers/stream-debugger/internal/events"
 	"github.com/lancekrogers/stream-debugger/internal/help"
 	"github.com/lancekrogers/stream-debugger/internal/logger"
+	"github.com/lancekrogers/stream-debugger/internal/mapping"
 	"github.com/lancekrogers/stream-debugger/internal/visualizer"
 	"github.com/urfave/cli/v2"
 )
@@ -150,21 +151,20 @@ func runInteractive(configPath string) error {
 	if cfg.Session.AutoSetup {
 		fmt.Printf("🔄 Auto-setting up session...\n")
 
-		setupClient := client.NewSessionSetupClient(cfg, cfg.APIKey)
-		sessionResp, err := setupClient.CreateOrGetSession()
+		vars := mapping.InterpolationVars{
+			BaseURL:   cfg.Transport.BaseURL,
+			SessionID: cfg.Session.ID,
+			Agents:    cfg.Session.DefaultAgents,
+		}
+		sessionID, err := bridge.RunSetup(context.Background(), vars, cfg.Transport.ResolvedHeaders(), nil)
 		if err != nil {
 			return fmt.Errorf("failed to setup session: %w", err)
 		}
 
 		// Update config with actual session ID
-		cfg.Session.ID = sessionResp.SessionID
+		cfg.Session.ID = sessionID
 
-		if sessionResp.Created {
-			fmt.Printf("✅ Session created: %s\n", sessionResp.SessionID)
-		} else {
-			fmt.Printf("✅ Using existing session: %s\n", sessionResp.SessionID)
-		}
-		fmt.Printf("   Active agents: %v\n\n", sessionResp.ActiveAgents)
+		fmt.Printf("✅ Session ready: %s\n\n", sessionID)
 	}
 
 	fmt.Printf("✅ Starting interactive TUI...\n\n")
@@ -202,21 +202,20 @@ func runStream(configPath string, message string) error {
 	if cfg.Session.AutoSetup {
 		fmt.Printf("🔄 Auto-setting up session...\n")
 
-		setupClient := client.NewSessionSetupClient(cfg, cfg.APIKey)
-		sessionResp, err := setupClient.CreateOrGetSession()
+		vars := mapping.InterpolationVars{
+			BaseURL:   cfg.Transport.BaseURL,
+			SessionID: cfg.Session.ID,
+			Agents:    cfg.Session.DefaultAgents,
+		}
+		sessionID, err := bridge.RunSetup(context.Background(), vars, cfg.Transport.ResolvedHeaders(), nil)
 		if err != nil {
 			return fmt.Errorf("failed to setup session: %w", err)
 		}
 
 		// Update config with actual session ID
-		cfg.Session.ID = sessionResp.SessionID
+		cfg.Session.ID = sessionID
 
-		if sessionResp.Created {
-			fmt.Printf("✅ Session created: %s\n", sessionResp.SessionID)
-		} else {
-			fmt.Printf("✅ Using existing session: %s\n", sessionResp.SessionID)
-		}
-		fmt.Printf("   Active agents: %v\n\n", sessionResp.ActiveAgents)
+		fmt.Printf("✅ Session ready: %s\n\n", sessionID)
 	}
 
 	structuredLogger, err := logger.NewStructuredLogger(cfg)

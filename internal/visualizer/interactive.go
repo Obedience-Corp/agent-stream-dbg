@@ -2956,10 +2956,14 @@ func (m InteractiveModel) newSessionCmd() tea.Cmd {
 		}
 
 		// Call session setup (auto create)
-		setupClient := clientapi.NewSessionSetupClient(m.cfg, m.cfg.APIKey)
-		if resp, err := setupClient.CreateOrGetSession(); err == nil {
+		vars := mapping.InterpolationVars{
+			BaseURL:   m.cfg.Transport.BaseURL,
+			SessionID: m.cfg.Session.ID,
+			Agents:    m.cfg.Session.DefaultAgents,
+		}
+		if sessionID, err := bridge.RunSetup(context.Background(), vars, m.cfg.Transport.ResolvedHeaders(), nil); err == nil {
 			// Ensure we track the actual backend session id
-			m.cfg.Session.ID = resp.SessionID
+			m.cfg.Session.ID = sessionID
 		}
 
 		// Reset UI state (clear all prior content and counters)
