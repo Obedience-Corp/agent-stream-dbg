@@ -69,6 +69,14 @@ func (tv *TimelineVisualizer) AddEvent(event *events.Event) {
 	case events.Error:
 		entry.Timestamp = event.Error.Timestamp
 		entry.AgentID = event.Error.AgentID
+	case events.FlowStepStart:
+		entry.Timestamp = event.FlowStepStart.Timestamp
+		entry.AgentID = "system"
+		entry.Content = fmt.Sprintf("flow: %s start", event.FlowStepStart.Step)
+	case events.FlowStepEnd:
+		entry.Timestamp = event.FlowStepEnd.Timestamp
+		entry.AgentID = "system"
+		entry.Content = fmt.Sprintf("flow: %s end", event.FlowStepEnd.Step)
 	case events.FlowStepDetail:
 		entry.Timestamp = event.FlowStepDetail.Timestamp
 		entry.AgentID = "system"
