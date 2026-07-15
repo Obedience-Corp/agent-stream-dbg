@@ -28,7 +28,7 @@ func TestRenderTimelinePane(t *testing.T) {
 	}
 }
 
-// TestIsEventVisible_And_CountVisibleEvents cover the wizard-only and
+// TestIsEventVisible_And_CountVisibleEvents cover the aggregator-only and
 // token filters, matching what the Events pane header toggles apply.
 func TestIsEventVisible_And_CountVisibleEvents(t *testing.T) {
 	m := newFixtureModel(t)
@@ -43,17 +43,17 @@ func TestIsEventVisible_And_CountVisibleEvents(t *testing.T) {
 		t.Error("expected a token event to be visible when showTokens is true")
 	}
 
-	wizardEvt := &events.Event{Name: "wizard_stream_start"}
-	nonWizardEvt := &events.Event{Name: "agent_stream_start"}
-	m.eventsWizardOnly = true
-	if !m.isEventVisible(wizardEvt) {
-		t.Error("expected a wizard event to remain visible under wizard-only filter")
+	aggregatorEvt := &events.Event{Name: aggregatorStreamStartEventName}
+	nonAggregatorEvt := &events.Event{Name: "agent_stream_start"}
+	m.eventsAggregatorOnly = true
+	if !m.isEventVisible(aggregatorEvt) {
+		t.Error("expected an aggregator event to remain visible under aggregator-only filter")
 	}
-	if m.isEventVisible(nonWizardEvt) {
-		t.Error("expected a non-wizard event to be hidden under wizard-only filter")
+	if m.isEventVisible(nonAggregatorEvt) {
+		t.Error("expected a non-aggregator event to be hidden under aggregator-only filter")
 	}
 
-	m.eventsWizardOnly = false
+	m.eventsAggregatorOnly = false
 	m.showTokens = true
 	total := 0
 	for _, evt := range m.messages[0].Events {

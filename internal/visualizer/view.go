@@ -94,17 +94,17 @@ func (m InteractiveModel) View() string {
 		if m.flowContinuous {
 			toggle = "on"
 		}
-		paneHints = fmt.Sprintf("j/k:select Enter:expand(wizard details) p:prompt [/]:turn a:all(%s)", toggle)
+		paneHints = fmt.Sprintf("j/k:select Enter:expand(aggregator details) p:prompt [/]:turn a:all(%s)", toggle)
 	case PaneEvents:
 		tokensStr := "OFF"
 		if m.showTokens {
 			tokensStr = "ON"
 		}
-		wizardStr := "OFF"
-		if m.eventsWizardOnly {
-			wizardStr = "ON"
+		aggregatorStr := "OFF"
+		if m.eventsAggregatorOnly {
+			aggregatorStr = "ON"
 		}
-		paneHints = fmt.Sprintf("j/k:navigate Enter:expand t:tokens(%s) W:wizard-only(%s)", tokensStr, wizardStr)
+		paneHints = fmt.Sprintf("j/k:navigate Enter:expand t:tokens(%s) W:aggregator-only(%s)", tokensStr, aggregatorStr)
 	case PaneMessages:
 		paneHints = "Ctrl+T:raw/parsed"
 	default:
@@ -226,9 +226,9 @@ func (m InteractiveModel) renderParsedView(msg Message) string {
 
 	var b strings.Builder
 
-	// Aggregator (brainyard: wizard) debug summary at top
+	// Aggregator debug summary at top
 	if aggResp := m.aggregatorResponse(msg); aggResp != nil {
-		b.WriteString(m.renderWizardDebugSummary(aggResp))
+		b.WriteString(m.renderAggregatorDebugSummary(aggResp))
 		b.WriteString("\n")
 	}
 

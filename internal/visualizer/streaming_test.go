@@ -58,8 +58,8 @@ func TestNewSessionCmd_ResetsStateWithoutBackend(t *testing.T) {
 	m.flowTurnIndex = 5
 	m.selectedStepIndex = 2
 	m.showTokens = true
-	m.eventsWizardOnly = true
-	m.appFocus = AppFocusWizard
+	m.eventsAggregatorOnly = true
+	m.appFocus = AppFocusAggregator
 
 	cmd := m.newSessionCmd()
 	cmd() // side effects land on the closure's own model copy, not m

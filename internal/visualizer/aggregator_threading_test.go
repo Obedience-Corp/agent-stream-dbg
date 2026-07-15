@@ -20,12 +20,11 @@ func newTestInteractiveModel(t *testing.T) *InteractiveModel {
 }
 
 // TestApplyParsedEvent_AggregatorGetsExclusiveMetrics regression-tests
-// this task's Kind-based merge of what used to be separate
-// "agent_stream_start"/"wizard_stream_start"-shaped cases: the
-// aggregator lane (brainyard: the wizard) still exclusively gets
+// this task's Kind-based merge of what used to be separate per-lane
+// wire-event-shaped cases: the aggregator lane still exclusively gets
 // StartTime/FirstTokenMs/DurationMs tracking — a plain worker agent
 // going through the identical Kind sequence must not, preserving the
-// asymmetry the original wizard_*-only cases already had.
+// asymmetry the original aggregator-lane-only cases already had.
 func TestApplyParsedEvent_AggregatorGetsExclusiveMetrics(t *testing.T) {
 	m := newTestInteractiveModel(t)
 
@@ -35,9 +34,9 @@ func TestApplyParsedEvent_AggregatorGetsExclusiveMetrics(t *testing.T) {
 	m.applyParsedEvent(&events.Event{Kind: events.KindStreamEnd, SourceID: "agent_a"})
 
 	// The aggregator: same Kind sequence, different SourceID.
-	m.applyParsedEvent(&events.Event{Kind: events.KindStreamStart, SourceID: "wizard"})
-	m.applyParsedEvent(&events.Event{Kind: events.KindContent, SourceID: "wizard", Content: "synthesized"})
-	m.applyParsedEvent(&events.Event{Kind: events.KindStreamEnd, SourceID: "wizard"})
+	m.applyParsedEvent(&events.Event{Kind: events.KindStreamStart, SourceID: aggregatorStageName})
+	m.applyParsedEvent(&events.Event{Kind: events.KindContent, SourceID: aggregatorStageName, Content: "synthesized"})
+	m.applyParsedEvent(&events.Event{Kind: events.KindStreamEnd, SourceID: aggregatorStageName})
 
 	agent := m.messages[0].AgentResponses["agent_a"]
 	if agent == nil {
@@ -58,7 +57,7 @@ func TestApplyParsedEvent_AggregatorGetsExclusiveMetrics(t *testing.T) {
 
 	aggregator := m.aggregatorResponse(m.messages[0])
 	if aggregator == nil {
-		t.Fatal("expected aggregatorResponse to find the wizard lane's response")
+		t.Fatal("expected aggregatorResponse to find the aggregator lane's response")
 	}
 	if aggregator.StartTime.IsZero() {
 		t.Error("expected the aggregator's StartTime to be tracked")
@@ -72,18 +71,19 @@ func TestApplyParsedEvent_AggregatorGetsExclusiveMetrics(t *testing.T) {
 }
 
 // TestApplyParsedEvent_AggregatorStreamEndIsIdempotent regression-tests
-// the duplicate-completion guard that used to be wizard_stream_complete-
-// exclusive: a second stream_end for the aggregator must not re-run
-// duration/metrics calculation, matching the original guard.
+// the duplicate-completion guard that used to be exclusive to the
+// aggregator lane's own stream-complete case: a second stream_end for
+// the aggregator must not re-run duration/metrics calculation, matching
+// the original guard.
 func TestApplyParsedEvent_AggregatorStreamEndIsIdempotent(t *testing.T) {
 	m := newTestInteractiveModel(t)
 
-	m.applyParsedEvent(&events.Event{Kind: events.KindStreamStart, SourceID: "wizard"})
-	m.applyParsedEvent(&events.Event{Kind: events.KindStreamEnd, SourceID: "wizard"})
-	firstEnd := m.messages[0].AgentResponses["wizard"].EndTime
+	m.applyParsedEvent(&events.Event{Kind: events.KindStreamStart, SourceID: aggregatorStageName})
+	m.applyParsedEvent(&events.Event{Kind: events.KindStreamEnd, SourceID: aggregatorStageName})
+	firstEnd := m.messages[0].AgentResponses[aggregatorStageName].EndTime
 
-	m.applyParsedEvent(&events.Event{Kind: events.KindStreamEnd, SourceID: "wizard"})
-	secondEnd := m.messages[0].AgentResponses["wizard"].EndTime
+	m.applyParsedEvent(&events.Event{Kind: events.KindStreamEnd, SourceID: aggregatorStageName})
+	secondEnd := m.messages[0].AgentResponses[aggregatorStageName].EndTime
 
 	if !firstEnd.Equal(secondEnd) {
 		t.Errorf("expected a duplicate stream_end to be ignored (EndTime unchanged), got first=%v second=%v", firstEnd, secondEnd)
@@ -91,15 +91,16 @@ func TestApplyParsedEvent_AggregatorStreamEndIsIdempotent(t *testing.T) {
 }
 
 // TestDeriveAgentsFromEvents_ExcludesAggregator regression-tests the
-// role-based generalization of what used to be a hardcoded aid !=
-// "wizard" filter: the aggregator lane must not appear in the derived
-// worker-agent list, regardless of its actual SourceID spelling.
+// role-based generalization of what used to be a hardcoded
+// aid != <aggregator source> filter: the aggregator lane must not appear
+// in the derived worker-agent list, regardless of its actual SourceID
+// spelling.
 func TestDeriveAgentsFromEvents_ExcludesAggregator(t *testing.T) {
 	m := NewInteractiveModel(&config.EnhancedConfig{})
 	evts := []*events.Event{
 		{Kind: events.KindStreamStart, SourceID: "agent_a"},
 		{Kind: events.KindStreamStart, SourceID: "agent_b"},
-		{Kind: events.KindStreamStart, SourceID: "wizard"},
+		{Kind: events.KindStreamStart, SourceID: aggregatorStageName},
 	}
 	agents := m.deriveAgentsFromEvents(evts)
 
@@ -117,9 +118,9 @@ func TestDeriveAgentsFromEvents_ExcludesAggregator(t *testing.T) {
 // testFlowStateWithAggregator builds a flowState directly from a
 // hand-constructed FlowSpec, bypassing bridge.Flow()'s single global
 // (brainyard-loaded) dialect entirely — the only way to prove role
-// resolution generalizes to a DIFFERENT aggregator source name than
-// brainyard's own "wizard", rather than merely regression-testing
-// against the one string every other test in this file happens to use.
+// resolution generalizes to a DIFFERENT aggregator source name than the
+// default dialect's own, rather than merely regression-testing against
+// the one string every other test in this file happens to use.
 func testFlowStateWithAggregator(aggregatorSource string) flowState {
 	return flowState{spec: &mapping.FlowSpec{
 		Lanes:       []mapping.LaneRule{{Match: mapping.LaneMatchSpec{Source: aggregatorSource}, Role: "aggregator"}},
@@ -127,37 +128,39 @@ func testFlowStateWithAggregator(aggregatorSource string) flowState {
 	}}
 }
 
-// TestApplyParsedEvent_AggregatorRoleGeneralizesBeyondWizard is the
-// genericity proof a self-review found missing: every other test in
-// this file uses "wizard" as the aggregator's SourceID, so a regression
-// to hardcoded string comparison would pass them all undetected (a
-// mutation test confirmed this directly). Here the aggregator lane is
-// named "supervisor" — a literal "wizard" SourceID is ALSO present and
-// must get NO special treatment, proving resolution is genuinely
-// role-based, not the same old string check moved one layer down.
-func TestApplyParsedEvent_AggregatorRoleGeneralizesBeyondWizard(t *testing.T) {
+// TestApplyParsedEvent_AggregatorRoleGeneralizesBeyondDefaultSource is
+// the genericity proof a self-review found missing: every other test in
+// this file uses the default dialect's own aggregator SourceID, so a
+// regression to hardcoded string comparison would pass them all
+// undetected (a mutation test confirmed this directly). Here the
+// aggregator lane is named "supervisor" — a lane using the default
+// dialect's own aggregator source name is ALSO present and must get NO
+// special treatment, proving resolution is genuinely role-based, not the
+// same old string check moved one layer down.
+func TestApplyParsedEvent_AggregatorRoleGeneralizesBeyondDefaultSource(t *testing.T) {
 	m := NewInteractiveModel(&config.EnhancedConfig{})
 	m.dialectFlow = testFlowStateWithAggregator("supervisor")
 	m.messages = append(m.messages, Message{})
 	m.streamIndex = 0
 
-	// A lane literally named "wizard" — NOT the declared aggregator here
-	// — must be treated as an ordinary worker.
-	m.applyParsedEvent(&events.Event{Kind: events.KindStreamStart, SourceID: "wizard"})
-	m.applyParsedEvent(&events.Event{Kind: events.KindContent, SourceID: "wizard", Content: "not the aggregator"})
-	m.applyParsedEvent(&events.Event{Kind: events.KindStreamEnd, SourceID: "wizard"})
+	// A lane using the default dialect's own aggregator source name —
+	// NOT the declared aggregator here — must be treated as an ordinary
+	// worker.
+	m.applyParsedEvent(&events.Event{Kind: events.KindStreamStart, SourceID: aggregatorStageName})
+	m.applyParsedEvent(&events.Event{Kind: events.KindContent, SourceID: aggregatorStageName, Content: "not the aggregator"})
+	m.applyParsedEvent(&events.Event{Kind: events.KindStreamEnd, SourceID: aggregatorStageName})
 
 	// The declared aggregator lane, named "supervisor".
 	m.applyParsedEvent(&events.Event{Kind: events.KindStreamStart, SourceID: "supervisor"})
 	m.applyParsedEvent(&events.Event{Kind: events.KindContent, SourceID: "supervisor", Content: "synthesized"})
 	m.applyParsedEvent(&events.Event{Kind: events.KindStreamEnd, SourceID: "supervisor"})
 
-	wizardLane := m.messages[0].AgentResponses["wizard"]
-	if wizardLane == nil {
-		t.Fatal("expected an AgentResponse for the 'wizard'-named lane")
+	otherLane := m.messages[0].AgentResponses[aggregatorStageName]
+	if otherLane == nil {
+		t.Fatal("expected an AgentResponse for the default-dialect-aggregator-source-named lane")
 	}
-	if !wizardLane.StartTime.IsZero() {
-		t.Errorf("expected the 'wizard'-named lane's StartTime to stay zero (it is NOT the declared aggregator here), got %v", wizardLane.StartTime)
+	if !otherLane.StartTime.IsZero() {
+		t.Errorf("expected that lane's StartTime to stay zero (it is NOT the declared aggregator here), got %v", otherLane.StartTime)
 	}
 
 	aggregator := m.aggregatorResponse(m.messages[0])
@@ -181,7 +184,7 @@ func TestApplyParsedEvent_AggregatorRoleGeneralizesBeyondWizard(t *testing.T) {
 	if found {
 		t.Errorf("expected 'supervisor' (the aggregator) excluded from the derived worker list, got %v", nonAggregators)
 	}
-	if len(nonAggregators) != 1 || nonAggregators[0] != "wizard" {
-		t.Errorf("expected the 'wizard'-named lane to appear as an ordinary worker, got %v", nonAggregators)
+	if len(nonAggregators) != 1 || nonAggregators[0] != aggregatorStageName {
+		t.Errorf("expected the default-dialect-aggregator-source-named lane to appear as an ordinary worker, got %v", nonAggregators)
 	}
 }

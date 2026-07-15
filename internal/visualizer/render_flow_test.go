@@ -61,7 +61,7 @@ func TestRenderFlowPane_And_FlowAllPane(t *testing.T) {
 }
 
 // TestDeriveAgentsFromEvents proves it collects unique non-aggregator
-// (non-wizard) stream_start SourceIDs, sorted.
+// stream_start SourceIDs, sorted.
 func TestDeriveAgentsFromEvents(t *testing.T) {
 	m := newFixtureModel(t)
 
@@ -70,22 +70,22 @@ func TestDeriveAgentsFromEvents(t *testing.T) {
 		t.Fatal("expected at least one non-aggregator agent from the fixture")
 	}
 	for _, a := range agents {
-		if a == "wizard" {
-			t.Error("expected the aggregator (wizard) lane to be excluded")
+		if a == aggregatorStageName {
+			t.Error("expected the aggregator lane to be excluded")
 		}
 	}
 }
 
-// TestRenderFlowNodeDetails covers the wizard-specific metrics branch and
-// the generic fallback when there's nothing more specific to show.
+// TestRenderFlowNodeDetails covers the aggregator-specific metrics branch
+// and the generic fallback when there's nothing more specific to show.
 func TestRenderFlowNodeDetails(t *testing.T) {
 	m := newFixtureModel(t)
 
-	wizardNode := &FlowNode{Step: "wizard", Enabled: true, DurationMs: 42}
-	wizardResp := m.aggregatorResponse(m.messages[0])
-	out := m.renderFlowNodeDetails(wizardNode, wizardResp)
-	if !strings.Contains(out, "Wizard Metrics") {
-		t.Error("expected wizard-specific metrics section for the wizard step")
+	aggNode := &FlowNode{Step: aggregatorStageName, Enabled: true, DurationMs: 42}
+	aggResp := m.aggregatorResponse(m.messages[0])
+	out := m.renderFlowNodeDetails(aggNode, aggResp)
+	if !strings.Contains(out, "Aggregator Metrics") {
+		t.Error("expected aggregator-specific metrics section for the aggregator step")
 	}
 
 	bare := &FlowNode{Step: "discovery", Enabled: false}

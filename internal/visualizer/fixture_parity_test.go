@@ -13,7 +13,7 @@ import (
 // this task's required before/after fixture proof: the real
 // testdata/fixtures/brainyard-session.jsonl session, fed through
 // applyParsedEvent exactly as a live stream would, must still produce
-// the wizard's aggregator-only metrics (StartTime/FirstTokenMs/
+// the aggregator lane's exclusive metrics (StartTime/FirstTokenMs/
 // DurationMs/TokenCount) — this task changed HOW the aggregator lane is
 // identified (Kind+role instead of a wire event-name switch), not WHAT
 // gets computed for it. Comparable, deterministic fields only (not
@@ -46,25 +46,25 @@ func TestApplyParsedEvent_BrainyardFixture_AggregatorMetricsMatchOriginal(t *tes
 		t.Fatalf("scan fixture: %v", err)
 	}
 
-	wizard := m.aggregatorResponse(m.messages[0])
-	if wizard == nil {
-		t.Fatal("expected the fixture to produce a wizard (aggregator) AgentResponse")
+	agg := m.aggregatorResponse(m.messages[0])
+	if agg == nil {
+		t.Fatal("expected the fixture to produce an aggregator AgentResponse")
 	}
-	if !wizard.Completed {
-		t.Error("expected the wizard's response to be Completed")
+	if !agg.Completed {
+		t.Error("expected the aggregator's response to be Completed")
 	}
-	if wizard.StartTime.IsZero() {
-		t.Error("expected the wizard's StartTime to be tracked (aggregator-exclusive)")
+	if agg.StartTime.IsZero() {
+		t.Error("expected the aggregator's StartTime to be tracked (aggregator-exclusive)")
 	}
-	if wizard.FullContent == "" {
-		t.Error("expected the wizard's FullContent to be non-empty")
+	if agg.FullContent == "" {
+		t.Error("expected the aggregator's FullContent to be non-empty")
 	}
 
 	// Non-aggregator agents from the same fixture must NOT have gotten
 	// the aggregator-exclusive tracking — the asymmetry this task
 	// preserved, not introduced.
 	for agentID, ar := range m.messages[0].AgentResponses {
-		if agentID == "wizard" {
+		if agentID == aggregatorStageName {
 			continue
 		}
 		if !ar.StartTime.IsZero() {

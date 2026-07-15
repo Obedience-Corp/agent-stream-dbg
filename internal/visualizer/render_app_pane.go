@@ -9,7 +9,7 @@ import (
 	"github.com/lancekrogers/stream-debugger/internal/events"
 )
 
-// renderAppPane renders the App pane (F2) showing wizard output and agent summaries
+// renderAppPane renders the App pane (F2) showing aggregator output and agent summaries
 func (m InteractiveModel) renderAppPane() string {
 	var b strings.Builder
 
@@ -29,21 +29,21 @@ func (m InteractiveModel) renderAppPane() string {
 
 	msg := m.messages[len(m.messages)-1]
 
-	// Render based on focus: wizard first if focused, agents first if focused
-	if m.appFocus == AppFocusWizard {
+	// Render based on focus: aggregator first if focused, agents first if focused
+	if m.appFocus == AppFocusAggregator {
 		b.WriteString(m.renderSynthesisSection(msg))
-		b.WriteString(m.renderWizardSection(msg, focusStyle))
+		b.WriteString(m.renderAggregatorSection(msg, focusStyle))
 		b.WriteString(m.renderAgentSummaries(msg))
 	} else {
 		b.WriteString(m.renderAgentSummaries(msg))
 		b.WriteString(m.renderSynthesisSection(msg))
-		b.WriteString(m.renderWizardSection(msg, lipgloss.NewStyle()))
+		b.WriteString(m.renderAggregatorSection(msg, lipgloss.NewStyle()))
 	}
 
 	return b.String()
 }
 
-// renderSynthesisSection renders the synthesis output (separate from wizard)
+// renderSynthesisSection renders the synthesis output (separate from the aggregator's own output)
 func (m InteractiveModel) renderSynthesisSection(msg Message) string {
 	var b strings.Builder
 
@@ -95,34 +95,34 @@ func (m InteractiveModel) renderSynthesisSection(msg Message) string {
 	return b.String()
 }
 
-// renderWizardSection renders the wizard output section
-func (m InteractiveModel) renderWizardSection(msg Message, titleStyle lipgloss.Style) string {
+// renderAggregatorSection renders the aggregator output section
+func (m InteractiveModel) renderAggregatorSection(msg Message, titleStyle lipgloss.Style) string {
 	var b strings.Builder
-	wizard := m.aggregatorResponse(msg)
-	if wizard == nil || wizard.FullContent == "" {
+	agg := m.aggregatorResponse(msg)
+	if agg == nil || agg.FullContent == "" {
 		return ""
 	}
 
-	wizardStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("13")).Bold(true)
+	aggregatorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("13")).Bold(true)
 	if titleStyle.GetUnderline() {
-		b.WriteString(titleStyle.Foreground(lipgloss.Color("13")).Render("Wizard Output"))
+		b.WriteString(titleStyle.Foreground(lipgloss.Color("13")).Render("Aggregator Output"))
 	} else {
-		b.WriteString(wizardStyle.Render("Wizard Output"))
+		b.WriteString(aggregatorStyle.Render("Aggregator Output"))
 	}
 	b.WriteString("\n")
 
-	// Show wizard debug summary above content
-	b.WriteString(m.renderWizardDebugSummary(wizard))
+	// Show aggregator debug summary above content
+	b.WriteString(m.renderAggregatorDebugSummary(agg))
 	b.WriteString("\n")
 
-	b.WriteString(wizard.FullContent)
+	b.WriteString(agg.FullContent)
 	b.WriteString("\n\n")
 	return b.String()
 }
 
-// renderWizardDebugSummary renders a compact one-line wizard metrics summary
-func (m InteractiveModel) renderWizardDebugSummary(wizard *AgentResponse) string {
-	if wizard == nil {
+// renderAggregatorDebugSummary renders a compact one-line aggregator metrics summary
+func (m InteractiveModel) renderAggregatorDebugSummary(agg *AgentResponse) string {
+	if agg == nil {
 		return ""
 	}
 
@@ -131,27 +131,27 @@ func (m InteractiveModel) renderWizardDebugSummary(wizard *AgentResponse) string
 	var parts []string
 
 	// Token count
-	parts = append(parts, fmt.Sprintf("tokens: %d", wizard.TokenCount))
+	parts = append(parts, fmt.Sprintf("tokens: %d", agg.TokenCount))
 
 	// Tokens per second (only if we have duration)
-	if wizard.DurationMs > 0 && wizard.TokenCount > 0 {
-		tokensPerSec := float64(wizard.TokenCount) * 1000.0 / float64(wizard.DurationMs)
+	if agg.DurationMs > 0 && agg.TokenCount > 0 {
+		tokensPerSec := float64(agg.TokenCount) * 1000.0 / float64(agg.DurationMs)
 		parts = append(parts, fmt.Sprintf("rate: %.1f tok/s", tokensPerSec))
 	}
 
 	// First token latency
-	if wizard.FirstTokenMs > 0 {
-		parts = append(parts, fmt.Sprintf("first-token: %dms", wizard.FirstTokenMs))
+	if agg.FirstTokenMs > 0 {
+		parts = append(parts, fmt.Sprintf("first-token: %dms", agg.FirstTokenMs))
 	}
 
 	// Status indicator
-	if wizard.Completed {
+	if agg.Completed {
 		parts = append(parts, "✓")
 	} else {
 		parts = append(parts, "⏳")
 	}
 
-	return summaryStyle.Render("[Wizard] " + strings.Join(parts, ", "))
+	return summaryStyle.Render("[Aggregator] " + strings.Join(parts, ", "))
 }
 
 // renderAgentSummaries renders the agent summaries section with collapse/expand

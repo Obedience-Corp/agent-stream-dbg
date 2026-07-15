@@ -26,7 +26,7 @@ func TestView_ContainsHeaderAndTabs(t *testing.T) {
 
 // TestRenderParsedView covers renderParsedView's two branches: the
 // "no responses" placeholder, and a real agent response rendered with its
-// wizard debug summary and token count.
+// aggregator debug summary and token count.
 func TestRenderParsedView(t *testing.T) {
 	m := newFixtureModel(t)
 
@@ -36,8 +36,8 @@ func TestRenderParsedView(t *testing.T) {
 	}
 
 	out := m.renderParsedView(m.messages[0])
-	if !strings.Contains(out, "wizard") {
-		t.Error("expected the wizard agent to appear in the parsed view")
+	if !strings.Contains(out, aggregatorStageName) {
+		t.Error("expected the aggregator lane to appear in the parsed view")
 	}
 	if !strings.Contains(out, "tokens") {
 		t.Error("expected token counts to appear in the parsed view")

@@ -25,10 +25,10 @@ type Model struct {
 	message string
 
 	// State
-	agents        map[string]*AgentState
-	wizardState   *WizardState
-	sessionActive bool
-	errorCount    int
+	agents          map[string]*AgentState
+	aggregatorState *AggregatorState
+	sessionActive   bool
+	errorCount      int
 
 	// UI State
 	width  int
@@ -74,8 +74,8 @@ type AgentState struct {
 	LastUpdate     time.Time
 }
 
-// WizardState tracks the wizard synthesis state
-type WizardState struct {
+// AggregatorState tracks the aggregator-role lane's synthesis state
+type AggregatorState struct {
 	Active         bool
 	Content        strings.Builder
 	TokenCount     int
@@ -110,13 +110,13 @@ type PromptInfoState struct {
 
 // FlowConfigState tracks flow configuration (debug mode)
 type FlowConfigState struct {
-	FlowID         string
-	FlowFile       string
-	StagesOrder    []string
-	StagesEnabled  map[string]bool
-	RoutingMode    string
-	AgentCount     int
-	NonWizardCount int
+	FlowID             string
+	FlowFile           string
+	StagesOrder        []string
+	StagesEnabled      map[string]bool
+	RoutingMode        string
+	AgentCount         int
+	NonAggregatorCount int
 }
 
 // eventMsg wraps an SSE event for bubbletea
@@ -137,19 +137,19 @@ func NewModel(cfg *config.EnhancedConfig, sseClient *client.SSEClient, structure
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Model{
-		config:        cfg,
-		client:        sseClient,
-		logger:        structuredLogger,
-		ctx:           ctx,
-		cancel:        cancel,
-		message:       message,
-		agents:        make(map[string]*AgentState),
-		wizardState:   &WizardState{BufferedTokens: make(map[int]string)},
-		sessionActive: false,
-		startTime:     time.Now(),
-		flow:          make(map[string]*FlowStepStatus),
-		promptInfo:    make(map[string]*PromptInfoState),
-		dialectFlow:   newFlowState(),
+		config:          cfg,
+		client:          sseClient,
+		logger:          structuredLogger,
+		ctx:             ctx,
+		cancel:          cancel,
+		message:         message,
+		agents:          make(map[string]*AgentState),
+		aggregatorState: &AggregatorState{BufferedTokens: make(map[int]string)},
+		sessionActive:   false,
+		startTime:       time.Now(),
+		flow:            make(map[string]*FlowStepStatus),
+		promptInfo:      make(map[string]*PromptInfoState),
+		dialectFlow:     newFlowState(),
 	}
 }
 
@@ -207,7 +207,7 @@ func (m *Model) View() string {
 		Padding(1).
 		Width(m.width/2 - 4)
 
-	wizardStyle := lipgloss.NewStyle().
+	aggregatorStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("11")).
 		Padding(1).
@@ -249,10 +249,10 @@ func (m *Model) View() string {
 		}
 	}
 
-	// Build wizard view
-	wizardView := ""
-	if m.wizardState.Active || m.wizardState.TokenCount > 0 {
-		wizardView = wizardStyle.Render(m.renderWizard())
+	// Build aggregator view
+	aggregatorView := ""
+	if m.aggregatorState.Active || m.aggregatorState.TokenCount > 0 {
+		aggregatorView = aggregatorStyle.Render(m.renderAggregator())
 	}
 
 	// Build stats
@@ -298,9 +298,9 @@ func (m *Model) View() string {
 		}
 	}
 
-	// Add wizard view
-	if wizardView != "" {
-		sections = append(sections, wizardView)
+	// Add aggregator view
+	if aggregatorView != "" {
+		sections = append(sections, aggregatorView)
 	}
 
 	// Add stats and controls
@@ -341,30 +341,30 @@ func (m *Model) renderAgent(agent *AgentState) string {
 	return fmt.Sprintf("%s\n%s\n\n%s", header, tokenInfo, content)
 }
 
-// renderWizard renders the wizard synthesis view
-func (m *Model) renderWizard() string {
+// renderAggregator renders the aggregator-role lane's synthesis view
+func (m *Model) renderAggregator() string {
 	statusIcon := "●"
 	statusColor := "8"
-	if m.wizardState.Active {
+	if m.aggregatorState.Active {
 		statusIcon = "◉"
 		statusColor = "11"
 	}
 
 	status := lipgloss.NewStyle().Foreground(lipgloss.Color(statusColor)).Render(statusIcon)
-	wizardName := lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Bold(true).Render("Wizard (Synthesis)")
+	aggregatorName := lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Bold(true).Render("Aggregator (Synthesis)")
 
-	header := fmt.Sprintf("%s %s", status, wizardName)
+	header := fmt.Sprintf("%s %s", status, aggregatorName)
 
 	// Content preview
-	content := m.wizardState.Content.String()
+	content := m.aggregatorState.Content.String()
 	if len(content) > 400 {
 		content = "..." + content[len(content)-400:]
 	}
 
 	// Token info
-	tokenInfo := fmt.Sprintf("Tokens: %d | Seq: %d", m.wizardState.TokenCount, m.wizardState.Sequence)
-	if len(m.wizardState.BufferedTokens) > 0 {
-		tokenInfo += fmt.Sprintf(" | Buffered: %d", len(m.wizardState.BufferedTokens))
+	tokenInfo := fmt.Sprintf("Tokens: %d | Seq: %d", m.aggregatorState.TokenCount, m.aggregatorState.Sequence)
+	if len(m.aggregatorState.BufferedTokens) > 0 {
+		tokenInfo += fmt.Sprintf(" | Buffered: %d", len(m.aggregatorState.BufferedTokens))
 	}
 
 	return fmt.Sprintf("%s\n%s\n\n%s", header, tokenInfo, content)
@@ -423,7 +423,7 @@ func (m *Model) reconnect() tea.Cmd {
 		m.ctx, m.cancel = context.WithCancel(context.Background())
 		// Reset UI state so new stream doesn't append to previous content
 		m.agents = make(map[string]*AgentState)
-		m.wizardState = &WizardState{BufferedTokens: make(map[int]string)}
+		m.aggregatorState = &AggregatorState{BufferedTokens: make(map[int]string)}
 		m.totalTokens = 0
 		m.totalEvents = 0
 		m.errorCount = 0
@@ -457,18 +457,19 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 	_ = m.logger.LogEvent(event)
 
 	// Stream lifecycle (start/content/end) dispatches on Kind + role, not
-	// the dialect's own wire event names — brainyard's agent_*/wizard_*
-	// rules already decode to the same Kind, with SourceID/role
-	// distinguishing the aggregator lane (wizardState) from every other
-	// lane (agents map). Kind-based is the generic equivalent with
-	// identical behavior for brainyard specifically.
+	// the dialect's own wire event names — a dialect's agent-lane and
+	// aggregator-lane rules already decode to the same Kind, with
+	// SourceID/role distinguishing the aggregator lane (aggregatorState)
+	// from every other lane (agents map). Kind-based is the generic
+	// equivalent with identical behavior for any dialect that declares
+	// one aggregator lane this way.
 	isAggregator := m.dialectFlow.role(event) == "aggregator"
 
 	switch event.Kind {
 	case events.KindStreamStart:
 		if isAggregator {
-			m.wizardState.Active = true
-			m.wizardState.StartTime = time.Now()
+			m.aggregatorState.Active = true
+			m.aggregatorState.StartTime = time.Now()
 			break
 		}
 		agentID := event.SourceID
@@ -482,9 +483,9 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 
 	case events.KindContent:
 		if isAggregator {
-			m.wizardState.Content.WriteString(event.Content)
-			m.wizardState.TokenCount++
-			m.wizardState.Sequence = event.Seq
+			m.aggregatorState.Content.WriteString(event.Content)
+			m.aggregatorState.TokenCount++
+			m.aggregatorState.Sequence = event.Seq
 			m.totalTokens++
 			break
 		}
@@ -499,8 +500,8 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 
 	case events.KindStreamEnd:
 		if isAggregator {
-			m.wizardState.Active = false
-			m.wizardState.EndTime = time.Now()
+			m.aggregatorState.Active = false
+			m.aggregatorState.EndTime = time.Now()
 			break
 		}
 		agentID := event.SourceID
@@ -534,7 +535,7 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 		st.Started = true
 		st.Ended = false
 		if step == "agent_exec" {
-			st.AgentCount = event.IntField("non_wizard_count")
+			st.AgentCount = event.IntField(nonAggregatorCountFieldKey)
 		}
 
 	case "flow_step_end":
@@ -586,13 +587,13 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 	case "flow_config":
 		flowID := event.StringField("flow_id")
 		m.flowConfig = &FlowConfigState{
-			FlowID:         flowID,
-			FlowFile:       event.StringField("flow_file"),
-			StagesOrder:    event.StringSliceField("stages_order"),
-			StagesEnabled:  event.BoolMapField("stages_enabled"),
-			RoutingMode:    event.StringField("routing_mode"),
-			AgentCount:     event.IntField("agent_count"),
-			NonWizardCount: event.IntField("non_wizard_count"),
+			FlowID:             flowID,
+			FlowFile:           event.StringField("flow_file"),
+			StagesOrder:        event.StringSliceField("stages_order"),
+			StagesEnabled:      event.BoolMapField("stages_enabled"),
+			RoutingMode:        event.StringField("routing_mode"),
+			AgentCount:         event.IntField("agent_count"),
+			NonAggregatorCount: event.IntField(nonAggregatorCountFieldKey),
 		}
 		// Also set FlowID if not already set
 		if m.FlowID == "" && flowID != "" {
@@ -721,7 +722,7 @@ func (m *Model) renderPromptPanel() string {
 		if m.flowConfig.RoutingMode != "" {
 			lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("Routing:"), valueStyle.Render(m.flowConfig.RoutingMode)))
 		}
-		lines = append(lines, fmt.Sprintf("  %s %d agents (%d non-wizard)", labelStyle.Render("Agents:"), m.flowConfig.AgentCount, m.flowConfig.NonWizardCount))
+		lines = append(lines, fmt.Sprintf("  %s %d agents (%d non-aggregator)", labelStyle.Render("Agents:"), m.flowConfig.AgentCount, m.flowConfig.NonAggregatorCount))
 		if len(m.flowConfig.StagesOrder) > 0 {
 			lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("Stages:"), valueStyle.Render(strings.Join(m.flowConfig.StagesOrder, " → "))))
 		}

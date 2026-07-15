@@ -16,7 +16,7 @@ func (m InteractiveModel) renderEventsPane() string {
 
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	wizardStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("13")).Bold(true)
+	aggregatorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("13")).Bold(true)
 
 	viewLabel := "PARSED"
 	if m.viewMode == ViewModeRaw {
@@ -26,48 +26,48 @@ func (m InteractiveModel) renderEventsPane() string {
 	if m.showTokens {
 		tokensLabel = "ON"
 	}
-	wizardOnlyLabel := "OFF"
-	if m.eventsWizardOnly {
-		wizardOnlyLabel = "ON"
+	aggregatorOnlyLabel := "OFF"
+	if m.eventsAggregatorOnly {
+		aggregatorOnlyLabel = "ON"
 	}
 
 	b.WriteString(headerStyle.Render("Events"))
 	b.WriteString(fmt.Sprintf(" (View: %s)", viewLabel))
 	if m.viewMode == ViewModeParsed {
 		b.WriteString(fmt.Sprintf(" (Tokens: %s)", tokensLabel))
-		b.WriteString(fmt.Sprintf(" (Wizard: %s)", wizardOnlyLabel))
+		b.WriteString(fmt.Sprintf(" (Aggregator: %s)", aggregatorOnlyLabel))
 	}
 	b.WriteString("\n")
 	b.WriteString(dimStyle.Render("─────────────────────────────────────────"))
 	b.WriteString("\n")
 	// Hints
 	if m.viewMode == ViewModeParsed {
-		b.WriteString(dimStyle.Render("Ctrl+T: RAW view, t: tokens, W: wizard-only"))
+		b.WriteString(dimStyle.Render("Ctrl+T: RAW view, t: tokens, W: aggregator-only"))
 	} else {
 		b.WriteString(dimStyle.Render("Ctrl+T: PARSED view"))
 	}
 	b.WriteString("\n")
 
-	// Show wizard metrics summary when in parsed mode
+	// Show aggregator metrics summary when in parsed mode
 	if m.viewMode == ViewModeParsed && len(m.messages) > 0 {
 		msg := m.messages[len(m.messages)-1]
 		if msg.AgentResponses != nil {
-			if wizardResp := m.aggregatorResponse(msg); wizardResp != nil {
+			if aggResp := m.aggregatorResponse(msg); aggResp != nil {
 				var metricsLine strings.Builder
-				metricsLine.WriteString(fmt.Sprintf("🧙 Wizard: %d tokens", wizardResp.TokenCount))
-				if wizardResp.DurationMs > 0 && wizardResp.TokenCount > 0 {
-					tokensPerSec := float64(wizardResp.TokenCount) * 1000.0 / float64(wizardResp.DurationMs)
+				metricsLine.WriteString(fmt.Sprintf("🧙 Aggregator: %d tokens", aggResp.TokenCount))
+				if aggResp.DurationMs > 0 && aggResp.TokenCount > 0 {
+					tokensPerSec := float64(aggResp.TokenCount) * 1000.0 / float64(aggResp.DurationMs)
 					metricsLine.WriteString(fmt.Sprintf(" | %.1f tok/s", tokensPerSec))
 				}
-				if wizardResp.FirstTokenMs > 0 {
-					metricsLine.WriteString(fmt.Sprintf(" | first: %dms", wizardResp.FirstTokenMs))
+				if aggResp.FirstTokenMs > 0 {
+					metricsLine.WriteString(fmt.Sprintf(" | first: %dms", aggResp.FirstTokenMs))
 				}
-				if !wizardResp.Completed {
+				if !aggResp.Completed {
 					metricsLine.WriteString(" ⏳")
 				} else {
 					metricsLine.WriteString(" ✓")
 				}
-				b.WriteString(wizardStyle.Render(metricsLine.String()))
+				b.WriteString(aggregatorStyle.Render(metricsLine.String()))
 				b.WriteString("\n")
 			}
 		}
@@ -100,7 +100,7 @@ func (m InteractiveModel) renderEventsPane() string {
 	// Styles for event rendering
 	eventStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 	tokenStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	wizardEventStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("13"))
+	aggregatorEventStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("13"))
 	selectedStyle := lipgloss.NewStyle().Background(lipgloss.Color("8")).Foreground(lipgloss.Color("15"))
 	expandedContentStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7")).PaddingLeft(4)
 	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true)
@@ -114,14 +114,14 @@ func (m InteractiveModel) renderEventsPane() string {
 			continue
 		}
 
-		// Check if this is a wizard-related event (for styling)
-		isWizardEvent := evt.Name == "wizard_stream_start" ||
-			evt.Name == "wizard_content" ||
-			evt.Name == "wizard_stream_complete"
+		// Check if this is an aggregator-lane event (for styling)
+		isAggregatorEvent := evt.Name == aggregatorStreamStartEventName ||
+			evt.Name == aggregatorContentEventName ||
+			evt.Name == aggregatorStreamCompleteEventName
 		evtStep := evt.StringField("step")
 		isSynthesisFlowEvent := (evt.Name == "flow_step_start" || evt.Name == "flow_step_end") &&
-			(evtStep == "synthesis" || evtStep == "wizard")
-		isTokenEvent := evt.Name == "agent_content" || evt.Name == "wizard_content"
+			(evtStep == "synthesis" || evtStep == aggregatorStageName)
+		isTokenEvent := evt.Name == "agent_content" || evt.Name == aggregatorContentEventName
 
 		// All events are expandable - show raw JSON when expanded
 		isExpandable := true
@@ -190,7 +190,7 @@ func (m InteractiveModel) renderEventsPane() string {
 				content = content[:30] + "..."
 			}
 			line += fmt.Sprintf(" agent=%s content=%q", evt.SourceID, content)
-		case "wizard_content":
+		case aggregatorContentEventName:
 			content := evt.Content
 			if len(content) > 30 {
 				content = content[:30] + "..."
@@ -219,10 +219,10 @@ func (m InteractiveModel) renderEventsPane() string {
 		var styledLine string
 		if isSelected {
 			styledLine = selectedStyle.Render(line)
-		} else if isTokenEvent && !isWizardEvent {
+		} else if isTokenEvent && !isAggregatorEvent {
 			styledLine = tokenStyle.Render(line)
-		} else if isWizardEvent || isSynthesisFlowEvent {
-			styledLine = wizardEventStyle.Render(line)
+		} else if isAggregatorEvent || isSynthesisFlowEvent {
+			styledLine = aggregatorEventStyle.Render(line)
 		} else {
 			styledLine = eventStyle.Render(line)
 		}
@@ -323,16 +323,16 @@ func (m InteractiveModel) renderEventsPane() string {
 						expandedContent.WriteString("\n")
 					}
 				}
-			case "wizard_stream_complete":
+			case aggregatorStreamCompleteEventName:
 				// Show full aggregator response from AgentResponses
-				if wizard := m.aggregatorResponse(msg); wizard != nil && wizard.FullContent != "" {
-					expandedContent.WriteString(labelStyle.Render("Wizard Response:"))
+				if agg := m.aggregatorResponse(msg); agg != nil && agg.FullContent != "" {
+					expandedContent.WriteString(labelStyle.Render("Aggregator Response:"))
 					expandedContent.WriteString("\n")
-					expandedContent.WriteString(expandedContentStyle.Render(wizard.FullContent))
+					expandedContent.WriteString(expandedContentStyle.Render(agg.FullContent))
 					expandedContent.WriteString("\n")
-					if wizard.TokenCount > 0 {
+					if agg.TokenCount > 0 {
 						expandedContent.WriteString(labelStyle.Render("Tokens:"))
-						expandedContent.WriteString(fmt.Sprintf(" %d\n", wizard.TokenCount))
+						expandedContent.WriteString(fmt.Sprintf(" %d\n", agg.TokenCount))
 					}
 				}
 			default:

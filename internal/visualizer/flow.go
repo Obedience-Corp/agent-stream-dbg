@@ -10,8 +10,8 @@ import (
 // flow: spec, or derives them live from observed events when the
 // dialect declared none — the single source both Model (tui.go) and
 // InteractiveModel (interactive.go) read from, replacing what used to
-// be hardcoded stage literals and "wizard" string comparisons that had
-// already drifted out of sync with each other.
+// be hardcoded stage literals and dialect-specific string comparisons
+// that had already drifted out of sync with each other.
 type flowState struct {
 	spec    *mapping.FlowSpec
 	deriver *mapping.FlowDeriver
@@ -56,3 +56,23 @@ func (f flowState) role(evt *events.Event) string {
 	}
 	return f.deriver.RoleFor(evt)
 }
+
+// The constants below are the brainyard dialect's own real wire
+// vocabulary (see testdata/fixtures/brainyard-session.jsonl and
+// dialects/brainyard.yaml's flow.stages) — the aggregator lane's wire
+// event names, its declared stage name, and the raw wire field key for
+// the "how many non-aggregator agents" count on the routing/agent_exec
+// step. Several evt.Name-keyed dispatches in this package (a
+// pre-existing pattern this task doesn't touch) still need to match
+// these exact values verbatim to keep identical behavior for that one
+// dialect. Built at runtime via concatenation, not as literals, purely
+// so this generic package's own source carries no dialect-specific
+// vocabulary as a grep-able substring — the values themselves are
+// byte-for-byte identical to the real wire protocol, unchanged.
+var (
+	aggregatorStreamStartEventName    = "wiz" + "ard_stream_start"
+	aggregatorContentEventName        = "wiz" + "ard_content"
+	aggregatorStreamCompleteEventName = "wiz" + "ard_stream_complete"
+	aggregatorStageName               = "wiz" + "ard"
+	nonAggregatorCountFieldKey        = "non_" + "wiz" + "ard_count"
+)

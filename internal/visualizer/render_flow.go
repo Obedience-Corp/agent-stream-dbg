@@ -25,8 +25,8 @@ func (m InteractiveModel) buildFlowNodes(evts []*events.Event) map[string]*FlowN
 			}
 			n.Enabled = e.BoolField("enabled")
 			n.InProgress = true
-			if nonWizardCount := e.IntField("non_wizard_count"); step == "agent_exec" && nonWizardCount > 0 {
-				n.AgentCount = nonWizardCount
+			if nonAggregatorCount := e.IntField(nonAggregatorCountFieldKey); step == "agent_exec" && nonAggregatorCount > 0 {
+				n.AgentCount = nonAggregatorCount
 			}
 			nodes[step] = n
 		}
@@ -150,7 +150,7 @@ func (m InteractiveModel) renderFlowPane() string {
 			}
 
 			// Aggregator inline metrics (tokens, tokens/sec)
-			if step == "wizard" && msg.AgentResponses != nil {
+			if step == aggregatorStageName && msg.AgentResponses != nil {
 				if aggResp := m.aggregatorResponse(msg); aggResp != nil {
 					line.WriteString(fmt.Sprintf(" tokens:%d", aggResp.TokenCount))
 					if aggResp.DurationMs > 0 && aggResp.TokenCount > 0 {
@@ -187,12 +187,12 @@ func (m InteractiveModel) renderFlowPane() string {
 					b.WriteString("\n")
 				}
 			}
-			// Pass aggregator response for wizard step metrics
-			var wizardResp *AgentResponse
-			if step == "wizard" && msg.AgentResponses != nil {
-				wizardResp = m.aggregatorResponse(msg)
+			// Pass aggregator response for the aggregator step's metrics
+			var aggResp *AgentResponse
+			if step == aggregatorStageName && msg.AgentResponses != nil {
+				aggResp = m.aggregatorResponse(msg)
 			}
-			b.WriteString(m.renderFlowNodeDetails(n, wizardResp))
+			b.WriteString(m.renderFlowNodeDetails(n, aggResp))
 		}
 	}
 
@@ -243,9 +243,8 @@ func (m InteractiveModel) renderFlowAllPane() string {
 		}
 		if len(agents) == 0 {
 			// Derive from events: any stream_start whose lane isn't the
-			// aggregator (brainyard: the wizard), which gets its own
-			// dedicated summary elsewhere rather than appearing in this
-			// worker-agent list.
+			// aggregator role, which gets its own dedicated summary
+			// elsewhere rather than appearing in this worker-agent list.
 			uniq := map[string]struct{}{}
 			for _, e := range evts {
 				if e.Kind == events.KindStreamStart && e.SourceID != "" && m.dialectFlow.role(e) != "aggregator" {
@@ -289,7 +288,7 @@ func (m InteractiveModel) renderFlowAllPane() string {
 				}
 			}
 			// Aggregator inline metrics (tokens, tokens/sec)
-			if step == "wizard" && msg.AgentResponses != nil {
+			if step == aggregatorStageName && msg.AgentResponses != nil {
 				if aggResp := m.aggregatorResponse(msg); aggResp != nil {
 					line.WriteString(fmt.Sprintf(" tokens:%d", aggResp.TokenCount))
 					if aggResp.DurationMs > 0 && aggResp.TokenCount > 0 {
@@ -311,12 +310,12 @@ func (m InteractiveModel) renderFlowAllPane() string {
 						b.WriteString("\n")
 					}
 				}
-				// Pass aggregator response for wizard step metrics
-				var wizardResp *AgentResponse
-				if step == "wizard" && msg.AgentResponses != nil {
-					wizardResp = m.aggregatorResponse(msg)
+				// Pass aggregator response for the aggregator step's metrics
+				var aggResp *AgentResponse
+				if step == aggregatorStageName && msg.AgentResponses != nil {
+					aggResp = m.aggregatorResponse(msg)
 				}
-				b.WriteString(m.renderFlowNodeDetails(n, wizardResp))
+				b.WriteString(m.renderFlowNodeDetails(n, aggResp))
 			}
 		}
 
@@ -330,7 +329,7 @@ func (m InteractiveModel) renderFlowAllPane() string {
 }
 
 // deriveAgentsFromEvents returns a sorted list of non-aggregator agents
-// that streamed in this turn (brainyard: everyone but the wizard).
+// that streamed in this turn.
 func (m InteractiveModel) deriveAgentsFromEvents(evts []*events.Event) []string {
 	uniq := map[string]struct{}{}
 	for _, e := range evts {
@@ -349,12 +348,13 @@ func (m InteractiveModel) deriveAgentsFromEvents(evts []*events.Event) []string 
 	return agents
 }
 
-// renderFlowNodeDetails renders expanded details for a flow node
-// wizardResp is optional and only used when step is "wizard" to show metrics
-func (m InteractiveModel) renderFlowNodeDetails(n *FlowNode, wizardResp *AgentResponse) string {
+// renderFlowNodeDetails renders expanded details for a flow node.
+// aggResp is optional and only used when n is the aggregator step, to
+// show its metrics.
+func (m InteractiveModel) renderFlowNodeDetails(n *FlowNode, aggResp *AgentResponse) string {
 	var b strings.Builder
 	detailStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).PaddingLeft(4)
-	wizardStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("13")).PaddingLeft(4)
+	aggregatorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("13")).PaddingLeft(4)
 	wrote := false
 
 	// Basic fields always useful
@@ -370,30 +370,30 @@ func (m InteractiveModel) renderFlowNodeDetails(n *FlowNode, wizardResp *AgentRe
 		b.WriteString("\n")
 	}
 
-	// Wizard-specific metrics (only for wizard step)
-	if n.Step == "wizard" && wizardResp != nil {
-		b.WriteString(wizardStyle.Render("── Wizard Metrics ──"))
+	// Aggregator-specific metrics (only for the aggregator step)
+	if n.Step == aggregatorStageName && aggResp != nil {
+		b.WriteString(aggregatorStyle.Render("── Aggregator Metrics ──"))
 		b.WriteString("\n")
-		b.WriteString(wizardStyle.Render(fmt.Sprintf("token_count: %d", wizardResp.TokenCount)))
+		b.WriteString(aggregatorStyle.Render(fmt.Sprintf("token_count: %d", aggResp.TokenCount)))
 		b.WriteString("\n")
-		if wizardResp.FirstTokenMs > 0 {
-			b.WriteString(wizardStyle.Render(fmt.Sprintf("first_token_ms: %d", wizardResp.FirstTokenMs)))
+		if aggResp.FirstTokenMs > 0 {
+			b.WriteString(aggregatorStyle.Render(fmt.Sprintf("first_token_ms: %d", aggResp.FirstTokenMs)))
 			b.WriteString("\n")
 		}
-		if wizardResp.DurationMs > 0 {
-			b.WriteString(wizardStyle.Render(fmt.Sprintf("duration_ms: %d", wizardResp.DurationMs)))
+		if aggResp.DurationMs > 0 {
+			b.WriteString(aggregatorStyle.Render(fmt.Sprintf("duration_ms: %d", aggResp.DurationMs)))
 			b.WriteString("\n")
 			// Calculate tokens/sec (cleaner formula: tokens * 1000 / ms)
-			if wizardResp.TokenCount > 0 {
-				tokensPerSec := float64(wizardResp.TokenCount) * 1000.0 / float64(wizardResp.DurationMs)
-				b.WriteString(wizardStyle.Render(fmt.Sprintf("tokens/sec: %.1f", tokensPerSec)))
+			if aggResp.TokenCount > 0 {
+				tokensPerSec := float64(aggResp.TokenCount) * 1000.0 / float64(aggResp.DurationMs)
+				b.WriteString(aggregatorStyle.Render(fmt.Sprintf("tokens/sec: %.1f", tokensPerSec)))
 				b.WriteString("\n")
 			}
 		}
 		// Show plan_id from synthesis step prompt_ref if available
 		if n.PromptRef != nil {
 			if planID, ok := n.PromptRef["synthesis_plan_id"]; ok {
-				b.WriteString(wizardStyle.Render(fmt.Sprintf("plan_id: %v", planID)))
+				b.WriteString(aggregatorStyle.Render(fmt.Sprintf("plan_id: %v", planID)))
 				b.WriteString("\n")
 			}
 		}

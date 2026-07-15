@@ -275,15 +275,15 @@ func (m *InteractiveModel) incrementalParseSSE(chunk []byte) {
 
 // applyParsedEvent updates agent responses incrementally from a parsed
 // event. Dispatches on evt.Kind + role, not on the dialect's own wire
-// event names (previously separate "agent_stream_start"/"wizard_stream_
-// start"-shaped cases) — brainyard.yaml's agent_*/wizard_* rules already
-// decode to the same Kind (stream_start/content/stream_end) with
-// SourceID distinguishing which lane, so Kind-based dispatch is the
-// generic equivalent with identical behavior for brainyard specifically,
-// and the only version of this function that doesn't special-case one
-// dialect's own event vocabulary in Go source. First-token latency,
-// duration, and turn-metrics logging remain role: aggregator-exclusive
-// (matching what wizard_*-only handling already did) — regular agents
+// event names (previously separate per-lane wire-event-shaped cases) —
+// a dialect's agent-lane and aggregator-lane rules already decode to the
+// same Kind (stream_start/content/stream_end) with SourceID
+// distinguishing which lane, so Kind-based dispatch is the generic
+// equivalent with identical behavior for any such dialect, and the only
+// version of this function that doesn't special-case one dialect's own
+// event vocabulary in Go source. First-token latency, duration, and
+// turn-metrics logging remain role: aggregator-exclusive (matching what
+// the prior per-lane-name-only handling already did) — regular agents
 // never got these, and still don't.
 func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
 	m.dialectFlow.observe(evt)
@@ -344,7 +344,7 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
 			break
 		}
 		// Skip duplicate completion events — aggregator-only, matching
-		// wizard_stream_complete's prior exclusive guard.
+		// the aggregator lane's prior exclusive completion guard.
 		if ar.Completed {
 			return
 		}
@@ -359,7 +359,7 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
 			ar.TokenCount = tc
 		}
 		// Log turn metrics for the aggregator lane only, matching what
-		// wizard_stream_complete-only handling already did.
+		// the prior aggregator-lane-only handling already did.
 		if m.slog != nil && m.cfg != nil {
 			var tokensPerSec float64
 			if ar.DurationMs > 0 && ar.TokenCount > 0 {
@@ -393,11 +393,11 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
 }
 
 // aggregatorResponse returns the AgentResponse for msg's aggregator-role
-// lane (brainyard: the wizard), or nil if none is present yet. If more
-// than one lane resolves to role: aggregator — the flow model permits
-// this in principle, though no shipped dialect does it — the first in
-// sorted AgentID order wins, deterministically; true multi-aggregator
-// support is deferred until a real dialect needs it.
+// lane, or nil if none is present yet. If more than one lane resolves to
+// role: aggregator — the flow model permits this in principle, though no
+// shipped dialect does it — the first in sorted AgentID order wins,
+// deterministically; true multi-aggregator support is deferred until a
+// real dialect needs it.
 func (m InteractiveModel) aggregatorResponse(msg Message) *AgentResponse {
 	ids := make([]string, 0, len(msg.AgentResponses))
 	for id := range msg.AgentResponses {
@@ -432,11 +432,12 @@ func buildAgentResponses(evts []*events.Event) map[string]*AgentResponse {
 
 		agent := responses[agentID]
 
-		// Dispatch on Kind, not the dialect's own wire event names —
-		// brainyard's agent_*/wizard_* rules already decode to the same
-		// Kind, treated identically here (unlike applyParsedEvent's
-		// incremental path, this rebuild never distinguished the
-		// aggregator lane's handling from any other agent's).
+		// Dispatch on Kind, not the dialect's own wire event names — a
+		// dialect's agent-lane and aggregator-lane rules already decode
+		// to the same Kind, treated identically here (unlike
+		// applyParsedEvent's incremental path, this rebuild never
+		// distinguished the aggregator lane's handling from any other
+		// agent's).
 		switch event.Kind {
 		case events.KindStreamStart:
 			agent.StartTime = time.Now()

@@ -284,12 +284,12 @@ func (m InteractiveModel) handleKeyMsg(msg tea.KeyMsg) (InteractiveModel, tea.Cm
 				if m.selectedStepIndex < len(steps) {
 					step := steps[m.selectedStepIndex]
 					switch step {
-					case "wizard", "synthesis":
-						m.appFocus = AppFocusWizard
+					case aggregatorStageName, "synthesis":
+						m.appFocus = AppFocusAggregator
 					case "agent_exec":
 						m.appFocus = AppFocusAgents
 					default:
-						m.appFocus = AppFocusWizard
+						m.appFocus = AppFocusAggregator
 					}
 					m.activePane = PaneApp
 					m.contentDirty = true
@@ -298,10 +298,10 @@ func (m InteractiveModel) handleKeyMsg(msg tea.KeyMsg) (InteractiveModel, tea.Cm
 			}
 			return m, nil, true
 		case "f":
-			// App pane: toggle focus between Agents and Wizard
+			// App pane: toggle focus between Agents and Aggregator
 			if m.activePane == PaneApp {
 				if m.appFocus == AppFocusAgents {
-					m.appFocus = AppFocusWizard
+					m.appFocus = AppFocusAggregator
 				} else {
 					m.appFocus = AppFocusAgents
 				}
@@ -334,9 +334,9 @@ func (m InteractiveModel) handleKeyMsg(msg tea.KeyMsg) (InteractiveModel, tea.Cm
 			}
 			return m, nil, true
 		case "W":
-			// Events pane: toggle wizard-only filter
+			// Events pane: toggle aggregator-only filter
 			if m.activePane == PaneEvents {
-				m.eventsWizardOnly = !m.eventsWizardOnly
+				m.eventsAggregatorOnly = !m.eventsAggregatorOnly
 				m.contentDirty = true
 				m.refreshViewportContent()
 			}

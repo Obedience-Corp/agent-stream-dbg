@@ -60,7 +60,7 @@ func (m InteractiveModel) renderEventExpandedPlainText(evt *events.Event, msg *M
 		b.WriteString("Stages Order: " + strings.Join(evt.StringSliceField("stages_order"), " → ") + "\n")
 		b.WriteString("Routing Mode: " + evt.StringField("routing_mode") + "\n")
 		b.WriteString(fmt.Sprintf("Agent Count: %d\n", evt.IntField("agent_count")))
-		b.WriteString(fmt.Sprintf("Non-Wizard Count: %d\n", evt.IntField("non_wizard_count")))
+		b.WriteString(fmt.Sprintf("Non-Aggregator Count: %d\n", evt.IntField(nonAggregatorCountFieldKey)))
 		if stagesEnabled := evt.BoolMapField("stages_enabled"); len(stagesEnabled) > 0 {
 			b.WriteString("Stages Enabled:\n")
 			for stage, enabled := range stagesEnabled {
@@ -73,8 +73,8 @@ func (m InteractiveModel) renderEventExpandedPlainText(evt *events.Event, msg *M
 		if agentCount := evt.IntField("agent_count"); agentCount > 0 {
 			b.WriteString(fmt.Sprintf("Agent Count: %d\n", agentCount))
 		}
-		if nonWizardCount := evt.IntField("non_wizard_count"); nonWizardCount > 0 {
-			b.WriteString(fmt.Sprintf("Non-Wizard Count: %d\n", nonWizardCount))
+		if nonAggregatorCount := evt.IntField(nonAggregatorCountFieldKey); nonAggregatorCount > 0 {
+			b.WriteString(fmt.Sprintf("Non-Aggregator Count: %d\n", nonAggregatorCount))
 		}
 	case "flow_step_end":
 		b.WriteString("Step: " + evt.StringField("step") + "\n")
@@ -129,17 +129,17 @@ func (m InteractiveModel) renderEventExpandedPlainText(evt *events.Event, msg *M
 		if agents := evt.StringSliceField("agents"); len(agents) > 0 {
 			b.WriteString("\nAgents: " + strings.Join(agents, ", ") + "\n")
 		}
-	case "wizard_stream_start":
+	case aggregatorStreamStartEventName:
 		b.WriteString("Message ID: " + evt.StringField("message_id") + "\n")
-	case "wizard_stream_complete":
+	case aggregatorStreamCompleteEventName:
 		// Show full aggregator response from AgentResponses
 		if msg != nil {
-			if wizard := m.aggregatorResponse(*msg); wizard != nil && wizard.FullContent != "" {
-				b.WriteString("Wizard Response:\n")
-				b.WriteString(wizard.FullContent)
+			if agg := m.aggregatorResponse(*msg); agg != nil && agg.FullContent != "" {
+				b.WriteString("Aggregator Response:\n")
+				b.WriteString(agg.FullContent)
 				b.WriteString("\n")
-				if wizard.TokenCount > 0 {
-					b.WriteString(fmt.Sprintf("\nTokens: %d\n", wizard.TokenCount))
+				if agg.TokenCount > 0 {
+					b.WriteString(fmt.Sprintf("\nTokens: %d\n", agg.TokenCount))
 				}
 			}
 		}

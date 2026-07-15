@@ -22,22 +22,22 @@ func newTestModel(t *testing.T) *Model {
 	return NewModel(cfg, nil, sl, "")
 }
 
-// TestModelHandleEvent_AggregatorGetsExclusiveWizardState regression-
-// tests this task's Kind-based merge of tui.go's handleEvent (formerly
-// separate "agent_stream_start"/"wizard_stream_start"-shaped string
-// cases): a role: aggregator lane's stream lifecycle updates
-// m.wizardState, while any other lane updates m.agents — matching the
-// original wizard_*-exclusive behavior for brainyard specifically.
-func TestModelHandleEvent_AggregatorGetsExclusiveWizardState(t *testing.T) {
+// TestModelHandleEvent_AggregatorGetsExclusiveState regression-tests this
+// task's Kind-based merge of tui.go's handleEvent (formerly separate
+// per-lane wire-event-shaped string cases): a role: aggregator lane's
+// stream lifecycle updates m.aggregatorState, while any other lane
+// updates m.agents — matching the original aggregator-lane-exclusive
+// behavior for the default (brainyard) dialect specifically.
+func TestModelHandleEvent_AggregatorGetsExclusiveState(t *testing.T) {
 	m := newTestModel(t)
 
 	m.handleEvent(&events.Event{Kind: events.KindStreamStart, SourceID: "agent_a"})
 	m.handleEvent(&events.Event{Kind: events.KindContent, SourceID: "agent_a", Content: "hi"})
 	m.handleEvent(&events.Event{Kind: events.KindStreamEnd, SourceID: "agent_a"})
 
-	m.handleEvent(&events.Event{Kind: events.KindStreamStart, SourceID: "wizard"})
-	m.handleEvent(&events.Event{Kind: events.KindContent, SourceID: "wizard", Content: "synthesized"})
-	m.handleEvent(&events.Event{Kind: events.KindStreamEnd, SourceID: "wizard"})
+	m.handleEvent(&events.Event{Kind: events.KindStreamStart, SourceID: aggregatorStageName})
+	m.handleEvent(&events.Event{Kind: events.KindContent, SourceID: aggregatorStageName, Content: "synthesized"})
+	m.handleEvent(&events.Event{Kind: events.KindStreamEnd, SourceID: aggregatorStageName})
 
 	agent, ok := m.agents["agent_a"]
 	if !ok {
@@ -50,43 +50,44 @@ func TestModelHandleEvent_AggregatorGetsExclusiveWizardState(t *testing.T) {
 		t.Error("expected agent_a to no longer be active after stream_end")
 	}
 
-	if m.wizardState.Content.String() != "synthesized" {
-		t.Errorf("expected wizardState's content 'synthesized', got %q", m.wizardState.Content.String())
+	if m.aggregatorState.Content.String() != "synthesized" {
+		t.Errorf("expected aggregatorState's content 'synthesized', got %q", m.aggregatorState.Content.String())
 	}
-	if m.wizardState.Active {
-		t.Error("expected wizardState to no longer be active after stream_end")
+	if m.aggregatorState.Active {
+		t.Error("expected aggregatorState to no longer be active after stream_end")
 	}
-	if _, ok := m.agents["wizard"]; ok {
+	if _, ok := m.agents[aggregatorStageName]; ok {
 		t.Error("expected the aggregator lane to never appear in m.agents")
 	}
 }
 
-// TestModelHandleEvent_AggregatorRoleGeneralizesBeyondWizard proves
-// handleEvent's aggregator dispatch is genuinely role-based, not a
-// string comparison against "wizard" moved into Kind-based code: with
-// an aggregator lane named "supervisor", a literal "wizard"-named lane
-// must be treated as an ordinary worker (into m.agents), and
-// "supervisor"'s events must land in m.wizardState instead.
-func TestModelHandleEvent_AggregatorRoleGeneralizesBeyondWizard(t *testing.T) {
+// TestModelHandleEvent_AggregatorRoleGeneralizesBeyondDefaultSource
+// proves handleEvent's aggregator dispatch is genuinely role-based, not
+// a string comparison against the default dialect's aggregator source
+// name moved into Kind-based code: with an aggregator lane named
+// "supervisor", a lane using the default dialect's own aggregator
+// source name must be treated as an ordinary worker (into m.agents), and
+// "supervisor"'s events must land in m.aggregatorState instead.
+func TestModelHandleEvent_AggregatorRoleGeneralizesBeyondDefaultSource(t *testing.T) {
 	m := newTestModel(t)
 	m.dialectFlow = testFlowStateWithAggregator("supervisor")
 
-	m.handleEvent(&events.Event{Kind: events.KindStreamStart, SourceID: "wizard"})
-	m.handleEvent(&events.Event{Kind: events.KindContent, SourceID: "wizard", Content: "not the aggregator"})
+	m.handleEvent(&events.Event{Kind: events.KindStreamStart, SourceID: aggregatorStageName})
+	m.handleEvent(&events.Event{Kind: events.KindContent, SourceID: aggregatorStageName, Content: "not the aggregator"})
 
 	m.handleEvent(&events.Event{Kind: events.KindStreamStart, SourceID: "supervisor"})
 	m.handleEvent(&events.Event{Kind: events.KindContent, SourceID: "supervisor", Content: "synthesized"})
 
-	wizardLane, ok := m.agents["wizard"]
+	otherLane, ok := m.agents[aggregatorStageName]
 	if !ok {
-		t.Fatal("expected the 'wizard'-named lane to be treated as an ordinary worker agent")
+		t.Fatal("expected the default dialect's aggregator-source-named lane to be treated as an ordinary worker agent")
 	}
-	if wizardLane.Content.String() != "not the aggregator" {
-		t.Errorf("expected agents[\"wizard\"] content %q, got %q", "not the aggregator", wizardLane.Content.String())
+	if otherLane.Content.String() != "not the aggregator" {
+		t.Errorf("expected agents[%q] content %q, got %q", aggregatorStageName, "not the aggregator", otherLane.Content.String())
 	}
 
-	if m.wizardState.Content.String() != "synthesized" {
-		t.Errorf("expected wizardState's content 'synthesized' (from the declared aggregator 'supervisor'), got %q", m.wizardState.Content.String())
+	if m.aggregatorState.Content.String() != "synthesized" {
+		t.Errorf("expected aggregatorState's content 'synthesized' (from the declared aggregator 'supervisor'), got %q", m.aggregatorState.Content.String())
 	}
 	if _, ok := m.agents["supervisor"]; ok {
 		t.Error("expected the declared aggregator 'supervisor' to never appear in m.agents")

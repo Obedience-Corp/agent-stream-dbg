@@ -38,7 +38,7 @@ const (
 type AppFocus int
 
 const (
-	AppFocusWizard AppFocus = iota
+	AppFocusAggregator AppFocus = iota
 	AppFocusAgents
 )
 
@@ -67,7 +67,7 @@ type AgentResponse struct {
 	EndTime       time.Time
 	Completed     bool
 	// Aggregator-role-only metrics (only populated for the lane whose
-	// role resolves to aggregator — brainyard: the wizard)
+	// role resolves to aggregator, per the dialect's flow: config)
 	FirstTokenMs int64 // Time from stream_start to first content event (ms)
 	DurationMs   int64 // Total duration from stream_start to stream_complete (ms)
 }
@@ -102,12 +102,12 @@ type InteractiveModel struct {
 	contentDirty bool
 
 	// Pane management
-	activePane        Pane
-	selectedStepIndex int
-	flowExpanded      map[string]bool // track expanded/collapsed state per step
-	showTokens        bool            // Events pane: show token events
-	showPromptRef     bool            // Flow pane: show prompt references
-	eventsWizardOnly  bool            // Events pane: show only wizard events when true
+	activePane           Pane
+	selectedStepIndex    int
+	flowExpanded         map[string]bool // track expanded/collapsed state per step
+	showTokens           bool            // Events pane: show token events
+	showPromptRef        bool            // Flow pane: show prompt references
+	eventsAggregatorOnly bool            // Events pane: show only aggregator events when true
 
 	// App pane state
 	appFocus       AppFocus

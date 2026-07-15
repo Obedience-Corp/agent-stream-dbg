@@ -153,7 +153,7 @@ func (m InteractiveModel) newSessionCmd() tea.Cmd {
 		m.selectedStepIndex = 0
 		m.flowExpanded = make(map[string]bool)
 		m.showTokens = false
-		m.eventsWizardOnly = false
+		m.eventsAggregatorOnly = false
 		m.appFocus = AppFocusAgents
 		m.viewport.SetContent("")
 		m.contentDirty = true

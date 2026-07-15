@@ -114,8 +114,9 @@ func TestCurrentPaneName(t *testing.T) {
 // TestParseSSEStream_And_BuildAgentResponses proves the non-incremental
 // "finalize" code path (used when a stream completes) parses the same
 // fixture-derived raw SSE text into events and rebuilds a non-empty,
-// completed wizard AgentResponse — the counterpart to fixture_parity_test.go's
-// coverage of the incremental applyParsedEvent path.
+// completed aggregator AgentResponse — the counterpart to
+// fixture_parity_test.go's coverage of the incremental applyParsedEvent
+// path.
 func TestParseSSEStream_And_BuildAgentResponses(t *testing.T) {
 	m := newFixtureModel(t)
 	rawSSE := m.messages[0].RawSSE
@@ -132,27 +133,27 @@ func TestParseSSEStream_And_BuildAgentResponses(t *testing.T) {
 	}
 
 	responses := buildAgentResponses(evts)
-	wizard := responses["wizard"]
-	if wizard == nil {
-		t.Fatal("expected a wizard AgentResponse to be built")
+	agg := responses[aggregatorStageName]
+	if agg == nil {
+		t.Fatal("expected an aggregator AgentResponse to be built")
 	}
-	if !wizard.Completed {
-		t.Error("expected the wizard response to be Completed")
+	if !agg.Completed {
+		t.Error("expected the aggregator response to be Completed")
 	}
-	if wizard.FullContent == "" {
-		t.Error("expected the wizard response to have content")
+	if agg.FullContent == "" {
+		t.Error("expected the aggregator response to have content")
 	}
 }
 
 // TestAggregatorResponse covers the direct lookup used throughout the
-// render files: it must find the wizard (aggregator-role) lane and return
-// nil for a message with no agent responses at all.
+// render files: it must find the aggregator-role lane and return nil for
+// a message with no agent responses at all.
 func TestAggregatorResponse(t *testing.T) {
 	m := newFixtureModel(t)
 
 	got := m.aggregatorResponse(m.messages[0])
-	if got == nil || got.AgentID != "wizard" {
-		t.Errorf("expected the wizard aggregator response, got %+v", got)
+	if got == nil || got.AgentID != aggregatorStageName {
+		t.Errorf("expected the aggregator response, got %+v", got)
 	}
 
 	if got := m.aggregatorResponse(Message{}); got != nil {

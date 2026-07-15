@@ -9,18 +9,18 @@ import (
 
 // TestRenderAppPane_BothFocuses is a floor-level test for
 // render_app_pane.go (previously untested directly): both AppFocus states
-// must render without panicking and include the wizard/agent content.
+// must render without panicking and include the aggregator/agent content.
 func TestRenderAppPane_BothFocuses(t *testing.T) {
 	if out := (InteractiveModel{}).renderAppPane(); !strings.Contains(out, "No messages yet") {
 		t.Errorf("expected empty-state message, got %q", out)
 	}
 
 	m := newFixtureModel(t)
-	for _, focus := range []AppFocus{AppFocusWizard, AppFocusAgents} {
+	for _, focus := range []AppFocus{AppFocusAggregator, AppFocusAgents} {
 		m.appFocus = focus
 		out := m.renderAppPane()
-		if !strings.Contains(out, "Wizard Output") {
-			t.Errorf("focus=%v: expected Wizard Output section", focus)
+		if !strings.Contains(out, "Aggregator Output") {
+			t.Errorf("focus=%v: expected Aggregator Output section", focus)
 		}
 		if !strings.Contains(out, "Agents") {
 			t.Errorf("focus=%v: expected Agents section", focus)
@@ -43,29 +43,30 @@ func TestRenderSynthesisSection(t *testing.T) {
 	}
 }
 
-// TestRenderWizardSection_And_DebugSummary proves the wizard section
-// renders content plus its debug summary line (tokens, rate, first-token).
-func TestRenderWizardSection_And_DebugSummary(t *testing.T) {
+// TestRenderAggregatorSection_And_DebugSummary proves the aggregator
+// section renders content plus its debug summary line (tokens, rate,
+// first-token).
+func TestRenderAggregatorSection_And_DebugSummary(t *testing.T) {
 	m := newFixtureModel(t)
 
-	out := m.renderWizardSection(m.messages[0], lipgloss.NewStyle())
-	if !strings.Contains(out, "Wizard Output") {
-		t.Error("expected a Wizard Output header")
+	out := m.renderAggregatorSection(m.messages[0], lipgloss.NewStyle())
+	if !strings.Contains(out, "Aggregator Output") {
+		t.Error("expected an Aggregator Output header")
 	}
 
-	wizard := m.aggregatorResponse(m.messages[0])
-	summary := m.renderWizardDebugSummary(wizard)
+	agg := m.aggregatorResponse(m.messages[0])
+	summary := m.renderAggregatorDebugSummary(agg)
 	if !strings.Contains(summary, "tokens:") {
 		t.Errorf("expected the debug summary to include a token count, got %q", summary)
 	}
 
-	if got := m.renderWizardDebugSummary(nil); got != "" {
-		t.Errorf("expected empty string for a nil wizard response, got %q", got)
+	if got := m.renderAggregatorDebugSummary(nil); got != "" {
+		t.Errorf("expected empty string for a nil aggregator response, got %q", got)
 	}
 }
 
 // TestRenderAgentSummaries proves it lists non-aggregator agents with
-// collapse/expand state and excludes the wizard lane.
+// collapse/expand state and excludes the aggregator lane.
 func TestRenderAgentSummaries(t *testing.T) {
 	m := newFixtureModel(t)
 

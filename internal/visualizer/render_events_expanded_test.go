@@ -9,30 +9,30 @@ import (
 
 // TestRenderEventExpandedPlainText is a floor-level test for
 // render_events_expanded.go (previously untested directly): covers the
-// wizard_stream_complete and agent_stream_complete cases (which pull full
+// aggregator-lane-complete and agent_stream_complete cases (which pull full
 // content from the model's AgentResponses), the error case, and the
 // default raw-JSON fallback for an event type it has no dedicated case for.
 func TestRenderEventExpandedPlainText(t *testing.T) {
 	m := newFixtureModel(t)
 
-	var wizardComplete, agentComplete *events.Event
+	var aggComplete, agentComplete *events.Event
 	for _, evt := range m.messages[0].Events {
 		switch evt.Name {
-		case "wizard_stream_complete":
-			wizardComplete = evt
+		case aggregatorStreamCompleteEventName:
+			aggComplete = evt
 		case "agent_stream_complete":
 			if agentComplete == nil {
 				agentComplete = evt
 			}
 		}
 	}
-	if wizardComplete == nil || agentComplete == nil {
-		t.Fatal("expected the fixture to contain wizard_stream_complete and agent_stream_complete events")
+	if aggComplete == nil || agentComplete == nil {
+		t.Fatal("expected the fixture to contain an aggregator-complete and an agent_stream_complete event")
 	}
 
-	out := m.renderEventExpandedPlainText(wizardComplete, &m.messages[0])
-	if !strings.Contains(out, "Wizard Response:") {
-		t.Error("expected the wizard's full content to be included")
+	out := m.renderEventExpandedPlainText(aggComplete, &m.messages[0])
+	if !strings.Contains(out, "Aggregator Response:") {
+		t.Error("expected the aggregator's full content to be included")
 	}
 
 	out = m.renderEventExpandedPlainText(agentComplete, &m.messages[0])

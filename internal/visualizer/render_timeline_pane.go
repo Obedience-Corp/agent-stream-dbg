@@ -115,22 +115,22 @@ func (m InteractiveModel) renderTimelinePane() string {
 
 // isEventVisible checks if an event should be visible based on current filter settings
 func (m InteractiveModel) isEventVisible(evt *events.Event) bool {
-	// Check if this is a wizard-related event
-	isWizardEvent := evt.Name == "wizard_stream_start" ||
-		evt.Name == "wizard_content" ||
-		evt.Name == "wizard_stream_complete"
-	// synthesis flow_step events are also relevant for wizard-only view
+	// Check if this is an aggregator-lane event
+	isAggregatorEvent := evt.Name == aggregatorStreamStartEventName ||
+		evt.Name == aggregatorContentEventName ||
+		evt.Name == aggregatorStreamCompleteEventName
+	// synthesis flow_step events are also relevant for the aggregator-only view
 	step := evt.StringField("step")
 	isSynthesisFlowEvent := (evt.Name == "flow_step_start" || evt.Name == "flow_step_end") &&
-		(step == "synthesis" || step == "wizard")
+		(step == "synthesis" || step == aggregatorStageName)
 
-	// Skip non-wizard events if wizard-only filter is on
-	if m.eventsWizardOnly && !isWizardEvent && !isSynthesisFlowEvent {
+	// Skip non-aggregator events if the aggregator-only filter is on
+	if m.eventsAggregatorOnly && !isAggregatorEvent && !isSynthesisFlowEvent {
 		return false
 	}
 
 	// Skip token events if showTokens is false
-	isTokenEvent := evt.Name == "agent_content" || evt.Name == "wizard_content"
+	isTokenEvent := evt.Name == "agent_content" || evt.Name == aggregatorContentEventName
 	if isTokenEvent && !m.showTokens {
 		return false
 	}

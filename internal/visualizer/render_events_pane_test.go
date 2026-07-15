@@ -8,7 +8,7 @@ import (
 // TestRenderEventsPane is a floor-level test for render_events_pane.go
 // (previously untested directly, and the largest single render function in
 // the split): both view modes must render without panicking, and the
-// wizard metrics summary and per-event lines must appear in parsed mode.
+// aggregator metrics summary and per-event lines must appear in parsed mode.
 func TestRenderEventsPane(t *testing.T) {
 	if out := (InteractiveModel{}).renderEventsPane(); !strings.Contains(out, "No messages yet") {
 		t.Errorf("expected empty-state message, got %q", out)
@@ -21,8 +21,8 @@ func TestRenderEventsPane(t *testing.T) {
 	if !strings.Contains(parsed, "Events") {
 		t.Error("expected an Events header")
 	}
-	if !strings.Contains(parsed, "Wizard:") {
-		t.Error("expected the wizard metrics summary line in parsed mode")
+	if !strings.Contains(parsed, "Aggregator:") {
+		t.Error("expected the aggregator metrics summary line in parsed mode")
 	}
 	if !strings.Contains(parsed, "flow_step_start") {
 		t.Error("expected at least one flow_step_start event line")
