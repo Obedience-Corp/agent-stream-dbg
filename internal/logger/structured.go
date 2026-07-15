@@ -99,8 +99,8 @@ func (sl *StructuredLogger) LogEvent(event *events.Event) error {
 		}
 	}
 
-	// 2. Log to agent dimension (if agent-related). The parser already
-	// resolves wizard events' SourceID to "wizard", so no special case needed.
+	// 2. Log to agent dimension (if agent-related) — keyed by whatever
+	// SourceID the event decoded to, no per-lane special case needed.
 	if dims.ByAgent {
 		if agentID := event.SourceID; agentID != "" {
 			if err := sl.logToAgent(event, agentID); err != nil {
@@ -195,9 +195,11 @@ func (sl *StructuredLogger) LogAPICall(method, url string, statusCode int, durat
 	logEvent.Msg("api_call")
 }
 
-// WizardTurnMetrics contains computed metrics for a wizard turn
-type WizardTurnMetrics struct {
+// AgentTurnMetrics contains computed metrics for a completed agent turn
+// (any lane, identified by AgentID — not exclusive to an aggregator).
+type AgentTurnMetrics struct {
 	SessionID    string  `json:"session_id"`
+	AgentID      string  `json:"agent_id"`
 	TurnID       int     `json:"turn_id"`
 	TokenCount   int     `json:"token_count"`
 	FirstTokenMs int64   `json:"first_token_ms"`
@@ -206,26 +208,28 @@ type WizardTurnMetrics struct {
 	PlanID       string  `json:"plan_id,omitempty"`
 }
 
-// LogWizardTurnMetrics logs computed wizard metrics for a turn
-func (sl *StructuredLogger) LogWizardTurnMetrics(metrics WizardTurnMetrics) error {
+// LogAgentTurnMetrics logs computed turn metrics for metrics.AgentID —
+// each agent's metrics land in its own by-agent/<agent_id>.jsonl file,
+// the same get-or-create-logger convention logToAgent already uses.
+func (sl *StructuredLogger) LogAgentTurnMetrics(metrics AgentTurnMetrics) error {
 	sl.mu.Lock()
 	defer sl.mu.Unlock()
 
-	// Get or create wizard logger
-	logger, exists := sl.agentLoggers["wizard"]
+	logger, exists := sl.agentLoggers[metrics.AgentID]
 	if !exists {
-		logPath := filepath.Join(sl.config.LogDir, "by-agent", "wizard.jsonl")
+		logPath := filepath.Join(sl.config.LogDir, "by-agent", fmt.Sprintf("%s.jsonl", metrics.AgentID))
 		file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
-			return fmt.Errorf("failed to create wizard log file: %w", err)
+			return fmt.Errorf("failed to create agent log file: %w", err)
 		}
-		sl.agentFiles["wizard"] = file
+		sl.agentFiles[metrics.AgentID] = file
 		logger = zerolog.New(file).With().Timestamp().Logger()
-		sl.agentLoggers["wizard"] = logger
+		sl.agentLoggers[metrics.AgentID] = logger
 	}
 
 	logEvent := logger.Info().
 		Str("session_id", metrics.SessionID).
+		Str("agent_id", metrics.AgentID).
 		Int("turn_id", metrics.TurnID).
 		Int("token_count", metrics.TokenCount).
 		Int64("first_token_ms", metrics.FirstTokenMs).
@@ -238,7 +242,7 @@ func (sl *StructuredLogger) LogWizardTurnMetrics(metrics WizardTurnMetrics) erro
 		logEvent = logEvent.Str("plan_id", metrics.PlanID)
 	}
 
-	logEvent.Msg("wizard_turn_metrics")
+	logEvent.Msg("agent_turn_metrics")
 	return nil
 }
 

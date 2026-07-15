@@ -1099,8 +1099,9 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
 			if ar.DurationMs > 0 && ar.TokenCount > 0 {
 				tokensPerSec = float64(ar.TokenCount) * 1000.0 / float64(ar.DurationMs)
 			}
-			_ = m.slog.LogWizardTurnMetrics(dblogger.WizardTurnMetrics{
+			_ = m.slog.LogAgentTurnMetrics(dblogger.AgentTurnMetrics{
 				SessionID:    m.cfg.Session.ID,
+				AgentID:      aid,
 				TurnID:       idx,
 				TokenCount:   ar.TokenCount,
 				FirstTokenMs: ar.FirstTokenMs,

@@ -3,6 +3,7 @@ package logger
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -182,6 +183,66 @@ func TestLogAPICall(t *testing.T) {
 
 	if len(matches) == 0 {
 		t.Errorf("Expected API call log file to exist matching pattern: %s", apiLogPattern)
+	}
+}
+
+// TestLogAgentTurnMetrics_PerAgentFiles regression-tests this task's
+// generalization of LogWizardTurnMetrics: turn metrics for two different
+// agent IDs must land in two different by-agent/<id>.jsonl files, not
+// both hardcoded to a single "wizard.jsonl" — proving the log path is
+// genuinely keyed by AgentID, not a literal identity this function only
+// ever wrote once.
+func TestLogAgentTurnMetrics_PerAgentFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.EnhancedConfig{
+		LogDir:  tmpDir,
+		Session: config.SessionConfig{ID: "test"},
+	}
+
+	logger, err := NewStructuredLogger(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create logger: %v", err)
+	}
+	defer func() { _ = logger.Close() }()
+
+	if err := logger.LogAgentTurnMetrics(AgentTurnMetrics{
+		SessionID: "test", AgentID: "supervisor", TurnID: 0, TokenCount: 10,
+	}); err != nil {
+		t.Fatalf("LogAgentTurnMetrics(supervisor) returned error: %v", err)
+	}
+	if err := logger.LogAgentTurnMetrics(AgentTurnMetrics{
+		SessionID: "test", AgentID: "agent_a", TurnID: 0, TokenCount: 5,
+	}); err != nil {
+		t.Fatalf("LogAgentTurnMetrics(agent_a) returned error: %v", err)
+	}
+
+	supervisorLog := filepath.Join(tmpDir, "by-agent", "supervisor.jsonl")
+	agentLog := filepath.Join(tmpDir, "by-agent", "agent_a.jsonl")
+	wizardLog := filepath.Join(tmpDir, "by-agent", "wizard.jsonl")
+
+	if _, err := os.Stat(supervisorLog); os.IsNotExist(err) {
+		t.Errorf("expected %s to exist", supervisorLog)
+	}
+	if _, err := os.Stat(agentLog); os.IsNotExist(err) {
+		t.Errorf("expected %s to exist", agentLog)
+	}
+	if _, err := os.Stat(wizardLog); err == nil {
+		t.Errorf("expected no wizard.jsonl to be created — metrics must be keyed by AgentID, not a hardcoded identity")
+	}
+
+	supervisorContent, err := os.ReadFile(supervisorLog)
+	if err != nil {
+		t.Fatalf("failed to read %s: %v", supervisorLog, err)
+	}
+	if !strings.Contains(string(supervisorContent), `"agent_id":"supervisor"`) {
+		t.Errorf("expected supervisor.jsonl to contain agent_id supervisor, got %q", supervisorContent)
+	}
+	agentContent, err := os.ReadFile(agentLog)
+	if err != nil {
+		t.Fatalf("failed to read %s: %v", agentLog, err)
+	}
+	if !strings.Contains(string(agentContent), `"agent_id":"agent_a"`) {
+		t.Errorf("expected agent_a.jsonl to contain agent_id agent_a, got %q", agentContent)
 	}
 }
 
