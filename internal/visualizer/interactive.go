@@ -1108,6 +1108,21 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
 				TokensPerSec: tokensPerSec,
 			})
 		}
+	case events.KindToolCall, events.KindToolResult:
+		if aid == "" {
+			return
+		}
+		ar := m.messages[idx].AgentResponses[aid]
+		if ar == nil {
+			ar = &AgentResponse{AgentID: aid}
+			m.messages[idx].AgentResponses[aid] = ar
+		}
+		line := renderToolEventSummary(evt)
+		if ar.FullContent != "" {
+			line = "\n" + line
+		}
+		ar.ContentChunks = append(ar.ContentChunks, line)
+		ar.FullContent += line
 	default:
 		// ignore others
 	}
@@ -1175,6 +1190,14 @@ func buildAgentResponses(evts []*events.Event) map[string]*AgentResponse {
 		case events.KindStreamEnd:
 			agent.EndTime = time.Now()
 			agent.Completed = true
+
+		case events.KindToolCall, events.KindToolResult:
+			line := renderToolEventSummary(event)
+			if agent.FullContent != "" {
+				line = "\n" + line
+			}
+			agent.ContentChunks = append(agent.ContentChunks, line)
+			agent.FullContent += line
 		}
 	}
 

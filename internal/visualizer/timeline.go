@@ -43,6 +43,16 @@ func (tv *TimelineVisualizer) AddEvent(event *events.Event) {
 		Content:   event.Content,
 	}
 
+	// Tool events get a distinct content summary regardless of dialect —
+	// Kind-based, not folded into the Name-based switch below, since
+	// openai.yaml's discriminator: auto means event.Name is always empty
+	// for its tool_call events (no case in a Name-based switch could ever
+	// match them).
+	switch event.Kind {
+	case events.KindToolCall, events.KindToolResult:
+		entry.Content = renderToolEventSummary(event)
+	}
+
 	// Build a richer content summary for event types with no incremental Content.
 	switch event.Name {
 	case "flow_step_start":
@@ -212,6 +222,10 @@ func (tv *TimelineVisualizer) RenderTimeline(width int) string {
 						indicator = "■ DONE"
 					case events.KindError:
 						indicator = "✗ ERROR"
+					case events.KindToolCall:
+						indicator = "🔧 TOOL"
+					case events.KindToolResult:
+						indicator = "✓ RESULT"
 					}
 				}
 				sb.WriteString(cellStyle.Render(indicator))
@@ -225,7 +239,7 @@ func (tv *TimelineVisualizer) RenderTimeline(width int) string {
 	sb.WriteString("\n")
 
 	// Legend
-	sb.WriteString("\nLegend: ▶ START  █ Streaming  ■ DONE  ✗ ERROR  │ Idle\n")
+	sb.WriteString("\nLegend: ▶ START  █ Streaming  ■ DONE  ✗ ERROR  🔧 TOOL  ✓ RESULT  │ Idle\n")
 
 	return sb.String()
 }

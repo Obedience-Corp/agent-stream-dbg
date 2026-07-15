@@ -456,17 +456,21 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 	// Log event to structured logger (errors are silently ignored)
 	_ = m.logger.LogEvent(event)
 
-	switch event.Name {
-	case "session_start":
-		m.sessionActive = true
-		if flowID := event.StringField("flow_id"); flowID != "" {
-			m.FlowID = flowID
+	// Stream lifecycle (start/content/end) dispatches on Kind + role, not
+	// the dialect's own wire event names — brainyard's agent_*/wizard_*
+	// rules already decode to the same Kind, with SourceID/role
+	// distinguishing the aggregator lane (wizardState) from every other
+	// lane (agents map). Kind-based is the generic equivalent with
+	// identical behavior for brainyard specifically.
+	isAggregator := m.dialectFlow.role(event) == "aggregator"
+
+	switch event.Kind {
+	case events.KindStreamStart:
+		if isAggregator {
+			m.wizardState.Active = true
+			m.wizardState.StartTime = time.Now()
+			break
 		}
-
-	case "session_complete":
-		m.sessionActive = false
-
-	case "agent_stream_start":
 		agentID := event.SourceID
 		m.agents[agentID] = &AgentState{
 			ID:             agentID,
@@ -476,7 +480,14 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 			LastUpdate:     time.Now(),
 		}
 
-	case "agent_content":
+	case events.KindContent:
+		if isAggregator {
+			m.wizardState.Content.WriteString(event.Content)
+			m.wizardState.TokenCount++
+			m.wizardState.Sequence = event.Seq
+			m.totalTokens++
+			break
+		}
 		agentID := event.SourceID
 		if agent, ok := m.agents[agentID]; ok {
 			agent.Content.WriteString(event.Content)
@@ -486,26 +497,28 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 			m.totalTokens++
 		}
 
-	case "agent_stream_complete":
+	case events.KindStreamEnd:
+		if isAggregator {
+			m.wizardState.Active = false
+			m.wizardState.EndTime = time.Now()
+			break
+		}
 		agentID := event.SourceID
 		if agent, ok := m.agents[agentID]; ok {
 			agent.Active = false
 			agent.EndTime = time.Now()
 		}
+	}
 
-	case "wizard_stream_start":
-		m.wizardState.Active = true
-		m.wizardState.StartTime = time.Now()
+	switch event.Name {
+	case "session_start":
+		m.sessionActive = true
+		if flowID := event.StringField("flow_id"); flowID != "" {
+			m.FlowID = flowID
+		}
 
-	case "wizard_content":
-		m.wizardState.Content.WriteString(event.Content)
-		m.wizardState.TokenCount++
-		m.wizardState.Sequence = event.Seq
-		m.totalTokens++
-
-	case "wizard_stream_complete":
-		m.wizardState.Active = false
-		m.wizardState.EndTime = time.Now()
+	case "session_complete":
+		m.sessionActive = false
 
 	case "error":
 		m.errorCount++
