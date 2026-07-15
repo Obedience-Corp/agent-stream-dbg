@@ -111,6 +111,7 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 			MaxAgentsVisible: yamlCfg.Display.MaxAgentsVisible,
 			AgentColors:      yamlCfg.Display.AgentColors,
 		},
+		Events:           EventsConfig{Types: yamlCfg.Events.Types},
 		APIKey:           apiKey,
 		LogDir:           yamlCfg.Logging.Dir,
 		EnableColors:     yamlCfg.Display.Colors,
@@ -133,6 +134,7 @@ type EnhancedConfig struct {
 	Backend BackendConfig
 	Session SessionConfig
 	Display *DisplayConfig
+	Events  EventsConfig
 	APIKey  string
 	Debug   DebugConfig
 
@@ -171,6 +173,12 @@ type SessionConfig struct {
 	AutoSetup     bool
 	DefaultAgents []string
 	SetupEndpoint string
+}
+
+// EventsConfig holds which SSE event types the client subscribes to.
+// An empty Types means "track all events" (the client's built-in default set).
+type EventsConfig struct {
+	Types []string
 }
 
 // StreamEndpointURL returns the full streaming endpoint URL

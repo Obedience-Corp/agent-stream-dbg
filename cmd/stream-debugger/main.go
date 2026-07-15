@@ -110,7 +110,7 @@ func streamAction(c *cli.Context) error {
 	}
 	message := c.Args().Get(0)
 	configPath := c.String("config")
-	return runLegacyStream(configPath, message)
+	return runStream(configPath, message)
 }
 
 // replayAction handles the replay command
@@ -185,7 +185,7 @@ func runInteractive(configPath string) error {
 	return nil
 }
 
-func runLegacyStream(configPath string, message string) error {
+func runStream(configPath string, message string) error {
 	// Load YAML configuration
 	cfg, err := config.LoadConfigFile(configPath)
 	if err != nil {
@@ -218,17 +218,7 @@ func runLegacyStream(configPath string, message string) error {
 		fmt.Printf("   Active agents: %v\n\n", sessionResp.ActiveAgents)
 	}
 
-	// Create structured logger (using old config format for compatibility)
-	oldCfg := &config.Config{
-		BackendURL:       cfg.Backend.BaseURL,
-		APIKey:           cfg.APIKey,
-		SessionID:        cfg.Session.ID,
-		LogDir:           cfg.LogDir,
-		EnableColors:     cfg.EnableColors,
-		MaxAgentsVisible: cfg.MaxAgentsVisible,
-	}
-
-	structuredLogger, err := logger.NewStructuredLogger(oldCfg)
+	structuredLogger, err := logger.NewStructuredLogger(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to create logger: %w", err)
 	}
@@ -241,7 +231,7 @@ func runLegacyStream(configPath string, message string) error {
 	fmt.Printf("   API calls:   %s/api-calls/\n\n", cfg.LogDir)
 
 	// Create SSE client
-	sseClient := client.NewSSEClient(oldCfg)
+	sseClient := client.NewSSEClient(cfg)
 
 	fmt.Printf("🌐 Connecting to backend...\n")
 	fmt.Printf("   Endpoint: %s\n", cfg.StreamEndpointURL())
@@ -267,7 +257,7 @@ func runLegacyStream(configPath string, message string) error {
 	fmt.Printf("✅ Connected! Starting TUI...\n\n")
 
 	// Create TUI model
-	model := visualizer.NewModel(oldCfg, sseClient, structuredLogger, message)
+	model := visualizer.NewModel(cfg, sseClient, structuredLogger, message)
 
 	// Start bubbletea program
 	p := tea.NewProgram(model, tea.WithAltScreen())

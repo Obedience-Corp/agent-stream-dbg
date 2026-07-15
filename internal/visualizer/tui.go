@@ -16,7 +16,7 @@ import (
 
 // Model represents the TUI application state
 type Model struct {
-	config  *config.Config
+	config  *config.EnhancedConfig
 	client  *client.SSEClient
 	logger  *logger.StructuredLogger
 	ctx     context.Context
@@ -127,7 +127,7 @@ type errorMsg struct {
 type tickMsg time.Time
 
 // NewModel creates a new TUI model
-func NewModel(cfg *config.Config, sseClient *client.SSEClient, structuredLogger *logger.StructuredLogger, message string) *Model {
+func NewModel(cfg *config.EnhancedConfig, sseClient *client.SSEClient, structuredLogger *logger.StructuredLogger, message string) *Model {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Model{
@@ -211,7 +211,7 @@ func (m *Model) View() string {
 		Padding(0, 1)
 
 	// Build header
-	headerText := fmt.Sprintf("Stream Debugger - Session: %s", m.config.SessionID)
+	headerText := fmt.Sprintf("Stream Debugger - Session: %s", m.config.Session.ID)
 	if m.FlowID != "" {
 		headerText = fmt.Sprintf("%s (flow: %s)", headerText, m.FlowID)
 	}
@@ -257,7 +257,7 @@ func (m *Model) View() string {
 	))
 
 	// Build controls
-	dbg := m.config.DebugLevel
+	dbg := m.config.Debug.Level
 	if dbg == "" {
 		dbg = "off"
 	}
@@ -388,17 +388,17 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "F1":
 		// Verbose debug mode
-		m.config.DebugLevel = "verbose"
+		m.config.Debug.Level = "verbose"
 		return m, m.reconnect()
 
 	case "F2":
 		// Full debug mode
-		m.config.DebugLevel = "full"
+		m.config.Debug.Level = "full"
 		return m, m.reconnect()
 
 	case "F3":
 		// Turn off debug mode
-		m.config.DebugLevel = ""
+		m.config.Debug.Level = ""
 		return m, m.reconnect()
 	}
 

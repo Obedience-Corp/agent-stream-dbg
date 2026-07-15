@@ -181,20 +181,10 @@ func NewInteractiveModel(cfg *config.EnhancedConfig, apiKey string) InteractiveM
 	// Initialize viewport for scrolling
 	vp := viewport.New(80, 20)
 
-	// Initialize structured logger (using legacy config wrapper)
+	// Initialize structured logger
 	var slog *dblogger.StructuredLogger
-	{
-		legacy := &config.Config{
-			BackendURL:       cfg.Backend.BaseURL,
-			APIKey:           cfg.APIKey,
-			SessionID:        cfg.Session.ID,
-			LogDir:           cfg.LogDir,
-			EnableColors:     cfg.EnableColors,
-			MaxAgentsVisible: cfg.MaxAgentsVisible,
-		}
-		if l, err := dblogger.NewStructuredLogger(legacy); err == nil {
-			slog = l
-		}
+	if l, err := dblogger.NewStructuredLogger(cfg); err == nil {
+		slog = l
 	}
 
 	m := InteractiveModel{
@@ -3036,15 +3026,7 @@ func (m InteractiveModel) newSessionCmd() tea.Cmd {
 		if m.slog != nil {
 			_ = m.slog.Close()
 		}
-		legacy := &config.Config{
-			BackendURL:       m.cfg.Backend.BaseURL,
-			APIKey:           m.cfg.APIKey,
-			SessionID:        m.cfg.Session.ID,
-			LogDir:           m.cfg.LogDir,
-			EnableColors:     m.cfg.EnableColors,
-			MaxAgentsVisible: m.cfg.MaxAgentsVisible,
-		}
-		if l, err := dblogger.NewStructuredLogger(legacy); err == nil {
+		if l, err := dblogger.NewStructuredLogger(m.cfg); err == nil {
 			m.slog = l
 		}
 

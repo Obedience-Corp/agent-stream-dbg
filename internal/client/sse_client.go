@@ -3,18 +3,32 @@ package client
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"net/url"
-	"time"
 
 	"github.com/lancekrogers/stream-debugger/internal/config"
 	"github.com/lancekrogers/stream-debugger/internal/events"
 	"github.com/r3labs/sse/v2"
 )
 
+// defaultEventTypes is used when the config does not specify events.types.
+var defaultEventTypes = []string{
+	"session_start",
+	"session_complete",
+	"agent_stream_start",
+	"agent_content",
+	"agent_stream_complete",
+	"wizard_stream_start",
+	"wizard_content",
+	"wizard_stream_complete",
+	"error",
+	"flow_step_start",
+	"flow_step_end",
+	"flow_step_detail",
+}
+
 // SSEClient handles Server-Sent Events connection to the backend
 type SSEClient struct {
-	config  *config.Config
+	config  *config.EnhancedConfig
 	client  *sse.Client
 	parser  *events.Parser
 	eventCh chan *events.Event
@@ -22,8 +36,8 @@ type SSEClient struct {
 }
 
 // NewSSEClient creates a new SSE client
-func NewSSEClient(cfg *config.Config) *SSEClient {
-	client := sse.NewClient(cfg.StreamEndpoint())
+func NewSSEClient(cfg *config.EnhancedConfig) *SSEClient {
+	client := sse.NewClient(cfg.StreamEndpointURL())
 
 	// Set up authentication header
 	client.Headers = map[string]string{
@@ -43,7 +57,7 @@ func NewSSEClient(cfg *config.Config) *SSEClient {
 // Connect establishes SSE connection and starts streaming events
 func (c *SSEClient) Connect(ctx context.Context, message string) error {
 	// Add message as query parameter
-	endpoint := c.config.StreamEndpoint()
+	endpoint := c.config.StreamEndpointURL()
 	u, err := url.Parse(endpoint)
 	if err != nil {
 		return fmt.Errorf("invalid endpoint URL: %w", err)
@@ -51,8 +65,8 @@ func (c *SSEClient) Connect(ctx context.Context, message string) error {
 
 	q := u.Query()
 	q.Set("message", message)
-	if c.config.DebugLevel != "" {
-		q.Set("debug", c.config.DebugLevel)
+	if c.config.Debug.Level != "" {
+		q.Set("debug", c.config.Debug.Level)
 	}
 	u.RawQuery = q.Encode()
 
@@ -63,20 +77,9 @@ func (c *SSEClient) Connect(ctx context.Context, message string) error {
 		"Accept":        "text/event-stream",
 	}
 
-	// Subscribe to all event types
-	eventTypes := []string{
-		"session_start",
-		"session_complete",
-		"agent_stream_start",
-		"agent_content",
-		"agent_stream_complete",
-		"wizard_stream_start",
-		"wizard_content",
-		"wizard_stream_complete",
-		"error",
-		"flow_step_start",
-		"flow_step_end",
-		"flow_step_detail",
+	eventTypes := c.config.Events.Types
+	if len(eventTypes) == 0 {
+		eventTypes = defaultEventTypes
 	}
 
 	for _, eventType := range eventTypes {
@@ -125,37 +128,4 @@ func (c *SSEClient) Errors() <-chan error {
 func (c *SSEClient) Close() {
 	close(c.eventCh)
 	close(c.errCh)
-}
-
-// SendMessage sends a message to the backend (for testing)
-func (c *SSEClient) SendMessage(ctx context.Context, message string) error {
-	endpoint := fmt.Sprintf("%s/api/v3/sessions/%s/stream", c.config.BackendURL, c.config.SessionID)
-
-	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	q := req.URL.Query()
-	q.Set("message", message)
-	req.URL.RawQuery = q.Encode()
-
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.config.APIKey))
-	req.Header.Set("Accept", "text/event-stream")
-
-	client := &http.Client{
-		Timeout: 120 * time.Second,
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	return nil
 }

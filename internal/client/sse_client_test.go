@@ -20,11 +20,15 @@ func TestSSEClient_EndToEndAgainstMockServer(t *testing.T) {
 	}
 	defer srv.Close()
 
-	cfg := &config.Config{
-		BackendURL: srv.URL(),
-		APIKey:     "test-key",
-		SessionID:  "e2e-session",
+	cfg := &config.EnhancedConfig{
+		Backend: config.BackendConfig{
+			BaseURL:        srv.URL(),
+			StreamEndpoint: "",
+		},
+		APIKey:  "test-key",
+		Session: config.SessionConfig{ID: "e2e-session"},
 	}
+	cfg.Normalize()
 	c := NewSSEClient(cfg)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

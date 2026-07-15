@@ -14,9 +14,9 @@ func TestNewStructuredLogger(t *testing.T) {
 	// Create temp directory for logs
 	tmpDir := t.TempDir()
 
-	cfg := &config.Config{
-		LogDir:    tmpDir,
-		SessionID: "test-session",
+	cfg := &config.EnhancedConfig{
+		LogDir:  tmpDir,
+		Session: config.SessionConfig{ID: "test-session"},
 	}
 
 	logger, err := NewStructuredLogger(cfg)
@@ -43,9 +43,9 @@ func TestNewStructuredLogger(t *testing.T) {
 func TestLogEvent_AgentContent(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	cfg := &config.Config{
-		LogDir:    tmpDir,
-		SessionID: "test",
+	cfg := &config.EnhancedConfig{
+		LogDir:  tmpDir,
+		Session: config.SessionConfig{ID: "test"},
 	}
 
 	logger, err := NewStructuredLogger(cfg)
@@ -89,9 +89,9 @@ func TestLogEvent_AgentContent(t *testing.T) {
 func TestLogEvent_WizardContent(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	cfg := &config.Config{
-		LogDir:    tmpDir,
-		SessionID: "test",
+	cfg := &config.EnhancedConfig{
+		LogDir:  tmpDir,
+		Session: config.SessionConfig{ID: "test"},
 	}
 
 	logger, err := NewStructuredLogger(cfg)
@@ -127,9 +127,9 @@ func TestLogEvent_WizardContent(t *testing.T) {
 func TestLogEvent_SessionEvents(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	cfg := &config.Config{
-		LogDir:    tmpDir,
-		SessionID: "test",
+	cfg := &config.EnhancedConfig{
+		LogDir:  tmpDir,
+		Session: config.SessionConfig{ID: "test"},
 	}
 
 	logger, err := NewStructuredLogger(cfg)
@@ -165,9 +165,9 @@ func TestLogEvent_SessionEvents(t *testing.T) {
 func TestLogAPICall(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	cfg := &config.Config{
-		LogDir:    tmpDir,
-		SessionID: "test",
+	cfg := &config.EnhancedConfig{
+		LogDir:  tmpDir,
+		Session: config.SessionConfig{ID: "test"},
 	}
 
 	logger, err := NewStructuredLogger(cfg)
@@ -193,9 +193,9 @@ func TestLogAPICall(t *testing.T) {
 func TestClose(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	cfg := &config.Config{
-		LogDir:    tmpDir,
-		SessionID: "test",
+	cfg := &config.EnhancedConfig{
+		LogDir:  tmpDir,
+		Session: config.SessionConfig{ID: "test"},
 	}
 
 	logger, err := NewStructuredLogger(cfg)
@@ -227,9 +227,9 @@ func TestClose(t *testing.T) {
 func TestMultiDimensionalLogging(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	cfg := &config.Config{
-		LogDir:    tmpDir,
-		SessionID: "test",
+	cfg := &config.EnhancedConfig{
+		LogDir:  tmpDir,
+		Session: config.SessionConfig{ID: "test"},
 	}
 
 	logger, err := NewStructuredLogger(cfg)

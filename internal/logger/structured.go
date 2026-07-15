@@ -14,7 +14,7 @@ import (
 
 // StructuredLogger handles multi-dimensional logging
 type StructuredLogger struct {
-	config *config.Config
+	config *config.EnhancedConfig
 
 	// Log files organized by different dimensions
 	eventTypeFiles map[string]*os.File
@@ -32,7 +32,7 @@ type StructuredLogger struct {
 }
 
 // NewStructuredLogger creates a new multi-dimensional logger
-func NewStructuredLogger(cfg *config.Config) (*StructuredLogger, error) {
+func NewStructuredLogger(cfg *config.EnhancedConfig) (*StructuredLogger, error) {
 	sl := &StructuredLogger{
 		config:           cfg,
 		eventTypeFiles:   make(map[string]*os.File),
@@ -59,7 +59,7 @@ func NewStructuredLogger(cfg *config.Config) (*StructuredLogger, error) {
 	sessionLogPath := filepath.Join(
 		cfg.LogDir,
 		"by-session",
-		fmt.Sprintf("session_%s_%s.jsonl", cfg.SessionID, time.Now().Format("20060102_150405")),
+		fmt.Sprintf("session_%s_%s.jsonl", cfg.Session.ID, time.Now().Format("20060102_150405")),
 	)
 	sessionFile, err := os.OpenFile(sessionLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
