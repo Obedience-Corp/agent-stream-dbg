@@ -2,6 +2,7 @@ package visualizer
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/lancekrogers/stream-debugger/internal/events"
 )
@@ -37,4 +38,22 @@ func renderToolEventSummary(evt *events.Event) string {
 	default:
 		return evt.Content
 	}
+}
+
+// appendToolEventLine appends evt's rendered tool-event summary to ar as
+// its own line, regardless of what surrounds it: any trailing newlines
+// already in ar.FullContent are trimmed first (so content ending in "\n"
+// doesn't produce a blank line before the summary), and the summary
+// itself always ends in exactly one "\n" (so content resuming
+// immediately afterward, which never inserts its own leading newline,
+// doesn't get glued onto the same line). ar.ContentChunks keeps the bare
+// summary line, undecorated, as the semantic chunk.
+func appendToolEventLine(ar *AgentResponse, evt *events.Event) {
+	line := renderToolEventSummary(evt)
+	ar.ContentChunks = append(ar.ContentChunks, line)
+	ar.FullContent = strings.TrimRight(ar.FullContent, "\n")
+	if ar.FullContent != "" {
+		ar.FullContent += "\n"
+	}
+	ar.FullContent += line + "\n"
 }

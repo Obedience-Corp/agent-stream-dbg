@@ -72,6 +72,50 @@ func TestApplyParsedEvent_ToolCallAndResultAppendToAgentContent(t *testing.T) {
 	}
 }
 
+// TestAppendToolEventLine_SeparatesFromSurroundingContent is a
+// review-flagged regression test: appendToolEventLine must put its line
+// on its own line regardless of what surrounds it, in both directions —
+// content immediately before a tool line, and content immediately after
+// one — without ever leaving them glued together on one line or
+// introducing a spurious blank line.
+func TestAppendToolEventLine_SeparatesFromSurroundingContent(t *testing.T) {
+	t.Run("content then tool then content, no separator glues them", func(t *testing.T) {
+		ar := &AgentResponse{}
+		ar.ContentChunks = append(ar.ContentChunks, "Hello ")
+		ar.FullContent += "Hello "
+		appendToolEventLine(ar, &events.Event{
+			Kind:   events.KindToolCall,
+			Fields: map[string]any{"tool_name": "search", "args": "weather"},
+		})
+		ar.ContentChunks = append(ar.ContentChunks, "more text")
+		ar.FullContent += "more text"
+
+		if strings.Contains(ar.FullContent, ")more") {
+			t.Errorf("expected the tool line and following content to be on separate lines, got %q", ar.FullContent)
+		}
+		want := "Hello \n🔧 search(weather)\nmore text"
+		if ar.FullContent != want {
+			t.Errorf("expected %q, got %q", want, ar.FullContent)
+		}
+	})
+
+	t.Run("content already ending in newline before tool line, no blank line", func(t *testing.T) {
+		ar := &AgentResponse{FullContent: "Hello\n"}
+		appendToolEventLine(ar, &events.Event{
+			Kind:   events.KindToolCall,
+			Fields: map[string]any{"tool_name": "search", "args": "weather"},
+		})
+
+		if strings.Contains(ar.FullContent, "\n\n") {
+			t.Errorf("expected no blank line between prior content and the tool line, got %q", ar.FullContent)
+		}
+		want := "Hello\n🔧 search(weather)\n"
+		if ar.FullContent != want {
+			t.Errorf("expected %q, got %q", want, ar.FullContent)
+		}
+	})
+}
+
 // TestBuildAgentResponses_ToolCallAndResult is buildAgentResponses'
 // equivalent of the above, for the raw-SSE-rebuild path.
 func TestBuildAgentResponses_ToolCallAndResult(t *testing.T) {

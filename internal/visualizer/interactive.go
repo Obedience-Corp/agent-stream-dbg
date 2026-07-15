@@ -1117,12 +1117,7 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
 			ar = &AgentResponse{AgentID: aid}
 			m.messages[idx].AgentResponses[aid] = ar
 		}
-		line := renderToolEventSummary(evt)
-		if ar.FullContent != "" {
-			line = "\n" + line
-		}
-		ar.ContentChunks = append(ar.ContentChunks, line)
-		ar.FullContent += line
+		appendToolEventLine(ar, evt)
 	default:
 		// ignore others
 	}
@@ -1192,12 +1187,7 @@ func buildAgentResponses(evts []*events.Event) map[string]*AgentResponse {
 			agent.Completed = true
 
 		case events.KindToolCall, events.KindToolResult:
-			line := renderToolEventSummary(event)
-			if agent.FullContent != "" {
-				line = "\n" + line
-			}
-			agent.ContentChunks = append(agent.ContentChunks, line)
-			agent.FullContent += line
+			appendToolEventLine(agent, event)
 		}
 	}
 
