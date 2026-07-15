@@ -2279,6 +2279,31 @@ func (m InteractiveModel) renderEventsPane() string {
 		// Format event
 		line := fmt.Sprintf("%s[%s]", prefix, evt.Name)
 
+		// Handoff is an edge between lanes, not a row of content —
+		// rendered entirely by renderHandoffEdge, never falling through
+		// to the generic per-event-name summary below. Kind-based (not
+		// evt.Name-based) since this is brand new: there's no existing
+		// wire-event-name behavior to preserve here, unlike the switch
+		// below, which stays name-based for now (that's a pre-existing
+		// pattern this task doesn't touch).
+		if evt.Kind == events.KindHandoff {
+			edge := prefix + renderHandoffEdge(evt)
+			if isSelected {
+				// selectedStyle re-colors the whole line; the edge's own
+				// from/to/arrow styling would otherwise conflict with it.
+				edge = selectedStyle.Render(prefix + fmt.Sprintf("[%s] %s -> %s (%s)",
+					evt.Name, evt.StringField("from"), evt.StringField("to"), evt.StringField("mode")))
+			}
+			b.WriteString(edge)
+			b.WriteString("\n")
+			if isExpandable && isExpanded {
+				b.WriteString(renderHandoffEdgeExpanded(evt, labelStyle, expandedContentStyle))
+				b.WriteString("\n")
+			}
+			visibleIdx++
+			continue
+		}
+
 		// Add relevant details (compact summary on main line)
 		switch evt.Name {
 		case "flow_step_start":
