@@ -67,6 +67,13 @@ func TestRecordGRPCSessionFixture(t *testing.T) {
 		if err := json.Unmarshal(f.Data, &fields); err != nil {
 			t.Fatalf("unmarshal frame data: %v", err)
 		}
+		// Guard against silently overwriting a real field literally named
+		// "type" (none of the scripted messages have one today, but
+		// nothing prevents a future one from adding it) — a clobber here
+		// would produce a wrong fixture with no test failure to catch it.
+		if existing, ok := fields["type"]; ok && existing != f.Name {
+			t.Fatalf("frame %q already has a \"type\" field (%v) that doesn't match Frame.Name — recording would silently clobber it", f.Name, existing)
+		}
 		fields["type"] = f.Name
 		line, err := json.Marshal(fields)
 		if err != nil {
