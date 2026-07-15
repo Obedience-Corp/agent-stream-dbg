@@ -20,6 +20,12 @@ install:
     @echo "✅ Installed successfully to $(go env GOPATH)/bin/stream-debugger"
     @echo "💡 Make sure $(go env GOPATH)/bin is in your PATH"
 
+# Run the timeline demo against a bundled fixture - no backend, key, or network needed
+demo:
+    @mkdir -p bin
+    @test -f bin/stream-debugger || just build
+    ./bin/stream-debugger timeline testdata/fixtures/brainyard-session.jsonl
+
 # Run the debugger with a test message
 stream message="What is consciousness?" config="configs/generic-sse.yaml":
     @mkdir -p bin
