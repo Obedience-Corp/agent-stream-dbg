@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/lancekrogers/stream-debugger/internal/bridge"
 	"github.com/lancekrogers/stream-debugger/internal/client"
 	"github.com/lancekrogers/stream-debugger/internal/config"
 	"github.com/lancekrogers/stream-debugger/internal/events"
@@ -339,7 +340,7 @@ func loadEventsFromFile(filePath string) ([]*events.Event, error) {
 	}
 	defer func() { _ = file.Close() }()
 
-	parser := events.NewParser()
+	parser := bridge.NewParser()
 	var result []*events.Event
 
 	// Read file line by line (JSONL format)

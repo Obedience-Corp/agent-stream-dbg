@@ -18,6 +18,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/lancekrogers/stream-debugger/internal/bridge"
 	clientapi "github.com/lancekrogers/stream-debugger/internal/client"
 	"github.com/lancekrogers/stream-debugger/internal/config"
 	"github.com/lancekrogers/stream-debugger/internal/events"
@@ -953,7 +954,7 @@ func (m InteractiveModel) View() string {
 
 // parseSSEStream parses raw SSE stream into events
 func parseSSEStream(rawSSE string) ([]*events.Event, error) {
-	parser := events.NewParser()
+	parser := bridge.NewParser()
 	var parsedEvents []*events.Event
 
 	lines := strings.Split(rawSSE, "\n")
@@ -1021,7 +1022,7 @@ func (m *InteractiveModel) incrementalParseSSE(chunk []byte) {
 		carry = lines[len(lines)-1]
 		lines = lines[:len(lines)-1]
 	}
-	parser := events.NewParser()
+	parser := bridge.NewParser()
 	for _, line := range lines {
 		s := strings.TrimRight(line, "\r")
 		if strings.HasPrefix(s, "event:") {

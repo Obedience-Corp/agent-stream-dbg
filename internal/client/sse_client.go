@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/lancekrogers/stream-debugger/internal/bridge"
 	"github.com/lancekrogers/stream-debugger/internal/config"
 	"github.com/lancekrogers/stream-debugger/internal/events"
 	"github.com/r3labs/sse/v2"
@@ -30,7 +31,7 @@ var defaultEventTypes = []string{
 type SSEClient struct {
 	config  *config.EnhancedConfig
 	client  *sse.Client
-	parser  *events.Parser
+	parser  *bridge.Parser
 	eventCh chan *events.Event
 	errCh   chan error
 }
@@ -46,7 +47,7 @@ func NewSSEClient(cfg *config.EnhancedConfig) *SSEClient {
 	return &SSEClient{
 		config:  cfg,
 		client:  client,
-		parser:  events.NewParser(),
+		parser:  bridge.NewParser(),
 		eventCh: make(chan *events.Event, 100),
 		errCh:   make(chan error, 10),
 	}

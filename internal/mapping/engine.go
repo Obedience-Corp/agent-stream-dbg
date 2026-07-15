@@ -6,35 +6,39 @@ package mapping
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 
+	"github.com/lancekrogers/stream-debugger/internal/events"
 	"gopkg.in/yaml.v3"
 )
 
-// knownKinds is the closed Kind vocabulary a rule's kind: value may name.
-// Kept local (not imported from internal/events) to avoid a dependency
-// cycle risk and keep the engine's YAML validation self-contained; the
-// values are kept in sync with internal/events.Kind by the engine tests.
-var knownKinds = map[string]bool{
-	"session_start": true, "session_end": true,
-	"stream_start": true, "stream_end": true,
-	"content": true, "reasoning": true,
-	"tool_call": true, "tool_result": true,
-	"handoff":       true,
-	"step_start":    true,
-	"step_end":      true,
-	"status_change": true,
-	"usage":         true,
-	"topology":      true,
-	"detail":        true,
-	"error":         true,
-	"unknown":       true,
+// knownKinds is the closed Kind vocabulary a rule's kind: value may name,
+// resolved directly from internal/events.Kind so the two never drift.
+var knownKinds = map[string]events.Kind{
+	string(events.KindSessionStart): events.KindSessionStart,
+	string(events.KindSessionEnd):   events.KindSessionEnd,
+	string(events.KindStreamStart):  events.KindStreamStart,
+	string(events.KindStreamEnd):    events.KindStreamEnd,
+	string(events.KindContent):      events.KindContent,
+	string(events.KindReasoning):    events.KindReasoning,
+	string(events.KindToolCall):     events.KindToolCall,
+	string(events.KindToolResult):   events.KindToolResult,
+	string(events.KindHandoff):      events.KindHandoff,
+	string(events.KindStepStart):    events.KindStepStart,
+	string(events.KindStepEnd):      events.KindStepEnd,
+	string(events.KindStatusChange): events.KindStatusChange,
+	string(events.KindUsage):        events.KindUsage,
+	string(events.KindTopology):     events.KindTopology,
+	string(events.KindDetail):       events.KindDetail,
+	string(events.KindError):        events.KindError,
+	string(events.KindUnknown):      events.KindUnknown,
 }
 
 // Rule is one compiled frame → Event mapping rule.
 type Rule struct {
 	Match   MatchSpec
-	Kind    string
+	Kind    events.Kind
 	Source  ValueForm
 	Content ValueForm
 	Seq     ValueForm
@@ -103,12 +107,13 @@ func Load(data []byte) (*Engine, error) {
 		if r.Kind == "" {
 			return nil, fmt.Errorf("rules[%d]: kind is required", i)
 		}
-		if !knownKinds[r.Kind] {
+		kind, ok := knownKinds[r.Kind]
+		if !ok {
 			return nil, fmt.Errorf("rules[%d]: unknown kind %q", i, r.Kind)
 		}
 		rules = append(rules, Rule{
 			Match:   r.Match,
-			Kind:    r.Kind,
+			Kind:    kind,
 			Source:  r.Source,
 			Content: r.Content,
 			Seq:     r.Seq,
@@ -141,4 +146,73 @@ func (e *Engine) Match(name string, data []byte) int {
 		}
 	}
 	return -1
+}
+
+// Decode converts a wire frame into the generic Event core. It never
+// errors: an unmatched frame becomes Kind=Unknown with a best-effort Fields
+// parse, and malformed JSON still passes through with Raw preserved and
+// Fields empty — passthrough is non-negotiable for a debugger. Decode holds
+// no state across calls (stateless: same input always yields the same
+// output, regardless of call order).
+func (e *Engine) Decode(transportName string, data []byte) *events.Event {
+	name := e.ResolveName(transportName, data)
+
+	// Best-effort parse: malformed JSON (or a non-JSON body, e.g. a bare
+	// SSE token) leaves fields nil rather than erroring.
+	var fields map[string]any
+	_ = json.Unmarshal(data, &fields)
+
+	idx := e.Match(name, data)
+	if idx < 0 {
+		return &events.Event{
+			Name:      name,
+			Kind:      events.KindUnknown,
+			Timestamp: events.ParseTimestamp(timestampField(fields)),
+			Fields:    fields,
+			Raw:       data,
+		}
+	}
+
+	rule := e.Rules[idx]
+	evt := &events.Event{
+		Name:      name,
+		Kind:      rule.Kind,
+		Timestamp: events.ParseTimestamp(timestampField(fields)),
+		Fields:    fields,
+		Raw:       data,
+	}
+	if rule.Source.IsSet() {
+		evt.SourceID = rule.Source.String(data)
+	}
+	if rule.Content.IsSet() {
+		evt.Content = rule.Content.String(data)
+	}
+	if rule.Seq.IsSet() {
+		evt.Seq = rule.Seq.Int(data)
+	}
+	if len(rule.Fields) > 0 {
+		if evt.Fields == nil {
+			evt.Fields = make(map[string]any, len(rule.Fields))
+		}
+		for key, form := range rule.Fields {
+			if val, ok := form.Extract(data); ok {
+				evt.Fields[key] = val
+			}
+		}
+	}
+	return evt
+}
+
+// timestampField extracts the raw "timestamp" value from a best-effort
+// field parse, re-encoded for events.ParseTimestamp's tolerant decoder.
+func timestampField(fields map[string]any) json.RawMessage {
+	v, ok := fields["timestamp"]
+	if !ok {
+		return nil
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	return raw
 }
