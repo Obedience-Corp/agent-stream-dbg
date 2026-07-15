@@ -48,6 +48,10 @@ timeline session_file:
 test:
     go test -v ./...
 
+# Regenerate testdata/goldens/*.explain.txt — review the diff before committing, an unreviewed one is a silent regression
+goldens:
+    go test ./dialects/... -run TestExplainGoldens -update-goldens -v
+
 # Format code
 fmt:
     go fmt ./...
