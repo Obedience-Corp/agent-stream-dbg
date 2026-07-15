@@ -151,10 +151,15 @@ Integrating both perspectives, consciousness can be understood...
 ```
 
 **Keyboard Controls:**
-- **Type & Enter** - Send message
-- **Ctrl+T** - Toggle RAW ↔ PARSED views
-- **↑ ↓ PgUp PgDn Home End** - Scroll through responses
-- **Ctrl+C** - Quit and save logs
+
+| Key | Action |
+|-----|--------|
+| **Type & Enter** | Send message |
+| **Ctrl+T** | Toggle RAW (SSE) ↔ PARSED (agent responses) |
+| **↑ ↓** | Scroll line by line |
+| **PgUp / PgDn** | Scroll page by page |
+| **Home / End** | Jump to top/bottom |
+| **Ctrl+C** | Quit and save logs |
 
 ---
 
@@ -281,7 +286,6 @@ cat logs/by-event-type/error.jsonl | jq
 
 - **User Guides**
   - [Quick Start](docs/user-guide/quickstart.md)
-  - [Getting Started with BrainyardV3](docs/user-guide/getting-started-brainyard.md)
   - [TUI vs Timeline Mode](docs/user-guide/tui-vs-timeline.md)
 
 - **Development**
