@@ -40,12 +40,14 @@ type YAMLConfig struct {
 		// example shape (transport.target/method/discriminator/plaintext),
 		// not nested like SSE's stream_endpoint — gRPC has no equivalent
 		// concept to nest under.
-		Target        string   `yaml:"target"`
-		Method        string   `yaml:"method"`        // fully-qualified RPC method, e.g. /agent.v1.AgentService/StreamSession
-		Discriminator string   `yaml:"discriminator"` // oneof | field:type | message_type | none — resolved in sequence 03
-		Plaintext     bool     `yaml:"plaintext"`
-		DescriptorSet string   `yaml:"descriptor_set"` // path to a compiled FileDescriptorSet — fallback when the target has reflection disabled
-		Auth          authYAML `yaml:"auth"`
+		Target          string   `yaml:"target"`
+		Method          string   `yaml:"method"`        // fully-qualified RPC method, e.g. /agent.v1.AgentService/StreamSession
+		Discriminator   string   `yaml:"discriminator"` // oneof | field:type | message_type | none — resolved in sequence 03
+		Plaintext       bool     `yaml:"plaintext"`
+		DescriptorSet   string   `yaml:"descriptor_set"`    // path to a compiled FileDescriptorSet — fallback when the target has reflection disabled
+		ProtoFile       string   `yaml:"proto_file"`        // path to a raw .proto — lowest-priority fallback, compiled at runtime
+		ProtoImportPath []string `yaml:"proto_import_path"` // import roots for ProtoFile and its own imports, mirroring protoc's -I/--proto_path
+		Auth            authYAML `yaml:"auth"`
 	} `yaml:"transport"`
 
 	// Dialect declares which mapping file interprets this system's frames.
@@ -125,13 +127,15 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 		}
 		apiKey = resolvedToken
 		transport = TransportConfig{
-			Type:          "grpc",
-			Target:        yamlCfg.Transport.Target,
-			GRPCMethod:    yamlCfg.Transport.Method,
-			Discriminator: yamlCfg.Transport.Discriminator,
-			Plaintext:     yamlCfg.Transport.Plaintext,
-			DescriptorSet: yamlCfg.Transport.DescriptorSet,
-			Auth:          auth,
+			Type:            "grpc",
+			Target:          yamlCfg.Transport.Target,
+			GRPCMethod:      yamlCfg.Transport.Method,
+			Discriminator:   yamlCfg.Transport.Discriminator,
+			Plaintext:       yamlCfg.Transport.Plaintext,
+			DescriptorSet:   yamlCfg.Transport.DescriptorSet,
+			ProtoFile:       yamlCfg.Transport.ProtoFile,
+			ProtoImportPath: yamlCfg.Transport.ProtoImportPath,
+			Auth:            auth,
 		}
 	default: // sse
 		auth, resolvedToken, err := resolveAuth(yamlCfg.Transport.StreamEndpoint.Auth, "bearer")
@@ -301,11 +305,13 @@ type TransportConfig struct {
 	Headers        map[string]string
 
 	// gRPC fields.
-	Target        string
-	GRPCMethod    string // fully-qualified RPC method, e.g. /agent.v1.AgentService/StreamSession
-	Discriminator string // oneof | field:type | message_type | none
-	Plaintext     bool
-	DescriptorSet string // path to a compiled FileDescriptorSet — fallback when reflection is disabled
+	Target          string
+	GRPCMethod      string // fully-qualified RPC method, e.g. /agent.v1.AgentService/StreamSession
+	Discriminator   string // oneof | field:type | message_type | none
+	Plaintext       bool
+	DescriptorSet   string   // path to a compiled FileDescriptorSet — fallback when reflection is disabled
+	ProtoFile       string   // path to a raw .proto — lowest-priority fallback, compiled at runtime
+	ProtoImportPath []string // import roots for ProtoFile and its own imports
 
 	// Shared: one auth vocabulary for both transports.
 	Auth AuthConfig

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -210,6 +211,8 @@ transport:
   discriminator: oneof
   plaintext: true
   descriptor_set: "testdata/agent.binpb"
+  proto_file: "testdata/agent.proto"
+  proto_import_path: ["testdata/proto", "testdata/vendor"]
   auth:
     type: metadata
     header_name: authorization
@@ -237,6 +240,12 @@ transport:
 	}
 	if cfg.Transport.DescriptorSet != "testdata/agent.binpb" {
 		t.Errorf("expected descriptor_set to be stored, got %q", cfg.Transport.DescriptorSet)
+	}
+	if cfg.Transport.ProtoFile != "testdata/agent.proto" {
+		t.Errorf("expected proto_file to be stored, got %q", cfg.Transport.ProtoFile)
+	}
+	if want := []string{"testdata/proto", "testdata/vendor"}; !slices.Equal(cfg.Transport.ProtoImportPath, want) {
+		t.Errorf("expected proto_import_path %v, got %v", want, cfg.Transport.ProtoImportPath)
 	}
 	key, value, ok := cfg.Transport.Auth.Metadata()
 	if !ok {

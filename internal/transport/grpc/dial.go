@@ -80,8 +80,19 @@ type Config struct {
 	// targets with reflection disabled (common in production). See
 	// LoadDescriptorSet. Checked before Connect ever dials the network:
 	// a bad path fails fast and locally, the same way a malformed dialect
-	// file fails before any connection is attempted.
+	// file fails before any connection is attempted. Takes priority over
+	// ProtoFilePath if both are set (cheaper: no compilation).
 	DescriptorSetPath string
+
+	// ProtoFilePath, if set (and DescriptorSetPath is not), resolves
+	// Method by compiling this .proto file at runtime via
+	// bufbuild/protocompile — the lowest-priority fallback tier, for
+	// targets where neither reflection nor a descriptor set is
+	// available. ProtoImportPaths are searched for the file and its own
+	// imports, mirroring protoc's -I/--proto_path. See LoadProtoFile.
+	// Checked before Connect ever dials, same as DescriptorSetPath.
+	ProtoFilePath    string
+	ProtoImportPaths []string
 }
 
 // Transport dials one gRPC target and, when Config.Method is set,
@@ -132,18 +143,29 @@ func (t *Transport) Name() string { return "grpc" }
 // connection (which would only surface a dial failure on the first RPC),
 // a debugger needs "can't reach this target" to fail here, at Connect,
 // with a wrapped and actionable error. If cfg.Method is set, Connect
-// also resolves that method — via a descriptor set if cfg.DescriptorSetPath
-// is set, reflection otherwise — and starts streaming it into Frames();
-// see stream.go.
+// also resolves that method — via a descriptor set if
+// cfg.DescriptorSetPath is set, via runtime .proto compilation if
+// cfg.ProtoFilePath is set, reflection otherwise — and starts streaming
+// it into Frames(); see stream.go.
 //
-// A configured DescriptorSetPath is loaded FIRST, before any dial: it's a
-// pure local file read with no network dependency, so a missing or
-// malformed file fails fast and locally, exactly like a malformed dialect
-// file would, rather than only surfacing after a (wasted) successful dial.
+// A configured DescriptorSetPath or ProtoFilePath is resolved FIRST,
+// before any dial: both are pure local operations with no network
+// dependency, so a missing or malformed file fails fast and locally,
+// exactly like a malformed dialect file would, rather than only
+// surfacing after a (wasted) successful dial.
 func (t *Transport) Connect(ctx context.Context) error {
 	var md *desc.MethodDescriptor
-	if t.cfg.Method != "" && t.cfg.DescriptorSetPath != "" {
+	switch {
+	case t.cfg.Method == "":
+		// Nothing to resolve.
+	case t.cfg.DescriptorSetPath != "":
 		resolved, err := LoadDescriptorSet(t.cfg.DescriptorSetPath, t.cfg.Method)
+		if err != nil {
+			return err
+		}
+		md = resolved
+	case t.cfg.ProtoFilePath != "":
+		resolved, err := LoadProtoFile(ctx, t.cfg.ProtoFilePath, t.cfg.ProtoImportPaths, t.cfg.Method)
 		if err != nil {
 			return err
 		}
