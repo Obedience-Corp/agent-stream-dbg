@@ -14,6 +14,7 @@ package agentstreampb
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	anypb "google.golang.org/protobuf/types/known/anypb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -387,11 +388,66 @@ func (x *ToolCall) GetArguments() string {
 	return ""
 }
 
+// TypedEnvelope pairs a plain string type tag with a self-describing
+// Any payload — the shape discriminator: field:type exists for
+// (architecture.md: "field:type (a type string + google.protobuf.Any)").
+type TypedEnvelope struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
+	Payload       *anypb.Any             `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TypedEnvelope) Reset() {
+	*x = TypedEnvelope{}
+	mi := &file_agentstream_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TypedEnvelope) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TypedEnvelope) ProtoMessage() {}
+
+func (x *TypedEnvelope) ProtoReflect() protoreflect.Message {
+	mi := &file_agentstream_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TypedEnvelope.ProtoReflect.Descriptor instead.
+func (*TypedEnvelope) Descriptor() ([]byte, []int) {
+	return file_agentstream_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *TypedEnvelope) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *TypedEnvelope) GetPayload() *anypb.Any {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
 var File_agentstream_proto protoreflect.FileDescriptor
 
 const file_agentstream_proto_rawDesc = "" +
 	"\n" +
-	"\x11agentstream.proto\x12\x0eagentstream.v1\"H\n" +
+	"\x11agentstream.proto\x12\x0eagentstream.v1\x1a\x19google/protobuf/any.proto\"H\n" +
 	"\rStreamRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x18\n" +
@@ -413,10 +469,14 @@ const file_agentstream_proto_rawDesc = "" +
 	"\bToolCall\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x1b\n" +
 	"\ttool_name\x18\x02 \x01(\tR\btoolName\x12\x1c\n" +
-	"\targuments\x18\x03 \x01(\tR\targuments2\x9b\x01\n" +
+	"\targuments\x18\x03 \x01(\tR\targuments\"S\n" +
+	"\rTypedEnvelope\x12\x12\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x12.\n" +
+	"\apayload\x18\x02 \x01(\v2\x14.google.protobuf.AnyR\apayload2\xea\x01\n" +
 	"\vAgentStream\x12F\n" +
 	"\x06Stream\x12\x1d.agentstream.v1.StreamRequest\x1a\x1b.agentstream.v1.StreamEvent0\x01\x12D\n" +
-	"\x04Chat\x12\x1b.agentstream.v1.ChatMessage\x1a\x1b.agentstream.v1.StreamEvent(\x010\x01BRZPgithub.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc/agentstreampbb\x06proto3"
+	"\x04Chat\x12\x1b.agentstream.v1.ChatMessage\x1a\x1b.agentstream.v1.StreamEvent(\x010\x01\x12M\n" +
+	"\vStreamTyped\x12\x1d.agentstream.v1.StreamRequest\x1a\x1d.agentstream.v1.TypedEnvelope0\x01BRZPgithub.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc/agentstreampbb\x06proto3"
 
 var (
 	file_agentstream_proto_rawDescOnce sync.Once
@@ -430,7 +490,7 @@ func file_agentstream_proto_rawDescGZIP() []byte {
 	return file_agentstream_proto_rawDescData
 }
 
-var file_agentstream_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_agentstream_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_agentstream_proto_goTypes = []any{
 	(*StreamRequest)(nil), // 0: agentstream.v1.StreamRequest
 	(*ChatMessage)(nil),   // 1: agentstream.v1.ChatMessage
@@ -438,20 +498,25 @@ var file_agentstream_proto_goTypes = []any{
 	(*SessionStart)(nil),  // 3: agentstream.v1.SessionStart
 	(*AgentContent)(nil),  // 4: agentstream.v1.AgentContent
 	(*ToolCall)(nil),      // 5: agentstream.v1.ToolCall
+	(*TypedEnvelope)(nil), // 6: agentstream.v1.TypedEnvelope
+	(*anypb.Any)(nil),     // 7: google.protobuf.Any
 }
 var file_agentstream_proto_depIdxs = []int32{
 	3, // 0: agentstream.v1.StreamEvent.session_start:type_name -> agentstream.v1.SessionStart
 	4, // 1: agentstream.v1.StreamEvent.agent_content:type_name -> agentstream.v1.AgentContent
 	5, // 2: agentstream.v1.StreamEvent.tool_call:type_name -> agentstream.v1.ToolCall
-	0, // 3: agentstream.v1.AgentStream.Stream:input_type -> agentstream.v1.StreamRequest
-	1, // 4: agentstream.v1.AgentStream.Chat:input_type -> agentstream.v1.ChatMessage
-	2, // 5: agentstream.v1.AgentStream.Stream:output_type -> agentstream.v1.StreamEvent
-	2, // 6: agentstream.v1.AgentStream.Chat:output_type -> agentstream.v1.StreamEvent
-	5, // [5:7] is the sub-list for method output_type
-	3, // [3:5] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	7, // 3: agentstream.v1.TypedEnvelope.payload:type_name -> google.protobuf.Any
+	0, // 4: agentstream.v1.AgentStream.Stream:input_type -> agentstream.v1.StreamRequest
+	1, // 5: agentstream.v1.AgentStream.Chat:input_type -> agentstream.v1.ChatMessage
+	0, // 6: agentstream.v1.AgentStream.StreamTyped:input_type -> agentstream.v1.StreamRequest
+	2, // 7: agentstream.v1.AgentStream.Stream:output_type -> agentstream.v1.StreamEvent
+	2, // 8: agentstream.v1.AgentStream.Chat:output_type -> agentstream.v1.StreamEvent
+	6, // 9: agentstream.v1.AgentStream.StreamTyped:output_type -> agentstream.v1.TypedEnvelope
+	7, // [7:10] is the sub-list for method output_type
+	4, // [4:7] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_agentstream_proto_init() }
@@ -470,7 +535,7 @@ func file_agentstream_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agentstream_proto_rawDesc), len(file_agentstream_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

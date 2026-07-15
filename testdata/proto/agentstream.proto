@@ -6,14 +6,20 @@ syntax = "proto3";
 
 package agentstream.v1;
 
+import "google/protobuf/any.proto";
+
 option go_package = "github.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc/agentstreampb";
 
 // AgentStream is a minimal multi-agent streaming service: one
 // server-streaming RPC that replays a scripted sequence of StreamEvents,
-// and one bidi RPC for interactive-input tests later in this phase.
+// one bidi RPC for interactive-input tests, and one server-streaming RPC
+// of TypedEnvelope for the discriminator: field:type test case, which
+// needs a plain string tag paired with a google.protobuf.Any payload —
+// StreamEvent's oneof can't exercise that shape.
 service AgentStream {
   rpc Stream(StreamRequest) returns (stream StreamEvent);
   rpc Chat(stream ChatMessage) returns (stream StreamEvent);
+  rpc StreamTyped(StreamRequest) returns (stream TypedEnvelope);
 }
 
 message StreamRequest {
@@ -50,4 +56,12 @@ message ToolCall {
   string agent_id = 1;
   string tool_name = 2;
   string arguments = 3;
+}
+
+// TypedEnvelope pairs a plain string type tag with a self-describing
+// Any payload — the shape discriminator: field:type exists for
+// (architecture.md: "field:type (a type string + google.protobuf.Any)").
+message TypedEnvelope {
+  string type = 1;
+  google.protobuf.Any payload = 2;
 }

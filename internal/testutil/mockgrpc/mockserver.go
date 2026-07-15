@@ -36,6 +36,7 @@ type Server struct {
 	agentstreampb.UnimplementedAgentStreamServer
 
 	events           []*agentstreampb.StreamEvent
+	typedEvents      []*agentstreampb.TypedEnvelope
 	skipReflection   bool
 	grpcServer       *grpc.Server
 	listener         net.Listener
@@ -124,6 +125,25 @@ func (s *Server) TLSAddr() string { return s.tlsListener.Addr().String() }
 func (s *Server) Stream(req *agentstreampb.StreamRequest, stream grpc.ServerStreamingServer[agentstreampb.StreamEvent]) error {
 	s.captureMetadata(stream.Context())
 	for _, evt := range s.events {
+		if err := stream.Send(evt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SetTypedEvents scripts the sequence StreamTyped replays — for
+// discriminator: field:type tests, which need a plain string tag paired
+// with a google.protobuf.Any payload rather than StreamEvent's oneof.
+func (s *Server) SetTypedEvents(events []*agentstreampb.TypedEnvelope) {
+	s.typedEvents = events
+}
+
+// StreamTyped implements agentstreampb.AgentStreamServer: replays the
+// scripted TypedEnvelope sequence verbatim, in order.
+func (s *Server) StreamTyped(req *agentstreampb.StreamRequest, stream grpc.ServerStreamingServer[agentstreampb.TypedEnvelope]) error {
+	s.captureMetadata(stream.Context())
+	for _, evt := range s.typedEvents {
 		if err := stream.Send(evt); err != nil {
 			return err
 		}

@@ -23,10 +23,11 @@ func TestTransport_Frames_DecodesScriptedEventsAsProtoJSON(t *testing.T) {
 	defer srv.Close()
 
 	tr := New(Config{
-		Target:    srv.Addr(),
-		Plaintext: true,
-		Method:    "/agentstream.v1.AgentStream/Stream",
-		Request:   map[string]any{"session_id": "s1", "message": "hi"},
+		Target:        srv.Addr(),
+		Plaintext:     true,
+		Method:        "/agentstream.v1.AgentStream/Stream",
+		Request:       map[string]any{"session_id": "s1", "message": "hi"},
+		Discriminator: "message_type",
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -63,10 +64,10 @@ func TestTransport_Frames_DecodesScriptedEventsAsProtoJSON(t *testing.T) {
 		t.Fatalf("expected 3 frames, got %d", len(frames))
 	}
 
-	// Frame.Name is the response message's type — StreamEvent, the oneof
-	// wrapper — for every frame here; extracting the oneof CASE name
-	// (SessionStart/AgentContent/ToolCall) into Frame.Name is the next
-	// task's job (discriminator modes), deliberately not this one's.
+	// discriminator: message_type is explicit here, so Frame.Name is the
+	// response message's static type — StreamEvent, the oneof wrapper —
+	// for every frame; see TestDiscriminator_Oneof_* for the case-name
+	// extraction this test deliberately isn't exercising.
 	for i, fr := range frames {
 		if fr.name != "agentstream.v1.StreamEvent" {
 			t.Errorf("frame %d: expected name 'agentstream.v1.StreamEvent', got %q", i, fr.name)

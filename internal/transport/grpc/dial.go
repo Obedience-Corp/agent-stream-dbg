@@ -54,6 +54,21 @@ type Config struct {
 	// richer request templating (mirroring a dialect's send:) is out of
 	// scope until it's actually needed.
 	Request map[string]any
+
+	// Discriminator resolves Frame.Name from a decoded message — gRPC's
+	// one genuine impedance mismatch with SSE's native event: name.
+	// One of "oneof" (the populated oneof case's field name — the happy
+	// path), "field:type" (DiscriminatorField's string value), "message_type"
+	// (the response type's full proto name), or "none"/"" (Frame.Name
+	// stays empty; the dialect uses discriminator: auto, same as SSE's
+	// openai.yaml). This is purely a transport-layer concern: the
+	// resolved name feeds the SAME unmodified mapping.Engine a
+	// discriminator: event dialect already expects from any transport.
+	Discriminator string
+
+	// DiscriminatorField is the field name Discriminator "field:type"
+	// reads as Frame.Name. Ignored for every other mode.
+	DiscriminatorField string
 }
 
 // Transport dials one gRPC target and, when Config.Method is set,

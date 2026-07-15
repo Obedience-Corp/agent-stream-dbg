@@ -24,8 +24,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AgentStream_Stream_FullMethodName = "/agentstream.v1.AgentStream/Stream"
-	AgentStream_Chat_FullMethodName   = "/agentstream.v1.AgentStream/Chat"
+	AgentStream_Stream_FullMethodName      = "/agentstream.v1.AgentStream/Stream"
+	AgentStream_Chat_FullMethodName        = "/agentstream.v1.AgentStream/Chat"
+	AgentStream_StreamTyped_FullMethodName = "/agentstream.v1.AgentStream/StreamTyped"
 )
 
 // AgentStreamClient is the client API for AgentStream service.
@@ -34,10 +35,14 @@ const (
 //
 // AgentStream is a minimal multi-agent streaming service: one
 // server-streaming RPC that replays a scripted sequence of StreamEvents,
-// and one bidi RPC for interactive-input tests later in this phase.
+// one bidi RPC for interactive-input tests, and one server-streaming RPC
+// of TypedEnvelope for the discriminator: field:type test case, which
+// needs a plain string tag paired with a google.protobuf.Any payload —
+// StreamEvent's oneof can't exercise that shape.
 type AgentStreamClient interface {
 	Stream(ctx context.Context, in *StreamRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamEvent], error)
 	Chat(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ChatMessage, StreamEvent], error)
+	StreamTyped(ctx context.Context, in *StreamRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TypedEnvelope], error)
 }
 
 type agentStreamClient struct {
@@ -80,16 +85,39 @@ func (c *agentStreamClient) Chat(ctx context.Context, opts ...grpc.CallOption) (
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type AgentStream_ChatClient = grpc.BidiStreamingClient[ChatMessage, StreamEvent]
 
+func (c *agentStreamClient) StreamTyped(ctx context.Context, in *StreamRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TypedEnvelope], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &AgentStream_ServiceDesc.Streams[2], AgentStream_StreamTyped_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[StreamRequest, TypedEnvelope]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AgentStream_StreamTypedClient = grpc.ServerStreamingClient[TypedEnvelope]
+
 // AgentStreamServer is the server API for AgentStream service.
 // All implementations must embed UnimplementedAgentStreamServer
 // for forward compatibility.
 //
 // AgentStream is a minimal multi-agent streaming service: one
 // server-streaming RPC that replays a scripted sequence of StreamEvents,
-// and one bidi RPC for interactive-input tests later in this phase.
+// one bidi RPC for interactive-input tests, and one server-streaming RPC
+// of TypedEnvelope for the discriminator: field:type test case, which
+// needs a plain string tag paired with a google.protobuf.Any payload —
+// StreamEvent's oneof can't exercise that shape.
 type AgentStreamServer interface {
 	Stream(*StreamRequest, grpc.ServerStreamingServer[StreamEvent]) error
 	Chat(grpc.BidiStreamingServer[ChatMessage, StreamEvent]) error
+	StreamTyped(*StreamRequest, grpc.ServerStreamingServer[TypedEnvelope]) error
 	mustEmbedUnimplementedAgentStreamServer()
 }
 
@@ -105,6 +133,9 @@ func (UnimplementedAgentStreamServer) Stream(*StreamRequest, grpc.ServerStreamin
 }
 func (UnimplementedAgentStreamServer) Chat(grpc.BidiStreamingServer[ChatMessage, StreamEvent]) error {
 	return status.Error(codes.Unimplemented, "method Chat not implemented")
+}
+func (UnimplementedAgentStreamServer) StreamTyped(*StreamRequest, grpc.ServerStreamingServer[TypedEnvelope]) error {
+	return status.Error(codes.Unimplemented, "method StreamTyped not implemented")
 }
 func (UnimplementedAgentStreamServer) mustEmbedUnimplementedAgentStreamServer() {}
 func (UnimplementedAgentStreamServer) testEmbeddedByValue()                     {}
@@ -145,6 +176,17 @@ func _AgentStream_Chat_Handler(srv interface{}, stream grpc.ServerStream) error 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type AgentStream_ChatServer = grpc.BidiStreamingServer[ChatMessage, StreamEvent]
 
+func _AgentStream_StreamTyped_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(StreamRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(AgentStreamServer).StreamTyped(m, &grpc.GenericServerStream[StreamRequest, TypedEnvelope]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AgentStream_StreamTypedServer = grpc.ServerStreamingServer[TypedEnvelope]
+
 // AgentStream_ServiceDesc is the grpc.ServiceDesc for AgentStream service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -163,6 +205,11 @@ var AgentStream_ServiceDesc = grpc.ServiceDesc{
 			Handler:       _AgentStream_Chat_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
+		},
+		{
+			StreamName:    "StreamTyped",
+			Handler:       _AgentStream_StreamTyped_Handler,
+			ServerStreams: true,
 		},
 	},
 	Metadata: "agentstream.proto",

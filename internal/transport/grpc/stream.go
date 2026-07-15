@@ -78,7 +78,9 @@ func (t *Transport) readLoop(md *desc.MethodDescriptor, stream *grpcdynamic.Serv
 	defer t.wg.Done()
 	defer close(t.frames)
 
-	name := md.GetOutputType().GetFullyQualifiedName()
+	// Used only for error frames, where there's no successfully-decoded
+	// message to resolve a discriminator-mode name from.
+	fallbackName := md.GetOutputType().GetFullyQualifiedName()
 
 	emit := func(f transport.Frame) bool {
 		select {
@@ -100,19 +102,21 @@ func (t *Transport) readLoop(md *desc.MethodDescriptor, stream *grpcdynamic.Serv
 			// with Err set, matching internal/transport/sse's contract,
 			// exactly like a malformed SSE frame. Status/trailer detail
 			// on top of this is sequence 04's job.
-			emit(transport.Frame{Name: name, Timestamp: time.Now(), Err: fmt.Errorf("grpc: recv: %w", err)})
+			emit(transport.Frame{Name: fallbackName, Timestamp: time.Now(), Err: fmt.Errorf("grpc: recv: %w", err)})
 			return
 		}
 
 		dm, ok := msg.(*dynamic.Message)
 		if !ok {
-			if !emit(transport.Frame{Name: name, Timestamp: time.Now(), Err: fmt.Errorf("grpc: unexpected response message type %T", msg)}) {
+			if !emit(transport.Frame{Name: fallbackName, Timestamp: time.Now(), Err: fmt.Errorf("grpc: unexpected response message type %T", msg)}) {
 				return
 			}
 			continue
 		}
 
-		data, err := dm.MarshalJSONPB(jsonMarshaler)
+		name, toMarshal := t.resolveFrame(md, dm)
+
+		data, err := toMarshal.MarshalJSONPB(jsonMarshaler)
 		if err != nil {
 			if !emit(transport.Frame{Name: name, Timestamp: time.Now(), Err: fmt.Errorf("grpc: marshal response to JSON: %w", err)}) {
 				return
@@ -128,5 +132,63 @@ func (t *Transport) readLoop(md *desc.MethodDescriptor, stream *grpcdynamic.Serv
 		}) {
 			return
 		}
+	}
+}
+
+// resolveFrame computes Frame.Name and which message to marshal as
+// Frame.Data, per t.cfg.Discriminator — gRPC's one genuine impedance
+// mismatch with SSE's native event: name. The resolved name feeds the
+// SAME unmodified mapping.Engine a discriminator: event dialect already
+// expects from any transport; this function is the entire seam, and
+// internal/mapping never learns gRPC exists.
+//
+// For "oneof" specifically, toMarshal is the unwrapped oneof member, not
+// the outer wrapper message: a wrapper's protojson would nest every
+// field one level down under the case name
+// (e.g. {"agent_content":{"agent_id":"a", ...}}), which would silently
+// break a dialect field path like `source: agent_id` — that path only
+// works flat, exactly like SSE's data: line. Unwrapping is what makes
+// "the same dialect YAML runs over SSE and gRPC unchanged" actually true
+// for the oneof case, not just the happy path on paper.
+func (t *Transport) resolveFrame(md *desc.MethodDescriptor, dm *dynamic.Message) (name string, toMarshal *dynamic.Message) {
+	mode := t.cfg.Discriminator
+	if mode == "" {
+		// Auto: the design's stated happy path — a method whose response
+		// has exactly one top-level oneof discriminates by its case name
+		// by default; anything else falls back to message_type, the
+		// safest generic default (never empty, never ambiguous).
+		if len(md.GetOutputType().GetOneOfs()) == 1 {
+			mode = "oneof"
+		} else {
+			mode = "message_type"
+		}
+	}
+
+	switch mode {
+	case "oneof":
+		oneofs := md.GetOutputType().GetOneOfs()
+		if len(oneofs) == 0 {
+			return md.GetOutputType().GetFullyQualifiedName(), dm
+		}
+		fd, val := dm.GetOneOfField(oneofs[0])
+		if fd == nil {
+			return "", dm // oneof declared but nothing populated — proto3 allows this
+		}
+		if inner, ok := val.(*dynamic.Message); ok {
+			return fd.GetName(), inner
+		}
+		// A scalar (non-message) oneof case: nothing to unwrap.
+		return fd.GetName(), dm
+	case "field:type":
+		v, err := dm.TryGetFieldByName(t.cfg.DiscriminatorField)
+		if err != nil {
+			return "", dm
+		}
+		s, _ := v.(string)
+		return s, dm
+	case "message_type":
+		return md.GetOutputType().GetFullyQualifiedName(), dm
+	default: // "none"
+		return "", dm
 	}
 }
