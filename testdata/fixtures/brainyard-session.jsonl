@@ -1,0 +1,22 @@
+{"type":"session_start","message_id":"msg_0001","timestamp":"2025-10-31T16:08:00.000000Z","session_id":"demo-9f2a1c","flow_id":"default"}
+{"type":"flow_step_start","message_id":"msg_0002","timestamp":"2025-10-31T16:08:00.050000Z","step":"routing","enabled":true,"agent_count":2,"non_wizard_count":2}
+{"type":"flow_step_end","message_id":"msg_0003","timestamp":"2025-10-31T16:08:00.120000Z","step":"routing","enabled":true,"agent_count":2,"routing_mode":"broadcast","route_taken":"all","route_agents":["sam_harris","eckhart_tolle"],"duration_ms":70}
+{"type":"agent_stream_start","message_id":"msg_0004","timestamp":"2025-10-31T16:08:00.150000Z","agent_id":"sam_harris"}
+{"type":"agent_stream_start","message_id":"msg_0005","timestamp":"2025-10-31T16:08:00.180000Z","agent_id":"eckhart_tolle"}
+{"type":"agent_content","message_id":"msg_0006","timestamp":"2025-10-31T16:08:00.320000Z","agent_id":"sam_harris","content":"Let's think about this together.","sequence":1}
+{"type":"agent_content","message_id":"msg_0007","timestamp":"2025-10-31T16:08:00.350000Z","agent_id":"eckhart_tolle","content":"Here's another angle worth considering.","sequence":1}
+{"type":"agent_content","message_id":"msg_0008","timestamp":"2025-10-31T16:08:00.520000Z","agent_id":"sam_harris","content":" There are a few threads worth pulling on.","sequence":2}
+{"type":"agent_content","message_id":"msg_0009","timestamp":"2025-10-31T16:08:00.560000Z","agent_id":"eckhart_tolle","content":" It helps to slow down and notice what's present.","sequence":2}
+{"type":"error","message_id":"msg_0010","timestamp":"2025-10-31T16:08:00.610000Z","error_type":"rate_limit_error","message":"upstream rate limit hit, retrying","agent_id":"eckhart_tolle","retry_after":1}
+{"type":"agent_content","message_id":"msg_0011","timestamp":"2025-10-31T16:08:00.900000Z","agent_id":"eckhart_tolle","content":" Continuing from where we left off, the same idea still holds.","sequence":3}
+{"type":"agent_content","message_id":"msg_0012","timestamp":"2025-10-31T16:08:00.940000Z","agent_id":"sam_harris","content":" Taken together, this points toward a clear next step.","sequence":3}
+{"type":"agent_stream_complete","message_id":"msg_0013","timestamp":"2025-10-31T16:08:01.100000Z","agent_id":"sam_harris","token_count":42}
+{"type":"agent_stream_complete","message_id":"msg_0014","timestamp":"2025-10-31T16:08:01.180000Z","agent_id":"eckhart_tolle","token_count":39}
+{"type":"flow_step_start","message_id":"msg_0015","timestamp":"2025-10-31T16:08:01.200000Z","step":"synthesis","enabled":true,"agent_count":2}
+{"type":"flow_step_detail","message_id":"msg_0016","timestamp":"2025-10-31T16:08:01.210000Z","step":"synthesis","plan_id":"plan_001","synthesis_preview":"Combining both perspectives into one balanced answer...","perspectives":[{"agent_id":"sam_harris","summary":"Practical, action-oriented framing."},{"agent_id":"eckhart_tolle","summary":"Grounded, present-moment framing."}]}
+{"type":"wizard_stream_start","message_id":"msg_0017","timestamp":"2025-10-31T16:08:01.230000Z"}
+{"type":"wizard_content","message_id":"msg_0018","timestamp":"2025-10-31T16:08:01.400000Z","content":"Bringing both viewpoints together,","sequence":1}
+{"type":"wizard_content","message_id":"msg_0019","timestamp":"2025-10-31T16:08:01.600000Z","content":" the synthesis suggests a balanced, grounded next step.","sequence":2}
+{"type":"wizard_stream_complete","message_id":"msg_0020","timestamp":"2025-10-31T16:08:01.750000Z","token_count":28}
+{"type":"flow_step_end","message_id":"msg_0021","timestamp":"2025-10-31T16:08:01.770000Z","step":"synthesis","enabled":true,"agent_count":2,"duration_ms":560}
+{"type":"session_complete","message_id":"msg_0022","timestamp":"2025-10-31T16:08:01.800000Z","session_id":"demo-9f2a1c"}
