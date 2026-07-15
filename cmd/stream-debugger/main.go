@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"os"
@@ -16,6 +15,7 @@ import (
 	"github.com/lancekrogers/stream-debugger/internal/help"
 	"github.com/lancekrogers/stream-debugger/internal/logger"
 	"github.com/lancekrogers/stream-debugger/internal/mapping"
+	"github.com/lancekrogers/stream-debugger/internal/transport/replay"
 	"github.com/lancekrogers/stream-debugger/internal/visualizer"
 	"github.com/urfave/cli/v2"
 )
@@ -331,44 +331,32 @@ func runTimeline(sessionFile string) error {
 	return nil
 }
 
-// loadEventsFromFile reads a JSONL session log file and parses events
+// loadEventsFromFile reads a JSONL session log file through the replay
+// transport — the same Transport → Frame → dialect-engine path a live SSE
+// stream goes through, so timeline/replay decode events identically to a
+// real session rather than through a special-cased file reader.
 func loadEventsFromFile(filePath string) ([]*events.Event, error) {
-	file, err := os.Open(filePath)
+	tr, err := replay.New(filePath, 0)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open file: %w", err)
+		return nil, err
 	}
-	defer func() { _ = file.Close() }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := tr.Connect(ctx); err != nil {
+		return nil, fmt.Errorf("failed to start replay: %w", err)
+	}
+	defer func() { _ = tr.Close() }()
 
 	parser := bridge.NewParser()
 	var result []*events.Event
-
-	// Read file line by line (JSONL format)
-	scanner := bufio.NewScanner(file)
-	// Increase buffer size for long lines
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
-
-	lineNum := 0
-	for scanner.Scan() {
-		lineNum++
-		line := scanner.Bytes()
-		if len(line) == 0 {
+	for frame := range tr.Frames() {
+		if frame.Err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: malformed frame: %v\n", frame.Err)
 			continue
 		}
-
-		// Parse the event using ParseRaw (extracts type from JSON)
-		evt, err := parser.ParseRaw(line)
-		if err != nil {
-			// Log warning but continue - some lines might be metadata
-			fmt.Fprintf(os.Stderr, "Warning: skipping line %d: %v\n", lineNum, err)
-			continue
-		}
-
+		evt, _ := parser.Parse(frame.Name, frame.Data)
 		result = append(result, evt)
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error reading file: %w", err)
 	}
 
 	return result, nil
