@@ -172,8 +172,8 @@ Time (ms)  sam_harris      eckhart_tolle   wizard
 ### Quick Setup
 
 ```bash
-# Navigate to your config directory
-cd /Users/lancerogers/Dev/AI/Brainyard/BrainyardV3/tools/stream-debugger
+# Navigate to your project directory (wherever config.yaml lives)
+cd /path/to/your/project
 
 # Ensure .env has your API key
 cat .env
@@ -198,13 +198,10 @@ The config file path can be:
 ### Using Just Commands (Recommended)
 
 ```bash
-# Navigate to BrainyardV3 root
-cd /Users/lancerogers/Dev/AI/Brainyard/BrainyardV3
+# Navigate to your backend's root directory
+cd /path/to/your/backend
 
-# Interactive mode (recommended for development)
-just debug-stream
-
-# Or manually
+# Run manually with the backend's config
 stream-debugger --config tools/stream-debugger/config.yaml
 ```
 
