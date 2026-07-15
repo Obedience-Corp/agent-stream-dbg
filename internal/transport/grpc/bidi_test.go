@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -107,6 +108,58 @@ func TestTransport_Send_ConcurrentWithFramesDraining(t *testing.T) {
 		}
 	}
 	for err := range sendErrs {
+		if err != nil {
+			t.Errorf("Send error: %v", err)
+		}
+	}
+}
+
+// TestTransport_Send_ConcurrentFromMultipleGoroutines regression-tests
+// Send's internal mutex: grpc.ClientStream.SendMsg is documented as
+// unsafe to call on the same stream from different goroutines (unlike
+// Send-from-one-goroutine concurrent with Recv-from-another, which is
+// explicitly fine and is TestTransport_Send_ConcurrentWithFramesDraining's
+// case). Without serialization here, this test would be exactly the kind
+// of scenario -race is meant to catch — many goroutines all calling
+// tr.Send at once, racing inside the underlying stream.
+func TestTransport_Send_ConcurrentFromMultipleGoroutines(t *testing.T) {
+	srv, err := mockgrpc.New(nil)
+	if err != nil {
+		t.Fatalf("mockgrpc.New: %v", err)
+	}
+	t.Cleanup(srv.Close)
+
+	tr := connectStreamingTransport(t, srv.Addr(), Config{
+		Method: "/agentstream.v1.AgentStream/Chat",
+	})
+
+	const n = 20
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			errs <- tr.Send(context.Background(), []byte(fmt.Sprintf(`{"text":"msg-%d"}`, i)))
+		}(i)
+	}
+
+	received := 0
+	for received < n {
+		select {
+		case f := <-tr.Frames():
+			if f.Err != nil {
+				t.Fatalf("unexpected frame error: %v", f.Err)
+			}
+			received++
+		case <-time.After(5 * time.Second):
+			t.Fatalf("timed out waiting for frames; got %d/%d", received, n)
+		}
+	}
+
+	wg.Wait()
+	close(errs)
+	for err := range errs {
 		if err != nil {
 			t.Errorf("Send error: %v", err)
 		}

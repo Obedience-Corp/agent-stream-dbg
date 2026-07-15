@@ -101,6 +101,14 @@ type Transport struct {
 	// always errors in that case.
 	sendMethod *desc.MethodDescriptor
 	sendStream *grpcdynamic.BidiStream
+	// sendMu serializes Send calls: grpc.ClientStream.SendMsg is
+	// documented as unsafe to call on the same stream from different
+	// goroutines (concurrent Send + Recv from two goroutines is fine;
+	// concurrent Send + Send is not). Send is a public method with no
+	// visible warning otherwise, so this makes "call Send from wherever"
+	// safe by construction rather than relying on every caller to
+	// serialize its own calls.
+	sendMu sync.Mutex
 }
 
 // New returns a Transport for cfg. It does not dial — call Connect.

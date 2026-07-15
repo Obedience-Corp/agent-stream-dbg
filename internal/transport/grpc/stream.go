@@ -116,6 +116,13 @@ func (t *Transport) startStream(ctx context.Context) error {
 // no-op. Which behavior applies is decided from t.sendStream, set only
 // when startStream's descriptor check found a bidi method; there is no
 // separate config flag duplicating that information.
+//
+// Send is safe to call from multiple goroutines: t.sendMu serializes the
+// underlying SendMsg call, since grpc.ClientStream.SendMsg is documented
+// as unsafe to call on the same stream from different goroutines
+// (concurrent Send + Recv from two goroutines is explicitly fine —
+// that's readLoop and Send's normal relationship — but concurrent Send +
+// Send is not).
 func (t *Transport) Send(ctx context.Context, payload []byte) error {
 	if t.sendStream == nil {
 		return fmt.Errorf("grpc: send not supported — %s is not a bidi-streaming method", t.cfg.Method)
@@ -124,7 +131,10 @@ func (t *Transport) Send(ctx context.Context, payload []byte) error {
 	if err := req.UnmarshalJSONPB(&jsonpb.Unmarshaler{}, payload); err != nil { //nolint:staticcheck // SA1019: see jsonMarshaler's doc comment — same jsonpb/dynamic pairing, reverse direction
 		return fmt.Errorf("grpc: unmarshal send payload: %w", err)
 	}
-	if err := t.sendStream.SendMsg(req); err != nil {
+	t.sendMu.Lock()
+	err := t.sendStream.SendMsg(req)
+	t.sendMu.Unlock()
+	if err != nil {
 		return fmt.Errorf("grpc: send: %w", err)
 	}
 	return nil
@@ -231,6 +241,14 @@ func (t *Transport) emitStreamEnd(stream recvStream, recvErr error, emit func(tr
 		return
 	}
 
+	// The task's JSON shape requires trailers as a flat map[string]string
+	// (metadata.MD is map[string][]string — real gRPC trailers can be
+	// multi-valued). Joining with "," is lossy for a value that itself
+	// contains a comma, or is otherwise ambiguous between e.g. ["a,b","c"]
+	// and ["a","b","c"] — an accepted tradeoff for the mandated flat
+	// shape, not a bug: a debugger surfacing malformed-looking trailers is
+	// still strictly better than dropping them, and comma-separated
+	// values are the common convention for multi-valued gRPC metadata.
 	flatTrailers := make(map[string]string, len(trailers))
 	for k, vals := range trailers {
 		flatTrailers[k] = strings.Join(vals, ",")

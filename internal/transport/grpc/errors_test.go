@@ -177,3 +177,43 @@ func TestGRPCStatus_CleanEndWithTrailers_StillEmitsFrame(t *testing.T) {
 		t.Error("expected no further frames after the synthetic status frame")
 	}
 }
+
+// TestGRPCStatus_MultiValueTrailer_JoinsWithComma locks in the documented,
+// deliberate tradeoff in emitStreamEnd's trailer flattening: a real
+// multi-valued gRPC trailer (metadata.MD's []string) becomes one
+// comma-joined string, matching the task's mandated flat
+// map[string]string JSON shape. This doesn't claim the join is lossless
+// (it isn't, for a value containing a literal comma) — it pins down the
+// actual behavior so a future change to the join strategy is a visible,
+// intentional diff instead of a silent behavior change.
+func TestGRPCStatus_MultiValueTrailer_JoinsWithComma(t *testing.T) {
+	srv, err := mockgrpc.New(nil)
+	if err != nil {
+		t.Fatalf("mockgrpc.New: %v", err)
+	}
+	defer srv.Close()
+	srv.SetEndStatus(codes.Internal, "boom", metadata.MD{"multi": []string{"a", "b", "c"}})
+
+	tr := connectStreamingTransport(t, srv.Addr(), Config{
+		Method:  "/agentstream.v1.AgentStream/Stream",
+		Request: map[string]any{"session_id": "s1"},
+	})
+
+	f := <-tr.Frames()
+	if f.Err != nil {
+		t.Fatalf("unexpected frame error: %v", f.Err)
+	}
+
+	engine, err := mapping.Load([]byte(statusDialect))
+	if err != nil {
+		t.Fatalf("mapping.Load: %v", err)
+	}
+	evt := engine.Decode(f.Name, f.Data)
+	trailers, ok := evt.Fields["trailers"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected Fields[trailers] to be a map, got %T", evt.Fields["trailers"])
+	}
+	if trailers["multi"] != "a,b,c" {
+		t.Errorf("expected trailers[multi]='a,b,c' (comma-joined), got %+v", trailers["multi"])
+	}
+}
