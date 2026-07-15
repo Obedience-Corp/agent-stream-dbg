@@ -19,7 +19,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lancekrogers/stream-debugger/internal/bridge"
-	clientapi "github.com/lancekrogers/stream-debugger/internal/client"
 	"github.com/lancekrogers/stream-debugger/internal/config"
 	"github.com/lancekrogers/stream-debugger/internal/events"
 	dblogger "github.com/lancekrogers/stream-debugger/internal/logger"
@@ -40,7 +39,6 @@ type Pane int
 const (
 	PaneFlow Pane = iota
 	PaneApp
-	PaneYAML
 	PaneTimeline
 	PaneEvents
 	PaneMessages
@@ -124,13 +122,6 @@ type InteractiveModel struct {
 	appFocus       AppFocus
 	agentCollapsed map[string]bool // per-agent collapsed state
 
-	// YAML pane state
-	yamlSnapshot     string
-	yamlPrevSnapshot string
-	yamlReloadStatus string
-	yamlDiff         string
-	configClient     *clientapi.ConfigAPIClient
-
 	// Streaming (incremental) state
 	streamBody   io.ReadCloser
 	streamIndex  int
@@ -211,8 +202,6 @@ func NewInteractiveModel(cfg *config.EnhancedConfig) InteractiveModel {
 		// App pane defaults
 		appFocus:       AppFocusAgents,
 		agentCollapsed: make(map[string]bool),
-		// YAML pane
-		configClient: clientapi.NewConfigAPIClient(cfg),
 		// Events pane expandable nodes
 		eventExpanded:    make(map[int]bool),
 		selectedEventIdx: 0,
@@ -242,8 +231,6 @@ func (m *InteractiveModel) refreshViewportContent() {
 		}
 	case PaneApp:
 		viewportContent = m.renderAppPane()
-	case PaneYAML:
-		viewportContent = m.renderYAMLPane()
 	case PaneTimeline:
 		viewportContent = m.renderTimelinePane()
 	case PaneEvents:
@@ -378,21 +365,16 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.refreshViewportContent()
 				return m, nil
 			case "3", "f3":
-				m.activePane = PaneYAML
-				m.contentDirty = true
-				m.refreshViewportContent()
-				return m, nil
-			case "4", "f4":
 				m.activePane = PaneTimeline
 				m.contentDirty = true
 				m.refreshViewportContent()
 				return m, nil
-			case "5", "f5":
+			case "4", "f4":
 				m.activePane = PaneEvents
 				m.contentDirty = true
 				m.refreshViewportContent()
 				return m, nil
-			case "6", "f6":
+			case "5", "f5":
 				m.activePane = PaneMessages
 				m.contentDirty = true
 				m.refreshViewportContent()
@@ -601,42 +583,6 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.refreshViewportContent()
 				}
 				return m, nil
-			case "y":
-				// YAML pane: take snapshot
-				if m.activePane == PaneYAML && m.configClient != nil {
-					m.yamlPrevSnapshot = m.yamlSnapshot
-					data, status, err := m.configClient.GetFlowVizConfig()
-					if err != nil {
-						m.yamlReloadStatus = fmt.Sprintf("Snapshot error: %v", err)
-					} else if status/100 != 2 {
-						m.yamlReloadStatus = fmt.Sprintf("HTTP %d", status)
-					} else {
-						m.yamlSnapshot = clientapi.PrettyJSON(data)
-						m.yamlReloadStatus = fmt.Sprintf("Snapshot taken at %s", time.Now().Format("15:04:05"))
-						// Compute diff if we have a previous snapshot
-						if m.yamlPrevSnapshot != "" {
-							m.yamlDiff = lineDiff(m.yamlPrevSnapshot, m.yamlSnapshot)
-						} else {
-							m.yamlDiff = ""
-						}
-					}
-					m.contentDirty = true
-					m.refreshViewportContent()
-				}
-				return m, nil
-			case "R":
-				// YAML pane: reload prompts
-				if m.activePane == PaneYAML && m.configClient != nil {
-					data, status, err := m.configClient.ReloadPrompts()
-					if err != nil {
-						m.yamlReloadStatus = fmt.Sprintf("Reload error: %v", err)
-					} else {
-						m.yamlReloadStatus = fmt.Sprintf("HTTP %d\n%s", status, clientapi.PrettyJSON(data))
-					}
-					m.contentDirty = true
-					m.refreshViewportContent()
-				}
-				return m, nil
 			case "g":
 				m.viewport.GotoTop()
 				m.follow = false
@@ -816,8 +762,6 @@ func (m InteractiveModel) currentPaneName() string {
 		return "Flow"
 	case PaneApp:
 		return "App"
-	case PaneYAML:
-		return "YAML"
 	case PaneTimeline:
 		return "Timeline"
 	case PaneEvents:
@@ -845,7 +789,7 @@ func (m InteractiveModel) View() string {
 		Padding(0, 1)
 
 	// Pane tabs
-	paneNames := []string{"Flow", "App", "YAML", "Timeline", "Events", "Messages"}
+	paneNames := []string{"Flow", "App", "Timeline", "Events", "Messages"}
 	var tabs strings.Builder
 	for i, name := range paneNames {
 		if Pane(i) == m.activePane {
@@ -925,8 +869,6 @@ func (m InteractiveModel) View() string {
 			wizardStr = "ON"
 		}
 		paneHints = fmt.Sprintf("j/k:navigate Enter:expand t:tokens(%s) W:wizard-only(%s)", tokensStr, wizardStr)
-	case PaneYAML:
-		paneHints = "R:reload y:snapshot"
 	case PaneMessages:
 		paneHints = "Ctrl+T:raw/parsed"
 	default:
@@ -2022,93 +1964,7 @@ func (m InteractiveModel) renderAgentSummaries(msg Message) string {
 	return b.String()
 }
 
-// lineDiff computes a simple line-based diff between two strings
-func lineDiff(a, b string) string {
-	al := strings.Split(a, "\n")
-	bl := strings.Split(b, "\n")
-
-	// Build sets for comparison
-	aSet := make(map[string]struct{})
-	for _, s := range al {
-		aSet[s] = struct{}{}
-	}
-	bSet := make(map[string]struct{})
-	for _, s := range bl {
-		bSet[s] = struct{}{}
-	}
-
-	var out []string
-
-	// Lines in new but not in old (added)
-	for _, s := range bl {
-		if _, ok := aSet[s]; !ok {
-			out = append(out, "+ "+s)
-		} else {
-			out = append(out, "  "+s)
-		}
-	}
-
-	// Lines in old but not in new (removed)
-	for _, s := range al {
-		if _, ok := bSet[s]; !ok {
-			out = append(out, "- "+s)
-		}
-	}
-
-	return strings.Join(out, "\n")
-}
-
-// renderYAMLPane renders the YAML pane (F3) showing config snapshot
-func (m InteractiveModel) renderYAMLPane() string {
-	var b strings.Builder
-
-	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	addStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))   // green
-	removeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9")) // red
-
-	b.WriteString(headerStyle.Render("YAML Configuration"))
-	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("─────────────────────────────────────────"))
-	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("R: reload prompts | y: take snapshot"))
-	b.WriteString("\n\n")
-
-	if m.yamlReloadStatus != "" {
-		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Render(m.yamlReloadStatus))
-		b.WriteString("\n\n")
-	}
-
-	// Show diff if available
-	if m.yamlDiff != "" {
-		b.WriteString(headerStyle.Render("Snapshot Diff"))
-		b.WriteString("\n")
-		// Color-code diff lines
-		for _, line := range strings.Split(m.yamlDiff, "\n") {
-			if strings.HasPrefix(line, "+ ") {
-				b.WriteString(addStyle.Render(line))
-			} else if strings.HasPrefix(line, "- ") {
-				b.WriteString(removeStyle.Render(line))
-			} else {
-				b.WriteString(line)
-			}
-			b.WriteString("\n")
-		}
-		b.WriteString("\n")
-	}
-
-	if m.yamlSnapshot == "" {
-		b.WriteString(dimStyle.Render("No snapshot. Press 'y' to capture current config."))
-	} else {
-		b.WriteString(headerStyle.Render("Current Snapshot"))
-		b.WriteString("\n")
-		b.WriteString(m.yamlSnapshot)
-	}
-
-	return b.String()
-}
-
-// renderTimelinePane renders the Timeline pane (F4) showing agent execution timeline
+// renderTimelinePane renders the Timeline pane (F3) showing agent execution timeline
 func (m InteractiveModel) renderTimelinePane() string {
 	var b strings.Builder
 
@@ -2252,7 +2108,7 @@ func (m InteractiveModel) countVisibleEvents() int {
 	return count
 }
 
-// renderEventsPane renders the Events pane (F5) showing SSE events
+// renderEventsPane renders the Events pane (F4) showing SSE events
 func (m InteractiveModel) renderEventsPane() string {
 	var b strings.Builder
 
