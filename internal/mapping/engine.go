@@ -76,6 +76,10 @@ type Engine struct {
 	Setup         *SetupSpec
 	Send          *SendSpec
 	Rules         []Rule
+	// Flow is the dialect's declared flow: projection, nil if it
+	// declared none — callers derive instead (see FlowDeriver) rather
+	// than treating nil as an empty-but-present spec.
+	Flow *FlowSpec
 }
 
 // LoadFile reads and parses a dialect YAML file. See Load.
@@ -145,6 +149,11 @@ func Load(data []byte) (*Engine, error) {
 		send = &s
 	}
 
+	flow, err := compileFlow(doc.Flow)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Engine{
 		Version:       doc.Version,
 		Name:          doc.Name,
@@ -152,6 +161,7 @@ func Load(data []byte) (*Engine, error) {
 		Setup:         setup,
 		Send:          send,
 		Rules:         rules,
+		Flow:          flow,
 	}, nil
 }
 
