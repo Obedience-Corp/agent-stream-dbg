@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/golang/protobuf/jsonpb"  //nolint:staticcheck // SA1019: see stream.go's marshal doc comments — jsonMarshaler is built here, used there
 	"github.com/jhump/protoreflect/desc" //nolint:staticcheck // SA1019: same reasoning as stream.go — grpcdynamic requires this type
 	"github.com/jhump/protoreflect/dynamic/grpcdynamic"
 
@@ -75,6 +76,34 @@ type Config struct {
 	// reads as Frame.Name. Ignored for every other mode.
 	DiscriminatorField string
 
+	// PreserveFieldNames controls the one other transport-layer choice a
+	// dialect can make about gRPC's JSON rendering: whether response
+	// frames use the proto's original (snake_case) field names or
+	// ProtoJSON's default lowerCamelCase. True (or unset) renders
+	// snake_case (task_id) — the convention every dialect authored so far
+	// relies on, verified against a real gRPC wire. False renders
+	// lowerCamelCase (taskId) — for a dialect whose real wire protocol
+	// mandates camelCase JSON even over gRPC's ProtoJSON encoding, letting
+	// an unmodified camelCase-authored dialect decode gRPC frames
+	// identically to SSE frames. This is a *bool, not a bool: Go's zero
+	// value for bool is false, and a Config literal that predates this
+	// field (every dialect authored so far) must keep resolving to
+	// snake_case, not silently flip to camelCase — nil means "unset" and
+	// resolves to true in New, exactly like transportType == "" resolving
+	// to "sse" in internal/config/yaml.go. Purely a rendering convention,
+	// same as Discriminator: this is a generic transport-layer primitive,
+	// not tied to any one dialect.
+	//
+	// Interacts with Discriminator "oneof": that mode's Frame.Name always
+	// comes from the proto field descriptor's raw (snake_case) name,
+	// regardless of this setting — only Frame.Data's keys follow
+	// PreserveFieldNames. Pairing PreserveFieldNames: false with
+	// Discriminator "oneof" would leave Frame.Name snake_case while
+	// Frame.Data is camelCase; pair a camelCase dialect with Discriminator
+	// "none" instead (which leaves the oneof wrapper, and thus Frame.Name,
+	// untouched) to avoid that mismatch.
+	PreserveFieldNames *bool
+
 	// DescriptorSetPath, if set, resolves Method against a compiled
 	// FileDescriptorSet on disk instead of via server reflection — for
 	// targets with reflection disabled (common in production). See
@@ -101,6 +130,13 @@ type Config struct {
 type Transport struct {
 	cfg  Config
 	conn *grpc.ClientConn
+
+	// jsonMarshaler renders protobuf-canonical JSON for every response
+	// frame — see readLoop's toMarshal.MarshalJSONPB call in stream.go.
+	// Resolved once here from cfg.PreserveFieldNames (nil-safe, defaults
+	// to OrigName: true) rather than a shared package-level value, since
+	// it's no longer one fixed setting across every Transport.
+	jsonMarshaler *jsonpb.Marshaler
 
 	frames chan transport.Frame
 	// closed is closed by Close before anything else, so a read-loop
@@ -132,7 +168,19 @@ type Transport struct {
 
 // New returns a Transport for cfg. It does not dial — call Connect.
 func New(cfg Config) *Transport {
-	return &Transport{cfg: cfg, frames: make(chan transport.Frame, 32), closed: make(chan struct{})}
+	// nil (unset) resolves to true — today's exact snake_case behavior —
+	// see Config.PreserveFieldNames's doc comment for why this can't be a
+	// bare bool.
+	preserveFieldNames := true
+	if cfg.PreserveFieldNames != nil {
+		preserveFieldNames = *cfg.PreserveFieldNames
+	}
+	return &Transport{
+		cfg:           cfg,
+		frames:        make(chan transport.Frame, 32),
+		closed:        make(chan struct{}),
+		jsonMarshaler: &jsonpb.Marshaler{OrigName: preserveFieldNames},
+	}
 }
 
 // Name identifies this transport kind.

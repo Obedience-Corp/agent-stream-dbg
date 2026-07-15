@@ -273,6 +273,41 @@ transport:
 	}
 }
 
+func TestLoadConfigFile_GRPCTransport_PreserveFieldNamesOmittedIsNil(t *testing.T) {
+	path := writeYAMLConfig(t, `
+transport:
+  type: grpc
+  target: "localhost:50051"
+  plaintext: true
+`)
+
+	cfg, err := LoadConfigFile(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Transport.PreserveFieldNames != nil {
+		t.Errorf("expected PreserveFieldNames nil when preserve_field_names is omitted, got %v", *cfg.Transport.PreserveFieldNames)
+	}
+}
+
+func TestLoadConfigFile_GRPCTransport_PreserveFieldNamesFalse(t *testing.T) {
+	path := writeYAMLConfig(t, `
+transport:
+  type: grpc
+  target: "localhost:50051"
+  plaintext: true
+  preserve_field_names: false
+`)
+
+	cfg, err := LoadConfigFile(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Transport.PreserveFieldNames == nil || *cfg.Transport.PreserveFieldNames != false {
+		t.Errorf("expected PreserveFieldNames pointing to false, got %v", cfg.Transport.PreserveFieldNames)
+	}
+}
+
 func TestLoadConfigFile_GRPCTransport_MetadataAuthRequiresHeaderName(t *testing.T) {
 	_ = os.Setenv("GRPC_TOKEN", "grpc-secret")
 	defer func() { _ = os.Unsetenv("GRPC_TOKEN") }()

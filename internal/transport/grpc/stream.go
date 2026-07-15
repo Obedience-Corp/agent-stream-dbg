@@ -51,13 +51,6 @@ type recvStream interface {
 // a fixed name rather than something Config.Discriminator computes.
 const grpcStatusEventName = "grpc_status"
 
-// jsonMarshaler renders protobuf-canonical JSON with original
-// (snake_case) field names — matching every other dialect's field paths
-// (agent_id, not agentId) so the same dialect YAML works over both SSE
-// and gRPC unchanged. This is the one setting that, if wrong, would
-// silently break every dialect rule for gRPC frames.
-var jsonMarshaler = &jsonpb.Marshaler{OrigName: true}
-
 // startStream resolves cfg.Method — via reflection if resolved is nil
 // (Connect didn't already load a descriptor set), used as-is otherwise —
 // and opens either a server-stream (the common case, request built from
@@ -192,7 +185,7 @@ func (t *Transport) readLoop(md *desc.MethodDescriptor, stream recvStream) {
 
 		name, toMarshal := t.resolveFrame(md, dm)
 
-		data, err := toMarshal.MarshalJSONPB(jsonMarshaler)
+		data, err := toMarshal.MarshalJSONPB(t.jsonMarshaler)
 		if err != nil {
 			if !emit(transport.Frame{Name: name, Timestamp: time.Now(), Err: fmt.Errorf("grpc: marshal response to JSON: %w", err)}) {
 				return

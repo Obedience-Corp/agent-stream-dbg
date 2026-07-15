@@ -101,6 +101,80 @@ func TestTransport_Frames_DecodesScriptedEventsAsProtoJSON(t *testing.T) {
 	}
 }
 
+// TestTransport_Frames_PreserveFieldNamesFalse_ProducesCamelCase proves
+// Config.PreserveFieldNames's other setting (false) actually renders
+// lowerCamelCase JSON — the option a dialect whose real wire protocol
+// mandates camelCase JSON field names needs, verified generically here
+// against the same test proto every other gRPC test in this package
+// already uses, not tied to any one dialect. Deliberately the mirror
+// image of TestTransport_Frames_DecodesScriptedEventsAsProtoJSON's
+// snake_case assertions above: agent_id/tool_name/session_id become
+// agentId/toolName/sessionId, and the original snake_case keys must be
+// entirely absent — not just "also present alongside" a camelCase key.
+func TestTransport_Frames_PreserveFieldNamesFalse_ProducesCamelCase(t *testing.T) {
+	srv, err := mockgrpc.New([]*agentstreampb.StreamEvent{
+		{Payload: &agentstreampb.StreamEvent_AgentContent{AgentContent: &agentstreampb.AgentContent{AgentId: "agent_a", Content: "hello", Sequence: 1}}},
+		{Payload: &agentstreampb.StreamEvent_ToolCall{ToolCall: &agentstreampb.ToolCall{AgentId: "agent_a", ToolName: "get_weather", Arguments: `{"city":"Denver"}`}}},
+	})
+	if err != nil {
+		t.Fatalf("mockgrpc.New: %v", err)
+	}
+	defer srv.Close()
+
+	preserveFieldNames := false
+	tr := New(Config{
+		Target:             srv.Addr(),
+		Plaintext:          true,
+		Method:             "/agentstream.v1.AgentStream/Stream",
+		Request:            map[string]any{"session_id": "s1"},
+		Discriminator:      "message_type",
+		PreserveFieldNames: &preserveFieldNames,
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := tr.Connect(ctx); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	defer func() { _ = tr.Close() }()
+
+	var frames []map[string]any
+	for f := range tr.Frames() {
+		if f.Err != nil {
+			t.Fatalf("unexpected frame error: %v", f.Err)
+		}
+		var decoded map[string]any
+		if err := json.Unmarshal(f.Data, &decoded); err != nil {
+			t.Fatalf("Frame.Data did not decode as JSON: %v (data=%s)", err, f.Data)
+		}
+		frames = append(frames, decoded)
+	}
+	if len(frames) != 2 {
+		t.Fatalf("expected 2 frames, got %d", len(frames))
+	}
+
+	agentContent, ok := frames[0]["agentContent"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected top-level camelCase key 'agentContent', got %+v", frames[0])
+	}
+	if agentContent["agentId"] != "agent_a" || agentContent["content"] != "hello" {
+		t.Errorf("expected agentContent.agentId/content (camelCase), got %+v", agentContent)
+	}
+	if _, present := agentContent["agent_id"]; present {
+		t.Errorf("expected snake_case key agent_id to be entirely absent, got %+v", agentContent)
+	}
+
+	toolCall, ok := frames[1]["toolCall"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected top-level camelCase key 'toolCall', got %+v", frames[1])
+	}
+	if toolCall["toolName"] != "get_weather" {
+		t.Errorf("expected toolCall.toolName (camelCase) = 'get_weather', got %+v", toolCall)
+	}
+	if _, present := toolCall["tool_name"]; present {
+		t.Errorf("expected snake_case key tool_name to be entirely absent, got %+v", toolCall)
+	}
+}
+
 func TestTransport_Frames_EmptyWhenMethodUnset(t *testing.T) {
 	srv, err := mockgrpc.New(nil)
 	if err != nil {

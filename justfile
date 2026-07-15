@@ -16,6 +16,17 @@ proto-gen:
         --go-grpc_out=. --go-grpc_opt=module=github.com/lancekrogers/stream-debugger \
         --proto_path=testdata/proto testdata/proto/agentstream.proto
 
+# Regenerate Go stubs for the A2A-shaped mock service used by
+# dialects/cross_transport_test.go's TestA2ADialect_CrossTransportParity
+# — a separate recipe from proto-gen since it's a distinct .proto with its
+# own go_package (internal/testutil/mockgrpc/a2apb), not a Brainyard/
+# agentstream concern. Requires: protoc, protoc-gen-go, protoc-gen-go-grpc
+# on PATH.
+proto-gen-a2a:
+    protoc --go_out=. --go_opt=module=github.com/lancekrogers/stream-debugger \
+        --go-grpc_out=. --go-grpc_opt=module=github.com/lancekrogers/stream-debugger \
+        --proto_path=testdata/proto testdata/proto/a2a.proto
+
 # Regenerate the compiled FileDescriptorSet used to test the gRPC
 # transport's descriptor-set fallback tier (reflection-disabled servers).
 # --include_imports is required: agentstream.proto imports
