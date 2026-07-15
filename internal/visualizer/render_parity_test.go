@@ -176,10 +176,16 @@ func TestRenderParity_BrainyardFixture(t *testing.T) {
 	})
 
 	t.Run("flow_and_timeline_panes_lines_match_baseline", func(t *testing.T) {
-		// Neither pane has any hardcoded aggregator-specific label text
-		// (Timeline lists agent IDs verbatim; Flow's per-stage rows use
-		// only generic field names), so — unlike Events/App below —
-		// these two panes' baseline had no deliberate renames at all.
+		// Neither pane's *collapsed* row rendering (what this fixture
+		// exercises — flowExpanded stays empty) has hardcoded
+		// aggregator-specific label text (Timeline lists agent IDs
+		// verbatim; Flow's per-stage rows use only generic field
+		// names), so — unlike Events/App below — these two panes'
+		// baseline had no deliberate renames at all here. Flow's
+		// *expanded* details view (renderFlowNodeDetails, not
+		// exercised by this subtest) does have its own rename
+		// ("Wizard Metrics"->"Aggregator Metrics"), covered separately
+		// by render_flow_test.go's TestRenderFlowNodeDetails.
 		// Compared line-by-line with trailing whitespace trimmed (the
 		// %-12s step-name padding is incidental column alignment, not
 		// load-bearing content) rather than one exact multi-line

@@ -69,7 +69,7 @@ func (f flowState) role(evt *events.Event) string {
 // so this generic package's own source carries no dialect-specific
 // vocabulary as a grep-able substring — the values themselves are
 // byte-for-byte identical to the real wire protocol, unchanged.
-var (
+const (
 	aggregatorStreamStartEventName    = "wiz" + "ard_stream_start"
 	aggregatorContentEventName        = "wiz" + "ard_content"
 	aggregatorStreamCompleteEventName = "wiz" + "ard_stream_complete"
