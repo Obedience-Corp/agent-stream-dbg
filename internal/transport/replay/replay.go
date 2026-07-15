@@ -21,7 +21,12 @@ type Transport struct {
 	lines [][]byte
 	pace  time.Duration
 
-	frames    chan transport.Frame
+	frames chan transport.Frame
+	// closed is closed by Close before anything else, so the emitter
+	// goroutine unblocks immediately even if nobody is draining Frames()
+	// (a full, undrained channel) or waiting out a pacing delay —
+	// Close no longer depends on the caller having canceled Connect's ctx.
+	closed    chan struct{}
 	wg        sync.WaitGroup
 	closeOnce sync.Once
 }
@@ -39,6 +44,7 @@ func New(fixturePath string, pace time.Duration) (*Transport, error) {
 		lines:  lines,
 		pace:   pace,
 		frames: make(chan transport.Frame, 32),
+		closed: make(chan struct{}),
 	}, nil
 }
 
@@ -93,6 +99,8 @@ func (t *Transport) emit(ctx context.Context) {
 			case <-time.After(t.pace):
 			case <-ctx.Done():
 				return
+			case <-t.closed:
+				return
 			}
 		}
 
@@ -105,6 +113,8 @@ func (t *Transport) emit(ctx context.Context) {
 		select {
 		case t.frames <- frame:
 		case <-ctx.Done():
+			return
+		case <-t.closed:
 			return
 		}
 	}
@@ -133,11 +143,14 @@ func (t *Transport) Send(ctx context.Context, payload []byte) error {
 	return fmt.Errorf("replay: send not supported — fixtures are read-only")
 }
 
-// Close waits for the emitter to stop before returning. A fixture with
-// pacing enabled that hasn't been fully drained needs its Connect context
-// canceled first, or Close blocks until it is.
+// Close signals the emitter to stop (unblocking it whether it's waiting
+// out a pacing delay or blocked sending to a full, undrained Frames()
+// channel) and waits for it to fully exit before returning — Close alone
+// is always sufficient, independent of whether the caller ever cancels
+// Connect's ctx.
 func (t *Transport) Close() error {
 	t.closeOnce.Do(func() {
+		close(t.closed)
 		t.wg.Wait()
 	})
 	return nil

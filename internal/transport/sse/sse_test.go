@@ -149,3 +149,38 @@ func TestTransport_ContextCancellation_CleanShutdown(t *testing.T) {
 		t.Fatal("Close() did not return — readLoop goroutine may have leaked")
 	}
 }
+
+// TestTransport_Close_UndrainedFullBuffer_DoesNotDeadlock reproduces a
+// real bug found while building the analogous gRPC transport: with more
+// frames buffered than the channel's capacity and nobody draining
+// Frames(), readLoop blocks on the channel send itself — closing
+// resp.Body (network I/O) doesn't unblock that. Close must still return.
+func TestTransport_Close_UndrainedFullBuffer_DoesNotDeadlock(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher := w.(http.Flusher)
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		for i := range 100 {
+			_, _ = fmt.Fprintf(w, "event: agent_content\ndata: {\"n\":%d}\n\n", i)
+		}
+		flusher.Flush()
+	}))
+	defer srv.Close()
+
+	tr := New(http.MethodGet, srv.URL, nil, nil)
+	if err := tr.Connect(context.Background()); err != nil {
+		t.Fatalf("connect failed: %v", err)
+	}
+
+	// Drain exactly one frame — far fewer than the 100 sent and more than
+	// the channel's buffer capacity — then close without draining the rest.
+	<-tr.Frames()
+
+	closeDone := make(chan error, 1)
+	go func() { closeDone <- tr.Close() }()
+	select {
+	case <-closeDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close() did not return — readLoop deadlocked on a full, undrained channel")
+	}
+}

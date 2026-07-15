@@ -28,7 +28,12 @@ type Transport struct {
 	httpClient *http.Client
 	resp       *http.Response
 
-	frames    chan transport.Frame
+	frames chan transport.Frame
+	// closed is closed by Close before anything else, so the read-loop
+	// goroutine unblocks immediately whether it's waiting on network I/O
+	// or blocked sending to a full, undrained frames channel — closing
+	// resp.Body alone only unblocks the former.
+	closed    chan struct{}
 	wg        sync.WaitGroup
 	closeOnce sync.Once
 	closeErr  error
@@ -45,6 +50,7 @@ func New(method, url string, body []byte, headers map[string]string) *Transport 
 		headers:    headers,
 		httpClient: http.DefaultClient,
 		frames:     make(chan transport.Frame, 32),
+		closed:     make(chan struct{}),
 	}
 }
 
@@ -100,9 +106,13 @@ func (t *Transport) Send(ctx context.Context, payload []byte) error {
 
 // Close shuts the connection down and waits for the read loop to fully
 // exit before returning, so Frames() is guaranteed closed and no send on
-// it can race a close by construction.
+// it can race a close by construction. Closing t.closed first — not just
+// resp.Body — matters when nobody is draining Frames(): the read loop
+// would otherwise block forever on a full channel send with no network
+// I/O left to unblock it, hanging Close indefinitely.
 func (t *Transport) Close() error {
 	t.closeOnce.Do(func() {
+		close(t.closed)
 		if t.resp != nil {
 			t.closeErr = t.resp.Body.Close()
 		}
@@ -125,9 +135,13 @@ func (t *Transport) readLoop() {
 	var eventName string
 	var hasContent bool
 
-	emit := func(err error) {
+	// emit reports whether the frame was delivered; false means Close
+	// signaled shutdown while nobody was draining Frames() — the caller
+	// must stop reading immediately rather than keep parsing into a
+	// reader nobody is still funneling anywhere.
+	emit := func(err error) bool {
 		data := bytes.TrimSuffix(dataBuf.Bytes(), []byte("\n"))
-		t.frames <- transport.Frame{
+		frame := transport.Frame{
 			Name:      eventName,
 			Data:      append([]byte(nil), data...),
 			Raw:       append([]byte(nil), rawBuf.Bytes()...),
@@ -138,6 +152,13 @@ func (t *Transport) readLoop() {
 		dataBuf.Reset()
 		eventName = ""
 		hasContent = false
+
+		select {
+		case t.frames <- frame:
+			return true
+		case <-t.closed:
+			return false
+		}
 	}
 
 	for {
@@ -155,7 +176,9 @@ func (t *Transport) readLoop() {
 		trimmed := bytes.TrimRight(line, "\r\n")
 		if len(trimmed) == 0 {
 			if hasContent {
-				emit(nil)
+				if !emit(nil) {
+					return
+				}
 			} else {
 				rawBuf.Reset() // pure blank/comment-only block: no frame to dispatch
 			}

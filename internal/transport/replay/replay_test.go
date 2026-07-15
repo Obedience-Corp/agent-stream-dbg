@@ -2,6 +2,7 @@ package replay
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -169,5 +170,39 @@ func TestTransport_PacingHonorsContextCancellation(t *testing.T) {
 	case <-closeDone:
 	case <-time.After(2 * time.Second):
 		t.Fatal("Close() did not return — emitter goroutine may have leaked")
+	}
+}
+
+// TestTransport_Close_UndrainedFullBuffer_DoesNotDeadlock reproduces a
+// real bug found while building the gRPC transport's analogous shutdown
+// path: with more frames than the channel's buffer capacity and nobody
+// draining Frames(), the emitter blocks on the channel send itself —
+// without an internal close signal, only a caller-canceled ctx could
+// unblock that, which Close must not depend on.
+func TestTransport_Close_UndrainedFullBuffer_DoesNotDeadlock(t *testing.T) {
+	lines := make([]string, 100)
+	for i := range lines {
+		lines[i] = fmt.Sprintf(`{"type":"agent_content","sequence":%d}`, i)
+	}
+	fixture := writeFixture(t, lines...)
+
+	tr, err := New(fixture, 0)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	// Never canceled — Close alone must still be sufficient.
+	ctx := context.Background()
+	if err := tr.Connect(ctx); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+
+	<-tr.Frames()
+
+	closeDone := make(chan error, 1)
+	go func() { closeDone <- tr.Close() }()
+	select {
+	case <-closeDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close() did not return — emitter deadlocked on a full, undrained channel")
 	}
 }
