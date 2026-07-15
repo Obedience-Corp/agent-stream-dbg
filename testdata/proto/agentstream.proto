@@ -1,0 +1,53 @@
+// Test service for the gRPC transport's mock server — the gRPC equivalent
+// of testdata/fixtures/brainyard-session.jsonl for SSE. Deliberately
+// small: enough oneof case variety to prove discriminator inference,
+// nothing resembling a second real dialect.
+syntax = "proto3";
+
+package agentstream.v1;
+
+option go_package = "github.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc/agentstreampb";
+
+// AgentStream is a minimal multi-agent streaming service: one
+// server-streaming RPC that replays a scripted sequence of StreamEvents,
+// and one bidi RPC for interactive-input tests later in this phase.
+service AgentStream {
+  rpc Stream(StreamRequest) returns (stream StreamEvent);
+  rpc Chat(stream ChatMessage) returns (stream StreamEvent);
+}
+
+message StreamRequest {
+  string session_id = 1;
+  string message = 2;
+}
+
+message ChatMessage {
+  string text = 1;
+}
+
+// StreamEvent mirrors architecture.md's example shape: the oneof case
+// name is what a discriminator: oneof config lifts into Frame.Name,
+// exactly like an SSE event: line.
+message StreamEvent {
+  oneof payload {
+    SessionStart session_start = 1;
+    AgentContent agent_content = 2;
+    ToolCall tool_call = 3;
+  }
+}
+
+message SessionStart {
+  string session_id = 1;
+}
+
+message AgentContent {
+  string agent_id = 1;
+  string content = 2;
+  int32 sequence = 3;
+}
+
+message ToolCall {
+  string agent_id = 1;
+  string tool_name = 2;
+  string arguments = 3;
+}

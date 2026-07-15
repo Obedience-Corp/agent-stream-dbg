@@ -8,6 +8,14 @@ default:
 deps:
     go mod download
 
+# Regenerate Go stubs for the gRPC test service (server-side only — the
+# transport client is reflection/descriptor-driven and never imports these).
+# Requires: protoc, protoc-gen-go, protoc-gen-go-grpc on PATH.
+proto-gen:
+    protoc --go_out=. --go_opt=module=github.com/lancekrogers/stream-debugger \
+        --go-grpc_out=. --go-grpc_opt=module=github.com/lancekrogers/stream-debugger \
+        --proto_path=testdata/proto testdata/proto/agentstream.proto
+
 # Build the binary
 build:
     mkdir -p bin

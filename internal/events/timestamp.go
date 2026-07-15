@@ -9,9 +9,9 @@ import (
 
 // ParseTimestamp tolerantly decodes a wire timestamp from any realistic
 // format: RFC3339(+nano) strings, epoch seconds, epoch millis, or the
-// protobuf Timestamp JSON form ({"seconds":N,"nanos":N}). Absent or
-// unrecognized input returns the local receipt time — never an error, since
-// a malformed timestamp is not a reason to drop an otherwise-decodable event.
+// {"seconds":N,"nanos":N} epoch JSON shape. Absent or unrecognized input
+// returns the local receipt time — never an error, since a malformed
+// timestamp is not a reason to drop an otherwise-decodable event.
 func ParseTimestamp(raw json.RawMessage) time.Time {
 	receiptTime := time.Now()
 
@@ -37,7 +37,7 @@ func ParseTimestamp(raw json.RawMessage) time.Time {
 		return receiptTime
 	}
 
-	// protobuf Timestamp JSON form: {"seconds": N, "nanos": N}
+	// The {"seconds": N, "nanos": N} epoch JSON shape.
 	if len(s) > 0 && s[0] == '{' {
 		var pb struct {
 			Seconds int64 `json:"seconds"`

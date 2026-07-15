@@ -14,7 +14,7 @@ func TestParseTimestamp_GarbageYieldsReceiptTime(t *testing.T) {
 		{"null", `null`},
 		{"garbage string", `"not-a-date"`},
 		{"garbage object", `{"foo":"bar"}`},
-		{"zero protobuf timestamp", `{"seconds":0,"nanos":0}`},
+		{"zero epoch-shape timestamp", `{"seconds":0,"nanos":0}`},
 		{"tiny number below epoch heuristic", `5`},
 		{"malformed json", `{`},
 	}
@@ -45,7 +45,7 @@ func TestParseTimestamp_AcceptedFormats(t *testing.T) {
 		{"epoch seconds bare number", `1706432400`},
 		{"epoch seconds as string", `"1706432400"`},
 		{"epoch millis bare number", `1706432400000`},
-		{"protobuf timestamp form", `{"seconds":1706432400,"nanos":0}`},
+		{"epoch-shape seconds+nanos form", `{"seconds":1706432400,"nanos":0}`},
 	}
 
 	for _, tt := range tests {
