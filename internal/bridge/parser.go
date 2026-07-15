@@ -10,7 +10,9 @@
 package bridge
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
 
 	"github.com/lancekrogers/stream-debugger/internal/events"
 	"github.com/lancekrogers/stream-debugger/internal/mapping"
@@ -23,6 +25,18 @@ version: 1
 name: brainyard-bridge
 description: temporary embedded dialect; becomes dialects/brainyard.yaml in the next sequence
 discriminator: event
+setup:
+  request:
+    method: POST
+    url: "{base_url}/api/v3/debug/session"
+    body: '{"session_id": "{session_id}", "agents": {agents}, "reuse_existing": true}'
+  response:
+    require: {path: success, equals: true}
+    session_id: session_id
+send:
+  request:
+    method: GET
+    url: "{base_url}/api/v3/sessions/{session_id}/stream?message={message}"
 rules:
   - match: {event: session_start}
     kind: session_start
@@ -206,4 +220,19 @@ func rawEventType(data []byte) string {
 	}
 	_ = json.Unmarshal(data, &probe)
 	return probe.Type
+}
+
+// RenderSend renders the embedded bridge dialect's send: block into a
+// transport-ready request (method, URL, body), given the run-config values
+// a session needs. Stable facade over mapping.RenderSend for
+// internal/client and internal/visualizer.
+func RenderSend(vars mapping.InterpolationVars) (method, url string, body []byte, err error) {
+	return mapping.RenderSend(engine.Send, vars)
+}
+
+// RunSetup executes the embedded bridge dialect's setup: handshake (if any)
+// and returns the extracted session ID. Stable facade over
+// mapping.RunSetup.
+func RunSetup(ctx context.Context, vars mapping.InterpolationVars, httpClient *http.Client) (string, error) {
+	return mapping.RunSetup(ctx, engine.Setup, vars, httpClient)
 }

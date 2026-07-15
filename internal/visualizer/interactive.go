@@ -23,6 +23,7 @@ import (
 	"github.com/lancekrogers/stream-debugger/internal/config"
 	"github.com/lancekrogers/stream-debugger/internal/events"
 	dblogger "github.com/lancekrogers/stream-debugger/internal/logger"
+	"github.com/lancekrogers/stream-debugger/internal/mapping"
 )
 
 // ViewMode represents the display mode for responses
@@ -2842,23 +2843,31 @@ func urlQueryEscape(s string) string { return neturl.QueryEscape(s) }
 // startStreamingCmd initiates the streaming request and hands off to chunk reader
 func (m InteractiveModel) startStreamingCmd(message string, index int) tea.Cmd {
 	return func() tea.Msg {
-		url := m.cfg.StreamEndpointURL()
-
-		requestBody := map[string]interface{}{"message": message, "stream": true}
+		vars := mapping.InterpolationVars{
+			BaseURL:   m.cfg.Transport.BaseURL,
+			SessionID: m.cfg.Session.ID,
+			Message:   message,
+		}
+		method, sendURL, sendBody, err := bridge.RenderSend(vars)
+		if err != nil {
+			return streamErrorMsg{err: fmt.Errorf("failed to render send request: %w", err)}
+		}
 		// Pass through stream debug level if set (enables flow_step_detail synthesis output)
 		if lvl := m.cfg.Debug.Level; lvl != "" {
-			requestBody["debug"] = lvl
-		}
-		jsonData, err := json.Marshal(requestBody)
-		if err != nil {
-			return streamErrorMsg{err: fmt.Errorf("failed to marshal request: %w", err)}
+			sendURL += "&debug=" + urlQueryEscape(lvl)
 		}
 
-		req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+		var bodyReader io.Reader
+		if sendBody != nil {
+			bodyReader = bytes.NewReader(sendBody)
+		}
+		req, err := http.NewRequest(method, sendURL, bodyReader)
 		if err != nil {
 			return streamErrorMsg{err: fmt.Errorf("failed to create request: %w", err)}
 		}
-		req.Header.Set("Content-Type", "application/json")
+		if sendBody != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
 		for k, v := range m.cfg.Transport.ResolvedHeaders() {
 			req.Header.Set(k, v)
 		}
@@ -2872,26 +2881,6 @@ func (m InteractiveModel) startStreamingCmd(message string, index int) tea.Cmd {
 		if err != nil {
 			cancel() // Cancel context on error to avoid leak
 			return streamErrorMsg{err: fmt.Errorf("failed to send request: %w", err)}
-		}
-
-		if resp.StatusCode == http.StatusMethodNotAllowed {
-			_ = resp.Body.Close()
-			getURL := fmt.Sprintf("%s?message=%s", url, urlQueryEscape(message))
-			req, err = http.NewRequest("GET", getURL, nil)
-			if err != nil {
-				cancel() // Cancel context on error to avoid leak
-				return streamErrorMsg{err: fmt.Errorf("failed to create GET request: %w", err)}
-			}
-			for k, v := range m.cfg.Transport.ResolvedHeaders() {
-				req.Header.Set(k, v)
-			}
-			req.Header.Set("Accept", "text/event-stream")
-			req = req.WithContext(ctx) // Ensure GET request also uses the cancellable context
-			resp, err = clientHTTP.Do(req)
-			if err != nil {
-				cancel() // Cancel context on error to avoid leak
-				return streamErrorMsg{err: fmt.Errorf("failed to send GET request: %w", err)}
-			}
 		}
 		if resp.StatusCode != http.StatusOK {
 			cancel() // Cancel context on error to avoid leak

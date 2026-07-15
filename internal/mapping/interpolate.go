@@ -3,6 +3,8 @@ package mapping
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
+	"net/url"
 	"regexp"
 	"strings"
 )
@@ -122,4 +124,30 @@ func InterpolateJSON(template string, v InterpolationVars) (string, error) {
 func jsonEscapeContent(s string) string {
 	b, _ := json.Marshal(s) // string marshaling never fails
 	return strings.TrimSuffix(strings.TrimPrefix(string(b), `"`), `"`)
+}
+
+// InterpolateURL renders template like Interpolate, but for use in a URL
+// rather than a JSON body: {message} is URL-query-escaped (so a message
+// containing &, =, spaces, or other query-special characters can never
+// inject or redefine a query parameter). base_url, session_id, agents, and
+// declared vars are substituted as-is — they're run-config-sourced
+// structural values, not arbitrary user text, the same trust boundary the
+// tool already applied when building URLs before this DSL existed.
+func InterpolateURL(template string, v InterpolationVars) (string, error) {
+	if err := ValidatePlaceholders(template, v); err != nil {
+		return "", err
+	}
+
+	values := map[string]string{
+		"base_url":   v.BaseURL,
+		"session_id": v.SessionID,
+		"message":    url.QueryEscape(v.Message),
+		"agents":     strings.Join(v.Agents, ","),
+	}
+	maps.Copy(values, v.Vars)
+
+	return placeholderPattern.ReplaceAllStringFunc(template, func(match string) string {
+		name := placeholderPattern.FindStringSubmatch(match)[1]
+		return values[name]
+	}), nil
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/lancekrogers/stream-debugger/internal/bridge"
 	"github.com/lancekrogers/stream-debugger/internal/config"
 	"github.com/lancekrogers/stream-debugger/internal/events"
+	"github.com/lancekrogers/stream-debugger/internal/mapping"
 	"github.com/r3labs/sse/v2"
 )
 
@@ -55,22 +56,32 @@ func NewSSEClient(cfg *config.EnhancedConfig) *SSEClient {
 
 // Connect establishes SSE connection and starts streaming events
 func (c *SSEClient) Connect(ctx context.Context, message string) error {
-	// Add message as query parameter
-	endpoint := c.config.StreamEndpointURL()
-	u, err := url.Parse(endpoint)
+	vars := mapping.InterpolationVars{
+		BaseURL:   c.config.Transport.BaseURL,
+		SessionID: c.config.Session.ID,
+		Message:   message,
+	}
+	method, renderedURL, body, err := bridge.RenderSend(vars)
 	if err != nil {
-		return fmt.Errorf("invalid endpoint URL: %w", err)
+		return fmt.Errorf("failed to render send request: %w", err)
+	}
+	if method != "GET" || body != nil {
+		return fmt.Errorf("stream mode can only execute a GET-style send (no body) today; dialect declared %s with a body — needs the stdlib SSE transport", method)
 	}
 
-	q := u.Query()
-	q.Set("message", message)
 	if c.config.Debug.Level != "" {
+		u, err := url.Parse(renderedURL)
+		if err != nil {
+			return fmt.Errorf("invalid endpoint URL: %w", err)
+		}
+		q := u.Query()
 		q.Set("debug", c.config.Debug.Level)
+		u.RawQuery = q.Encode()
+		renderedURL = u.String()
 	}
-	u.RawQuery = q.Encode()
 
 	// Update client URL
-	c.client = sse.NewClient(u.String())
+	c.client = sse.NewClient(renderedURL)
 	c.client.Headers = c.config.Transport.ResolvedHeaders()
 	c.client.Headers["Accept"] = "text/event-stream"
 
