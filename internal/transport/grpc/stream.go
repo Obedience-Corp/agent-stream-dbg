@@ -22,14 +22,25 @@ import (
 	// the same canonical protobuf JSON shape the design's pipeline
 	// describes, via the only entry point this library version exposes.
 	"github.com/golang/protobuf/jsonpb"     //nolint:staticcheck // SA1019: see above
+	"github.com/golang/protobuf/proto"      //nolint:staticcheck // SA1019: grpcdynamic.ServerStream/BidiStream.RecvMsg both return this old-API type; recvStream unifies them without wrapper types
 	"github.com/jhump/protoreflect/desc"    //nolint:staticcheck // SA1019: same reasoning as reflect.go — grpcdynamic requires this type
 	"github.com/jhump/protoreflect/dynamic" //nolint:staticcheck // SA1019: grpcdynamic's own message factory produces this concrete type; see MarshalJSONPB comment above
 	"github.com/jhump/protoreflect/dynamic/grpcdynamic"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"github.com/lancekrogers/stream-debugger/internal/transport"
 )
+
+// recvStream is satisfied by both *grpcdynamic.ServerStream and
+// *grpcdynamic.BidiStream — readLoop and emitStreamEnd operate on
+// either, since receiving decoded messages and reading terminal trailers
+// work identically regardless of whether the client side also sends.
+type recvStream interface {
+	RecvMsg() (proto.Message, error)
+	Trailer() metadata.MD
+}
 
 // grpcStatusEventName is the fixed sentinel Frame.Name emitStreamEnd uses
 // for the synthetic status/trailers frame — NOT affected by
@@ -47,17 +58,35 @@ const grpcStatusEventName = "grpc_status"
 // silently break every dialect rule for gRPC frames.
 var jsonMarshaler = &jsonpb.Marshaler{OrigName: true}
 
-// startStream discovers cfg.Method via reflection, builds the request
-// message from cfg.Request, opens the server-stream, and starts the
-// read-loop goroutine that decodes responses into Frames(). Called from
-// Connect; conn must already be dialed.
+// startStream discovers cfg.Method via reflection and opens either a
+// server-stream (the common case, request built from cfg.Request) or a
+// bidi stream (Send pushes further client messages after this returns),
+// per what the method descriptor says — not a separate config flag
+// duplicating information the descriptor already has. Either way it
+// starts the read-loop goroutine that decodes responses into Frames().
+// Called from Connect; conn must already be dialed.
 func (t *Transport) startStream(ctx context.Context) error {
 	md, err := Discover(ctx, t.conn, t.cfg.Method)
 	if err != nil {
 		return err
 	}
+
+	stub := grpcdynamic.NewStub(t.conn)
+
+	if md.IsClientStreaming() && md.IsServerStreaming() {
+		bidi, err := stub.InvokeRpcBidiStream(t.outgoingContext(ctx), md)
+		if err != nil {
+			return fmt.Errorf("grpc: start bidi stream for %s: %w", t.cfg.Method, err)
+		}
+		t.sendMethod = md
+		t.sendStream = bidi
+		t.wg.Add(1)
+		go t.readLoop(md, bidi)
+		return nil
+	}
+
 	if !md.IsServerStreaming() {
-		return fmt.Errorf("grpc: method %q is not server-streaming (this transport only supports server-streaming methods so far)", t.cfg.Method)
+		return fmt.Errorf("grpc: method %q is neither server-streaming nor bidi-streaming (this transport only supports those two shapes)", t.cfg.Method)
 	}
 
 	req := dynamic.NewMessage(md.GetInputType())
@@ -67,7 +96,6 @@ func (t *Transport) startStream(ctx context.Context) error {
 		}
 	}
 
-	stub := grpcdynamic.NewStub(t.conn)
 	stream, err := stub.InvokeRpcServerStream(t.outgoingContext(ctx), md, req)
 	if err != nil {
 		return fmt.Errorf("grpc: start stream for %s: %w", t.cfg.Method, err)
@@ -75,6 +103,30 @@ func (t *Transport) startStream(ctx context.Context) error {
 
 	t.wg.Add(1)
 	go t.readLoop(md, stream)
+	return nil
+}
+
+// Send pushes payload — protojson bytes, mirroring the decode direction
+// in reverse — as a new client message on a bidi-streaming method's
+// stream. For a server-streaming Config (the common case per
+// architecture.md's "Transport.Send is a no-op for server-streaming
+// dialects" framing), it always returns a clear, typed-enough-to-assert-
+// on error, matching internal/transport/sse.Send's pattern for a
+// transport whose request is fixed at Connect time — never a silent
+// no-op. Which behavior applies is decided from t.sendStream, set only
+// when startStream's descriptor check found a bidi method; there is no
+// separate config flag duplicating that information.
+func (t *Transport) Send(ctx context.Context, payload []byte) error {
+	if t.sendStream == nil {
+		return fmt.Errorf("grpc: send not supported — %s is not a bidi-streaming method", t.cfg.Method)
+	}
+	req := dynamic.NewMessage(t.sendMethod.GetInputType())
+	if err := req.UnmarshalJSONPB(&jsonpb.Unmarshaler{}, payload); err != nil { //nolint:staticcheck // SA1019: see jsonMarshaler's doc comment — same jsonpb/dynamic pairing, reverse direction
+		return fmt.Errorf("grpc: unmarshal send payload: %w", err)
+	}
+	if err := t.sendStream.SendMsg(req); err != nil {
+		return fmt.Errorf("grpc: send: %w", err)
+	}
 	return nil
 }
 
@@ -87,7 +139,7 @@ func (t *Transport) startStream(ctx context.Context) error {
 // buffer would otherwise deadlock Close forever waiting on this
 // goroutine, since closing the conn only unblocks a goroutine blocked on
 // network I/O, not one blocked on an unconsumed channel).
-func (t *Transport) readLoop(md *desc.MethodDescriptor, stream *grpcdynamic.ServerStream) {
+func (t *Transport) readLoop(md *desc.MethodDescriptor, stream recvStream) {
 	defer t.wg.Done()
 	defer close(t.frames)
 
@@ -169,7 +221,7 @@ type grpcStatusFrame struct {
 // t.cfg.Discriminator: there is no decoded response message for oneof/
 // field:type/message_type to operate on, only a status the RPC itself
 // terminated with.
-func (t *Transport) emitStreamEnd(stream *grpcdynamic.ServerStream, recvErr error, emit func(transport.Frame) bool) {
+func (t *Transport) emitStreamEnd(stream recvStream, recvErr error, emit func(transport.Frame) bool) {
 	st, ok := status.FromError(recvErr)
 	if recvErr == io.EOF {
 		st, ok = status.New(codes.OK, ""), true

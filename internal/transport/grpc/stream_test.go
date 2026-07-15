@@ -178,9 +178,32 @@ func TestTransport_Close_StopsReadLoopAndClosesFrames(t *testing.T) {
 	}
 }
 
-func TestTransport_Send_NotYetSupported(t *testing.T) {
+func TestTransport_Send_ErrorsWithoutABidiStream(t *testing.T) {
 	tr := New(Config{Target: "127.0.0.1:1", Plaintext: true})
 	if err := tr.Send(context.Background(), []byte("x")); err == nil {
-		t.Fatal("expected Send to return an error (bidi lands in a later task)")
+		t.Fatal("expected Send to error when no bidi stream was ever started")
+	}
+}
+
+// TestTransport_Send_ErrorsForServerStreamingMethod is this phase's
+// explicit Done-When: Send on a real, connected server-streaming method
+// (the common case) must return a clear, typed-enough-to-assert-on
+// error, not a panic or silent drop — never a silent no-op.
+func TestTransport_Send_ErrorsForServerStreamingMethod(t *testing.T) {
+	srv, err := mockgrpc.New([]*agentstreampb.StreamEvent{
+		{Payload: &agentstreampb.StreamEvent_AgentContent{AgentContent: &agentstreampb.AgentContent{AgentId: "agent_a", Content: "hi"}}},
+	})
+	if err != nil {
+		t.Fatalf("mockgrpc.New: %v", err)
+	}
+	defer srv.Close()
+
+	tr := connectStreamingTransport(t, srv.Addr(), Config{
+		Method:  "/agentstream.v1.AgentStream/Stream",
+		Request: map[string]any{"session_id": "s1"},
+	})
+
+	if err := tr.Send(context.Background(), []byte(`{}`)); err == nil {
+		t.Fatal("expected Send to error for a server-streaming method")
 	}
 }

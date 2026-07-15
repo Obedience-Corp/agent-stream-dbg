@@ -19,6 +19,9 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/jhump/protoreflect/desc" //nolint:staticcheck // SA1019: same reasoning as stream.go — grpcdynamic requires this type
+	"github.com/jhump/protoreflect/dynamic/grpcdynamic"
+
 	"github.com/lancekrogers/stream-debugger/internal/transport"
 )
 
@@ -89,6 +92,15 @@ type Transport struct {
 	closed    chan struct{}
 	wg        sync.WaitGroup
 	closeOnce sync.Once
+
+	// sendMethod/sendStream are set (non-nil) only when Connect discovers
+	// cfg.Method is bidi-streaming — the method descriptor already knows
+	// this, so Send's behavior is decided from these, not a separate
+	// config flag duplicating information the descriptor already has. Both
+	// stay nil for a server-streaming Config, the common case, and Send
+	// always errors in that case.
+	sendMethod *desc.MethodDescriptor
+	sendStream *grpcdynamic.BidiStream
 }
 
 // New returns a Transport for cfg. It does not dial — call Connect.
@@ -152,14 +164,6 @@ func (t *Transport) Connect(ctx context.Context) error {
 // was unset.
 func (t *Transport) Frames() <-chan transport.Frame {
 	return t.frames
-}
-
-// Send is not yet implemented — bidi streaming and a real Send land in
-// sequence 04. For a server-streaming Config (the only kind this task
-// supports), it always errors, matching internal/transport/sse.Send's
-// pattern for a transport whose request is fixed at Connect time.
-func (t *Transport) Send(ctx context.Context, payload []byte) error {
-	return fmt.Errorf("grpc: send not supported yet — bidi streaming lands in a later task")
 }
 
 // Conn returns the dialed connection, for use by the reflection client
