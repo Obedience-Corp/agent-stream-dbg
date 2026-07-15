@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc"
@@ -50,6 +51,32 @@ func TestLoadProtoFile_UnknownMethod_ReturnsClearError(t *testing.T) {
 	_, err := LoadProtoFile(context.Background(), protoFileFixture, []string{protoFileImportRoot}, "/agentstream.v1.AgentStream/NoSuchMethod")
 	if err == nil {
 		t.Fatal("expected an error for an unknown method")
+	}
+}
+
+// TestLoadProtoFile_AbsolutePath_ResolvesEvenWithImportPaths regression-
+// tests a bug an adversarial review caught: SourceResolver finds a file
+// by filepath.Join-ing it onto each import path, which doesn't
+// special-case an absolute second argument — it just concatenates and
+// cleans, so an absolute protoPath combined with any non-empty
+// importPaths previously never resolved (e.g. "/a/b.proto" joined onto
+// "/c" tries to open "/c/a/b.proto"). The fix treats the file's own
+// directory as an implicit, highest-priority import root.
+func TestLoadProtoFile_AbsolutePath_ResolvesEvenWithImportPaths(t *testing.T) {
+	abs, err := filepath.Abs(filepath.Join(protoFileImportRoot, protoFileFixture))
+	if err != nil {
+		t.Fatalf("filepath.Abs: %v", err)
+	}
+	// A deliberately wrong/unrelated import path, to prove resolution
+	// doesn't depend on getting lucky with the caller's own import roots
+	// — only the absolute path's own directory should matter for finding
+	// the file itself.
+	md, err := LoadProtoFile(context.Background(), abs, []string{"/nonexistent/unrelated/path"}, "/agentstream.v1.AgentStream/Stream")
+	if err != nil {
+		t.Fatalf("LoadProtoFile with absolute path: %v", err)
+	}
+	if md.GetName() != "Stream" {
+		t.Errorf("expected method name 'Stream', got %q", md.GetName())
 	}
 }
 
@@ -117,5 +144,27 @@ func TestTransport_AllThreeTiers_ProduceIdenticalStreamingBehavior(t *testing.T)
 				t.Errorf("tier %s: frame %d differs:\n  reflection: %+v\n  %s: %+v", tier.name, i, want[i], tier.name, got[i])
 			}
 		}
+	}
+}
+
+// TestTransport_Connect_BothDescriptorSetAndProtoFile_Rejected regression-
+// tests a footgun an adversarial review flagged: with no fallback-on-
+// failure logic (only ever one resolution attempt), a Config with both
+// DescriptorSetPath and ProtoFilePath set is always either a mistake or
+// stale leftover config — silently preferring one (as the code
+// previously did) would let a stale descriptor set shadow every edit to
+// a .proto file the caller thinks is the one in effect. Connect now
+// rejects the ambiguous config outright, before any dial.
+func TestTransport_Connect_BothDescriptorSetAndProtoFile_Rejected(t *testing.T) {
+	tr := New(Config{
+		Target:            "127.0.0.1:1",
+		Plaintext:         true,
+		Method:            "/agentstream.v1.AgentStream/Stream",
+		DescriptorSetPath: descriptorSetFixture,
+		ProtoFilePath:     protoFileFixture,
+		ProtoImportPaths:  []string{protoFileImportRoot},
+	})
+	if err := tr.Connect(context.Background()); err == nil {
+		t.Fatal("expected Connect to reject a Config with both DescriptorSetPath and ProtoFilePath set")
 	}
 }

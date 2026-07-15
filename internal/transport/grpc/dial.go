@@ -152,8 +152,18 @@ func (t *Transport) Name() string { return "grpc" }
 // before any dial: both are pure local operations with no network
 // dependency, so a missing or malformed file fails fast and locally,
 // exactly like a malformed dialect file would, rather than only
-// surfacing after a (wasted) successful dial.
+// surfacing after a (wasted) successful dial. Setting both is rejected
+// outright rather than silently preferring one: there's no fallback-on-
+// failure logic here (only ever one attempt), so a Config with both set
+// is always either a mistake or stale leftover config, never a
+// meaningful combination — silently picking one would let a stale
+// descriptor set shadow every edit to a proto file the caller thinks is
+// the one in effect.
 func (t *Transport) Connect(ctx context.Context) error {
+	if t.cfg.DescriptorSetPath != "" && t.cfg.ProtoFilePath != "" {
+		return fmt.Errorf("grpc: DescriptorSetPath and ProtoFilePath are both set — pick one schema-acquisition tier, not both")
+	}
+
 	var md *desc.MethodDescriptor
 	switch {
 	case t.cfg.Method == "":

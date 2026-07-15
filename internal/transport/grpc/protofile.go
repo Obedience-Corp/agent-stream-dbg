@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 
 	"github.com/bufbuild/protocompile"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -35,12 +36,30 @@ func LoadProtoFile(ctx context.Context, protoPath string, importPaths []string, 
 		return nil, err
 	}
 
+	// protocompile.SourceResolver finds a file by filepath.Join-ing it
+	// onto each import path in turn — Join doesn't special-case an
+	// absolute second argument, it just concatenates and cleans, so an
+	// absolute protoPath combined with any importPaths would silently
+	// never resolve (e.g. "/a/b.proto" joined onto "/c" tries to open
+	// "/c/a/b.proto"). Compiling by the file's base name with its own
+	// directory prepended as the highest-priority import root sidesteps
+	// this: the file resolves via its own directory regardless of
+	// importPaths, while importPaths remains available for the file's
+	// own imports that may live elsewhere — matching protoc's practical
+	// behavior of a file always being able to find itself.
+	compileFile := protoPath
+	if filepath.IsAbs(protoPath) {
+		dir, base := filepath.Split(protoPath)
+		importPaths = append([]string{dir}, importPaths...)
+		compileFile = base
+	}
+
 	compiler := protocompile.Compiler{
 		Resolver: protocompile.WithStandardImports(&protocompile.SourceResolver{
 			ImportPaths: importPaths,
 		}),
 	}
-	files, err := compiler.Compile(ctx, protoPath)
+	files, err := compiler.Compile(ctx, compileFile)
 	if err != nil {
 		return nil, fmt.Errorf("grpc: compile %q: %w", protoPath, err)
 	}
