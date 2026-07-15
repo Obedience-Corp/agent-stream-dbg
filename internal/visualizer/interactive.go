@@ -76,7 +76,8 @@ type AgentResponse struct {
 	StartTime     time.Time
 	EndTime       time.Time
 	Completed     bool
-	// Wizard-specific metrics (only populated for wizard responses)
+	// Aggregator-role-only metrics (only populated for the lane whose
+	// role resolves to aggregator — brainyard: the wizard)
 	FirstTokenMs int64 // Time from stream_start to first content event (ms)
 	DurationMs   int64 // Total duration from stream_start to stream_complete (ms)
 }
@@ -1006,7 +1007,18 @@ func (m *InteractiveModel) incrementalParseSSE(chunk []byte) {
 	m.sseBuf = carry
 }
 
-// applyParsedEvent updates agent responses incrementally from a parsed event
+// applyParsedEvent updates agent responses incrementally from a parsed
+// event. Dispatches on evt.Kind + role, not on the dialect's own wire
+// event names (previously separate "agent_stream_start"/"wizard_stream_
+// start"-shaped cases) — brainyard.yaml's agent_*/wizard_* rules already
+// decode to the same Kind (stream_start/content/stream_end) with
+// SourceID distinguishing which lane, so Kind-based dispatch is the
+// generic equivalent with identical behavior for brainyard specifically,
+// and the only version of this function that doesn't special-case one
+// dialect's own event vocabulary in Go source. First-token latency,
+// duration, and turn-metrics logging remain role: aggregator-exclusive
+// (matching what wizard_*-only handling already did) — regular agents
+// never got these, and still don't.
 func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
 	m.dialectFlow.observe(evt)
 
@@ -1017,17 +1029,11 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
 	if m.messages[idx].AgentResponses == nil {
 		m.messages[idx].AgentResponses = make(map[string]*AgentResponse)
 	}
-	switch evt.Name {
-	case "agent_stream_start":
-		aid := evt.SourceID
-		if aid == "" {
-			return
-		}
-		if m.messages[idx].AgentResponses[aid] == nil {
-			m.messages[idx].AgentResponses[aid] = &AgentResponse{AgentID: aid}
-		}
-	case "agent_content":
-		aid := evt.SourceID
+	aid := evt.SourceID
+	isAggregator := m.dialectFlow.role(evt) == "aggregator"
+
+	switch evt.Kind {
+	case events.KindStreamStart:
 		if aid == "" {
 			return
 		}
@@ -1036,49 +1042,43 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
 			ar = &AgentResponse{AgentID: aid}
 			m.messages[idx].AgentResponses[aid] = ar
 		}
-		c := evt.Content
-		ar.ContentChunks = append(ar.ContentChunks, c)
-		ar.FullContent += c
-		ar.TokenCount++
-	case "agent_stream_complete":
-		aid := evt.SourceID
+		if isAggregator {
+			ar.StartTime = time.Now()
+		}
+	case events.KindContent:
 		if aid == "" {
 			return
 		}
 		ar := m.messages[idx].AgentResponses[aid]
 		if ar == nil {
 			ar = &AgentResponse{AgentID: aid}
+			if isAggregator {
+				ar.StartTime = time.Now()
+			}
 			m.messages[idx].AgentResponses[aid] = ar
 		}
-		ar.Completed = true
-	case "wizard_stream_start":
-		// ensure wizard entry exists and record start time
-		if m.messages[idx].AgentResponses["wizard"] == nil {
-			m.messages[idx].AgentResponses["wizard"] = &AgentResponse{AgentID: "wizard", StartTime: time.Now()}
-		} else {
-			m.messages[idx].AgentResponses["wizard"].StartTime = time.Now()
-		}
-	case "wizard_content":
-		ar := m.messages[idx].AgentResponses["wizard"]
-		if ar == nil {
-			ar = &AgentResponse{AgentID: "wizard", StartTime: time.Now()}
-			m.messages[idx].AgentResponses["wizard"] = ar
-		}
-		// Track first token latency
-		if ar.TokenCount == 0 && !ar.StartTime.IsZero() {
+		if isAggregator && ar.TokenCount == 0 && !ar.StartTime.IsZero() {
 			ar.FirstTokenMs = time.Since(ar.StartTime).Milliseconds()
 		}
 		c := evt.Content
 		ar.ContentChunks = append(ar.ContentChunks, c)
 		ar.FullContent += c
 		ar.TokenCount++
-	case "wizard_stream_complete":
-		ar := m.messages[idx].AgentResponses["wizard"]
-		if ar == nil {
-			ar = &AgentResponse{AgentID: "wizard"}
-			m.messages[idx].AgentResponses["wizard"] = ar
+	case events.KindStreamEnd:
+		if aid == "" {
+			return
 		}
-		// Skip duplicate completion events
+		ar := m.messages[idx].AgentResponses[aid]
+		if ar == nil {
+			ar = &AgentResponse{AgentID: aid}
+			m.messages[idx].AgentResponses[aid] = ar
+		}
+		if !isAggregator {
+			ar.Completed = true
+			break
+		}
+		// Skip duplicate completion events — aggregator-only, matching
+		// wizard_stream_complete's prior exclusive guard.
 		if ar.Completed {
 			return
 		}
@@ -1092,7 +1092,8 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
 		if tc := evt.IntField("token_count"); tc > 0 {
 			ar.TokenCount = tc
 		}
-		// Log wizard turn metrics
+		// Log turn metrics for the aggregator lane only, matching what
+		// wizard_stream_complete-only handling already did.
 		if m.slog != nil && m.cfg != nil {
 			var tokensPerSec float64
 			if ar.DurationMs > 0 && ar.TokenCount > 0 {
@@ -1114,11 +1115,31 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
 	m.messages[idx].Events = append(m.messages[idx].Events, evt)
 }
 
+// aggregatorResponse returns the AgentResponse for msg's aggregator-role
+// lane (brainyard: the wizard), or nil if none is present yet. If more
+// than one lane resolves to role: aggregator — the flow model permits
+// this in principle, though no shipped dialect does it — the first in
+// sorted AgentID order wins, deterministically; true multi-aggregator
+// support is deferred until a real dialect needs it.
+func (m InteractiveModel) aggregatorResponse(msg Message) *AgentResponse {
+	ids := make([]string, 0, len(msg.AgentResponses))
+	for id := range msg.AgentResponses {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		if m.dialectFlow.role(&events.Event{SourceID: id}) == "aggregator" {
+			return msg.AgentResponses[id]
+		}
+	}
+	return nil
+}
+
 // buildAgentResponses builds agent response map from parsed events
-func buildAgentResponses(events []*events.Event) map[string]*AgentResponse {
+func buildAgentResponses(evts []*events.Event) map[string]*AgentResponse {
 	responses := make(map[string]*AgentResponse)
 
-	for _, event := range events {
+	for _, event := range evts {
 		agentID := event.SourceID
 		if agentID == "" {
 			continue
@@ -1134,12 +1155,16 @@ func buildAgentResponses(events []*events.Event) map[string]*AgentResponse {
 
 		agent := responses[agentID]
 
-		// Handle different event types
-		switch event.Name {
-		case "agent_stream_start", "wizard_stream_start":
+		// Dispatch on Kind, not the dialect's own wire event names —
+		// brainyard's agent_*/wizard_* rules already decode to the same
+		// Kind, treated identically here (unlike applyParsedEvent's
+		// incremental path, this rebuild never distinguished the
+		// aggregator lane's handling from any other agent's).
+		switch event.Kind {
+		case events.KindStreamStart:
 			agent.StartTime = time.Now()
 
-		case "agent_content", "wizard_content":
+		case events.KindContent:
 			content := event.Content
 			if content != "" {
 				agent.ContentChunks = append(agent.ContentChunks, content)
@@ -1147,7 +1172,7 @@ func buildAgentResponses(events []*events.Event) map[string]*AgentResponse {
 				agent.TokenCount++
 			}
 
-		case "agent_stream_complete", "wizard_stream_complete":
+		case events.KindStreamEnd:
 			agent.EndTime = time.Now()
 			agent.Completed = true
 		}
@@ -1263,9 +1288,9 @@ func (m InteractiveModel) renderParsedView(msg Message) string {
 
 	var b strings.Builder
 
-	// Wizard debug summary at top
-	if wizardResp := msg.AgentResponses["wizard"]; wizardResp != nil {
-		b.WriteString(m.renderWizardDebugSummary(wizardResp))
+	// Aggregator (brainyard: wizard) debug summary at top
+	if aggResp := m.aggregatorResponse(msg); aggResp != nil {
+		b.WriteString(m.renderWizardDebugSummary(aggResp))
 		b.WriteString("\n")
 	}
 
@@ -1491,12 +1516,12 @@ func (m InteractiveModel) renderFlowPane() string {
 				}
 			}
 
-			// Wizard inline metrics (tokens, tokens/sec)
+			// Aggregator inline metrics (tokens, tokens/sec)
 			if step == "wizard" && msg.AgentResponses != nil {
-				if wizardResp := msg.AgentResponses["wizard"]; wizardResp != nil {
-					line.WriteString(fmt.Sprintf(" tokens:%d", wizardResp.TokenCount))
-					if wizardResp.DurationMs > 0 && wizardResp.TokenCount > 0 {
-						tokensPerSec := float64(wizardResp.TokenCount) * 1000.0 / float64(wizardResp.DurationMs)
+				if aggResp := m.aggregatorResponse(msg); aggResp != nil {
+					line.WriteString(fmt.Sprintf(" tokens:%d", aggResp.TokenCount))
+					if aggResp.DurationMs > 0 && aggResp.TokenCount > 0 {
+						tokensPerSec := float64(aggResp.TokenCount) * 1000.0 / float64(aggResp.DurationMs)
 						line.WriteString(fmt.Sprintf(" %.1ftok/s", tokensPerSec))
 					}
 				}
@@ -1529,10 +1554,10 @@ func (m InteractiveModel) renderFlowPane() string {
 					b.WriteString("\n")
 				}
 			}
-			// Pass wizard response for wizard step metrics
+			// Pass aggregator response for wizard step metrics
 			var wizardResp *AgentResponse
 			if step == "wizard" && msg.AgentResponses != nil {
-				wizardResp = msg.AgentResponses["wizard"]
+				wizardResp = m.aggregatorResponse(msg)
 			}
 			b.WriteString(m.renderFlowNodeDetails(n, wizardResp))
 		}
@@ -1584,14 +1609,14 @@ func (m InteractiveModel) renderFlowAllPane() string {
 			agents = append(agents, rn.RouteAgents...)
 		}
 		if len(agents) == 0 {
-			// derive from events
+			// Derive from events: any stream_start whose lane isn't the
+			// aggregator (brainyard: the wizard), which gets its own
+			// dedicated summary elsewhere rather than appearing in this
+			// worker-agent list.
 			uniq := map[string]struct{}{}
 			for _, e := range evts {
-				if e.Name == "agent_stream_start" {
-					aid := e.SourceID
-					if aid != "" && aid != "wizard" {
-						uniq[aid] = struct{}{}
-					}
+				if e.Kind == events.KindStreamStart && e.SourceID != "" && m.dialectFlow.role(e) != "aggregator" {
+					uniq[e.SourceID] = struct{}{}
 				}
 			}
 			for aid := range uniq {
@@ -1630,12 +1655,12 @@ func (m InteractiveModel) renderFlowAllPane() string {
 					line.WriteString(fmt.Sprintf(" [%s]", strings.Join(n.RouteAgents, ", ")))
 				}
 			}
-			// Wizard inline metrics (tokens, tokens/sec)
+			// Aggregator inline metrics (tokens, tokens/sec)
 			if step == "wizard" && msg.AgentResponses != nil {
-				if wizardResp := msg.AgentResponses["wizard"]; wizardResp != nil {
-					line.WriteString(fmt.Sprintf(" tokens:%d", wizardResp.TokenCount))
-					if wizardResp.DurationMs > 0 && wizardResp.TokenCount > 0 {
-						tokensPerSec := float64(wizardResp.TokenCount) * 1000.0 / float64(wizardResp.DurationMs)
+				if aggResp := m.aggregatorResponse(msg); aggResp != nil {
+					line.WriteString(fmt.Sprintf(" tokens:%d", aggResp.TokenCount))
+					if aggResp.DurationMs > 0 && aggResp.TokenCount > 0 {
+						tokensPerSec := float64(aggResp.TokenCount) * 1000.0 / float64(aggResp.DurationMs)
 						line.WriteString(fmt.Sprintf(" %.1ftok/s", tokensPerSec))
 					}
 				}
@@ -1653,10 +1678,10 @@ func (m InteractiveModel) renderFlowAllPane() string {
 						b.WriteString("\n")
 					}
 				}
-				// Pass wizard response for wizard step metrics
+				// Pass aggregator response for wizard step metrics
 				var wizardResp *AgentResponse
 				if step == "wizard" && msg.AgentResponses != nil {
-					wizardResp = msg.AgentResponses["wizard"]
+					wizardResp = m.aggregatorResponse(msg)
 				}
 				b.WriteString(m.renderFlowNodeDetails(n, wizardResp))
 			}
@@ -1671,15 +1696,13 @@ func (m InteractiveModel) renderFlowAllPane() string {
 	return b.String()
 }
 
-// deriveAgentsFromEvents returns a sorted list of non-wizard agents that streamed in this turn
+// deriveAgentsFromEvents returns a sorted list of non-aggregator agents
+// that streamed in this turn (brainyard: everyone but the wizard).
 func (m InteractiveModel) deriveAgentsFromEvents(evts []*events.Event) []string {
 	uniq := map[string]struct{}{}
 	for _, e := range evts {
-		if e.Name == "agent_stream_start" {
-			aid := e.SourceID
-			if aid != "" && aid != "wizard" {
-				uniq[aid] = struct{}{}
-			}
+		if e.Kind == events.KindStreamStart && e.SourceID != "" && m.dialectFlow.role(e) != "aggregator" {
+			uniq[e.SourceID] = struct{}{}
 		}
 	}
 	if len(uniq) == 0 {
@@ -1859,8 +1882,8 @@ func (m InteractiveModel) renderSynthesisSection(msg Message) string {
 // renderWizardSection renders the wizard output section
 func (m InteractiveModel) renderWizardSection(msg Message, titleStyle lipgloss.Style) string {
 	var b strings.Builder
-	wizard, ok := msg.AgentResponses["wizard"]
-	if !ok || wizard.FullContent == "" {
+	wizard := m.aggregatorResponse(msg)
+	if wizard == nil || wizard.FullContent == "" {
 		return ""
 	}
 
@@ -2158,7 +2181,7 @@ func (m InteractiveModel) renderEventsPane() string {
 	if m.viewMode == ViewModeParsed && len(m.messages) > 0 {
 		msg := m.messages[len(m.messages)-1]
 		if msg.AgentResponses != nil {
-			if wizardResp := msg.AgentResponses["wizard"]; wizardResp != nil {
+			if wizardResp := m.aggregatorResponse(msg); wizardResp != nil {
 				var metricsLine strings.Builder
 				metricsLine.WriteString(fmt.Sprintf("🧙 Wizard: %d tokens", wizardResp.TokenCount))
 				if wizardResp.DurationMs > 0 && wizardResp.TokenCount > 0 {
@@ -2405,8 +2428,8 @@ func (m InteractiveModel) renderEventsPane() string {
 					}
 				}
 			case "wizard_stream_complete":
-				// Show full wizard response from AgentResponses
-				if wizard := msg.AgentResponses["wizard"]; wizard != nil && wizard.FullContent != "" {
+				// Show full aggregator response from AgentResponses
+				if wizard := m.aggregatorResponse(msg); wizard != nil && wizard.FullContent != "" {
 					expandedContent.WriteString(labelStyle.Render("Wizard Response:"))
 					expandedContent.WriteString("\n")
 					expandedContent.WriteString(expandedContentStyle.Render(wizard.FullContent))
@@ -2645,9 +2668,9 @@ func (m InteractiveModel) renderEventExpandedPlainText(evt *events.Event, msg *M
 	case "wizard_stream_start":
 		b.WriteString("Message ID: " + evt.StringField("message_id") + "\n")
 	case "wizard_stream_complete":
-		// Show full wizard response from AgentResponses
+		// Show full aggregator response from AgentResponses
 		if msg != nil {
-			if wizard := msg.AgentResponses["wizard"]; wizard != nil && wizard.FullContent != "" {
+			if wizard := m.aggregatorResponse(*msg); wizard != nil && wizard.FullContent != "" {
 				b.WriteString("Wizard Response:\n")
 				b.WriteString(wizard.FullContent)
 				b.WriteString("\n")

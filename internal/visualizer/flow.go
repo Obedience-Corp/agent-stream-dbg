@@ -6,13 +6,12 @@ import (
 	"github.com/lancekrogers/stream-debugger/internal/mapping"
 )
 
-// flowState resolves stages (and, from the next task in this sequence
-// onward, lane roles) from the loaded dialect's flow: spec, or derives
-// them live from observed events when the dialect declared none — the
-// single source both Model (tui.go) and InteractiveModel
-// (interactive.go) read stages from, replacing what used to be 6
-// independently hardcoded literals that had already drifted out of sync
-// with each other (tui.go's copy silently omitted filter).
+// flowState resolves stages and lane roles from the loaded dialect's
+// flow: spec, or derives them live from observed events when the
+// dialect declared none — the single source both Model (tui.go) and
+// InteractiveModel (interactive.go) read from, replacing what used to
+// be hardcoded stage literals and "wizard" string comparisons that had
+// already drifted out of sync with each other.
 type flowState struct {
 	spec    *mapping.FlowSpec
 	deriver *mapping.FlowDeriver
@@ -47,4 +46,13 @@ func (f flowState) observe(evt *events.Event) {
 	if f.deriver != nil {
 		f.deriver.Observe(evt)
 	}
+}
+
+// role resolves evt's lane role: a declared lookup, or "worker" (via
+// FlowDeriver) if no flow: block was declared.
+func (f flowState) role(evt *events.Event) string {
+	if f.spec != nil {
+		return f.spec.RoleFor(evt)
+	}
+	return f.deriver.RoleFor(evt)
 }
