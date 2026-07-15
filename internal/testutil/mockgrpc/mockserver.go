@@ -204,15 +204,17 @@ func generateSelfSignedCert() (tls.Certificate, *x509.CertPool, error) {
 	if err != nil {
 		return tls.Certificate{}, nil, err
 	}
+	// A self-signed leaf, trusted directly via its own cert (see
+	// generateSelfSignedCert's caller: pool.AddCert(leaf)) rather than by
+	// chain-building — so this is a server cert, not a CA.
 	template := &x509.Certificate{
 		SerialNumber:          serial,
 		Subject:               pkix.Name{CommonName: "mockgrpc"},
 		NotBefore:             time.Now().Add(-time.Minute),
 		NotAfter:              time.Now().Add(time.Hour),
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		KeyUsage:              x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
-		IsCA:                  true,
 		DNSNames:              []string{"localhost"},
 		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1")},
 	}
