@@ -3,19 +3,25 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
+	neturl "net/url"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/lancekrogers/stream-debugger/internal/bridge"
 	"github.com/lancekrogers/stream-debugger/internal/client"
 	"github.com/lancekrogers/stream-debugger/internal/config"
+	"github.com/lancekrogers/stream-debugger/internal/dialectinit"
 	"github.com/lancekrogers/stream-debugger/internal/events"
 	"github.com/lancekrogers/stream-debugger/internal/help"
 	"github.com/lancekrogers/stream-debugger/internal/logger"
 	"github.com/lancekrogers/stream-debugger/internal/mapping"
+	"github.com/lancekrogers/stream-debugger/internal/transport"
 	"github.com/lancekrogers/stream-debugger/internal/transport/replay"
+	"github.com/lancekrogers/stream-debugger/internal/transport/sse"
 	"github.com/lancekrogers/stream-debugger/internal/visualizer"
 	"github.com/urfave/cli/v2"
 )
@@ -86,6 +92,24 @@ func main() {
      $ stream-debugger timeline logs/by-session/session_*.jsonl`,
 				Action: timelineAction,
 			},
+			{
+				Name:  "init",
+				Usage: "Infer a commented draft dialect from a live stream or recording",
+				Description: `Observes frames — live over SSE or from a recorded JSONL fixture — and
+   writes a commented, editable draft dialect YAML to stdout. A draft is a
+   starting point, not a finished dialect: review every UNCLASSIFIED rule
+   and guessed field before using it.
+
+   Examples:
+     $ stream-debugger init --url http://localhost:8080/stream --send "hi" > my.yaml
+     $ stream-debugger init --from logs/by-session/session.jsonl > my.yaml`,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "url", Usage: "SSE endpoint to sample live (mutually exclusive with --from)"},
+					&cli.StringFlag{Name: "send", Usage: "Message to send when sampling --url (sent as a ?message= query param)"},
+					&cli.StringFlag{Name: "from", Usage: "JSONL fixture to sample from (mutually exclusive with --url)"},
+				},
+				Action: initAction,
+			},
 		},
 		Action: defaultAction, // Interactive mode when no command
 	}
@@ -131,6 +155,30 @@ func timelineAction(c *cli.Context) error {
 	}
 	sessionFile := c.Args().Get(0)
 	return runTimeline(sessionFile)
+}
+
+// initAction handles the init command
+func initAction(c *cli.Context) error {
+	url := c.String("url")
+	from := c.String("from")
+	send := c.String("send")
+
+	if url == "" && from == "" {
+		return fmt.Errorf("one of --url or --from is required")
+	}
+	if url != "" && from != "" {
+		return fmt.Errorf("--url and --from are mutually exclusive")
+	}
+
+	if from != "" {
+		return runInit(from, from)
+	}
+
+	target := url
+	if send != "" {
+		target = url + "?message=" + neturl.QueryEscape(send)
+	}
+	return runInitLive(target, url)
 }
 
 func runInteractive(configPath string) error {
@@ -360,4 +408,60 @@ func loadEventsFromFile(filePath string) ([]*events.Event, error) {
 	}
 
 	return result, nil
+}
+
+// runInit infers a draft dialect from a recorded JSONL fixture and writes
+// it to stdout.
+func runInit(fixturePath, sourceLabel string) error {
+	tr, err := replay.New(fixturePath, 0)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := tr.Connect(ctx); err != nil {
+		return fmt.Errorf("failed to start replay: %w", err)
+	}
+	defer func() { _ = tr.Close() }()
+
+	samples := collectSamples(tr.Frames())
+	if len(samples) == 0 {
+		return fmt.Errorf("no frames observed in %s", fixturePath)
+	}
+	fmt.Print(dialectinit.Infer(samples, sourceLabel).Render())
+	return nil
+}
+
+// runInitLive infers a draft dialect by sampling a live SSE endpoint for
+// up to 10 seconds, then writes it to stdout.
+func runInitLive(requestURL, sourceLabel string) error {
+	tr := sse.New(http.MethodGet, requestURL, nil, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := tr.Connect(ctx); err != nil {
+		return fmt.Errorf("failed to connect: %w", err)
+	}
+	defer func() { _ = tr.Close() }()
+
+	samples := collectSamples(tr.Frames())
+	if len(samples) == 0 {
+		return fmt.Errorf("no frames observed from %s", requestURL)
+	}
+	fmt.Print(dialectinit.Infer(samples, sourceLabel).Render())
+	return nil
+}
+
+// collectSamples drains a Frames channel into dialectinit.Samples,
+// skipping malformed frames (a draft can't reason about a frame it
+// couldn't even parse).
+func collectSamples(frames <-chan transport.Frame) []dialectinit.Sample {
+	var samples []dialectinit.Sample
+	for f := range frames {
+		if f.Err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: malformed frame skipped: %v\n", f.Err)
+			continue
+		}
+		samples = append(samples, dialectinit.Sample{Name: f.Name, Data: f.Data})
+	}
+	return samples
 }
