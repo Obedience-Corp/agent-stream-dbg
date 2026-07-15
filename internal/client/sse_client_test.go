@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/lancekrogers/stream-debugger/internal/config"
-	"github.com/lancekrogers/stream-debugger/internal/events"
 	"github.com/lancekrogers/stream-debugger/internal/testutil"
 )
 
@@ -41,7 +40,7 @@ func TestSSEClient_EndToEndAgainstMockServer(t *testing.T) {
 	// 12 concurrent per-event-type connections race independently, so collect
 	// until the stream has been quiet for a bit rather than stopping on the
 	// first session_complete seen (which offers no ordering guarantee).
-	seenTypes := map[events.EventType]bool{}
+	seenTypes := map[string]bool{}
 	seenAgents := map[string]bool{}
 	idle := time.NewTimer(300 * time.Millisecond)
 	defer idle.Stop()
@@ -53,8 +52,8 @@ collect:
 			if !ok {
 				break collect
 			}
-			seenTypes[evt.Type] = true
-			if agentID := evt.GetAgentID(); agentID != "" {
+			seenTypes[evt.Name] = true
+			if agentID := evt.SourceID; agentID != "" {
 				seenAgents[agentID] = true
 			}
 			if !idle.Stop() {
@@ -70,12 +69,12 @@ collect:
 		}
 	}
 
-	wantTypes := []events.EventType{
-		events.SessionStart,
-		events.AgentContent,
-		events.WizardContent,
-		events.Error,
-		events.SessionComplete,
+	wantTypes := []string{
+		"session_start",
+		"agent_content",
+		"wizard_content",
+		"error",
+		"session_complete",
 	}
 	for _, wt := range wantTypes {
 		if !seenTypes[wt] {

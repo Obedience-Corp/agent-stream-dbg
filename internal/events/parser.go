@@ -3,177 +3,112 @@ package events
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 )
 
-// Parser handles parsing SSE events into typed structs
+// Parser is the temporary Brainyard-specific bridge from wire JSON to the
+// generic Event core. It exists only until internal/mapping (phase 004's
+// rule engine) takes over via dialects/brainyard.yaml — see the
+// mapping-engine design docs. It knows Brainyard's field names by necessity
+// (nothing else has been recorded to test against yet); the engine that
+// replaces it knows no system by name.
 type Parser struct{}
 
-// NewParser creates a new event parser
+// NewParser creates a new event parser.
 func NewParser() *Parser {
 	return &Parser{}
 }
 
-// Parse converts raw SSE event data into a typed Event struct
-func (p *Parser) Parse(eventType string, data []byte) (*Event, error) {
-	event := &Event{
-		Type: EventType(eventType),
-		Raw:  data,
-	}
-
-	switch EventType(eventType) {
-	case SessionStart:
-		var e SessionStartEvent
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse session_start: %w", err)
-		}
-		event.SessionStart = &e
-
-	case SessionComplete:
-		var e SessionCompleteEvent
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse session_complete: %w", err)
-		}
-		event.SessionComplete = &e
-
-	case AgentStreamStart:
-		var e AgentStreamStartEvent
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse agent_stream_start: %w", err)
-		}
-		event.AgentStreamStart = &e
-
-	case AgentContent:
-		var e AgentContentEvent
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse agent_content: %w", err)
-		}
-		event.AgentContent = &e
-
-	case AgentStreamComplete:
-		var e AgentStreamCompleteEvent
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse agent_stream_complete: %w", err)
-		}
-		event.AgentStreamComplete = &e
-
-	case WizardStreamStart:
-		var e WizardStreamStartEvent
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse wizard_stream_start: %w", err)
-		}
-		event.WizardStreamStart = &e
-
-	case WizardContent:
-		var e WizardContentEvent
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse wizard_content: %w", err)
-		}
-		event.WizardContent = &e
-
-	case WizardStreamComplete:
-		var e WizardStreamCompleteEvent
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse wizard_stream_complete: %w", err)
-		}
-		event.WizardStreamComplete = &e
-
-	case FlowStepStart:
-		var e FlowStepStartEvent
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse flow_step_start: %w", err)
-		}
-		event.FlowStepStart = &e
-
-	case FlowStepEnd:
-		var e FlowStepEndEvent
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse flow_step_end: %w", err)
-		}
-		event.FlowStepEnd = &e
-
-	case FlowStepDetail:
-		var e FlowStepDetailEvent
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse flow_step_detail: %w", err)
-		}
-		event.FlowStepDetail = &e
-
-	case Error:
-		var e ErrorEvent
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse error: %w", err)
-		}
-		event.Error = &e
-
-	case PromptInfo:
-		var e PromptInfoEvent
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse prompt_info: %w", err)
-		}
-		event.PromptInfo = &e
-
-	case PromptFull:
-		var e PromptFullEvent
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse prompt_full: %w", err)
-		}
-		event.PromptFull = &e
-
-	case FlowConfig:
-		var e FlowConfigEvent
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse flow_config: %w", err)
-		}
-		event.FlowConfig = &e
-
-	case FilterDetail:
-		var e FilterDetailEvent
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse filter_detail: %w", err)
-		}
-		event.FilterDetail = &e
-
-	case PerspectiveDetail:
-		var e PerspectiveDetailEvent
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse perspective_detail: %w", err)
-		}
-		event.PerspectiveDetail = &e
-
-	case SynthesisDetail:
-		var e SynthesisDetailEvent
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse synthesis_detail: %w", err)
-		}
-		event.SynthesisDetail = &e
-
-	case AgentMetadata:
-		var e AgentMetadataEvent
-		if err := json.Unmarshal(data, &e); err != nil {
-			return nil, fmt.Errorf("failed to parse agent_metadata: %w", err)
-		}
-		event.AgentMetadata = &e
-
-	default:
-		return nil, fmt.Errorf("unknown event type: %s", eventType)
-	}
-
-	return event, nil
+// wireEnvelope captures the fields common to Brainyard's wire events, for
+// extracting the Event core's typed fields before the rest lands in Fields.
+type wireEnvelope struct {
+	MessageID string    `json:"message_id"`
+	Timestamp time.Time `json:"timestamp"`
+	AgentID   string    `json:"agent_id"`
+	Content   string    `json:"content"`
+	Sequence  int       `json:"sequence"`
 }
 
-// ParseRaw attempts to parse event data without knowing the type beforehand
-func (p *Parser) ParseRaw(data []byte) (*Event, error) {
-	// First, extract just the type field
-	var base BaseEvent
-	if err := json.Unmarshal(data, &base); err != nil {
-		return nil, fmt.Errorf("failed to parse base event: %w", err)
+// kindOf maps Brainyard's 19 wire event names to the closed Kind
+// vocabulary. Not derived from Brainyard — see internal/events/types.go.
+func kindOf(eventType string) (Kind, error) {
+	switch eventType {
+	case "session_start":
+		return KindSessionStart, nil
+	case "session_complete":
+		return KindSessionEnd, nil
+	case "agent_stream_start", "wizard_stream_start":
+		return KindStreamStart, nil
+	case "agent_content", "wizard_content":
+		return KindContent, nil
+	case "agent_stream_complete", "wizard_stream_complete":
+		return KindStreamEnd, nil
+	case "error":
+		return KindError, nil
+	case "flow_step_start":
+		return KindStepStart, nil
+	case "flow_step_end":
+		return KindStepEnd, nil
+	case "flow_config":
+		return KindTopology, nil
+	case "agent_metadata":
+		return KindUsage, nil
+	case "flow_step_detail", "prompt_info", "prompt_full",
+		"filter_detail", "perspective_detail", "synthesis_detail":
+		return KindDetail, nil
+	default:
+		return "", fmt.Errorf("unknown event type: %s", eventType)
+	}
+}
+
+// Parse converts raw wire data into the generic Event, given its event name.
+func (p *Parser) Parse(eventType string, data []byte) (*Event, error) {
+	kind, err := kindOf(eventType)
+	if err != nil {
+		return nil, err
 	}
 
-	if base.Type != "" {
-		return p.Parse(string(base.Type), data)
+	var env wireEnvelope
+	if err := json.Unmarshal(data, &env); err != nil {
+		return nil, fmt.Errorf("failed to parse %s: %w", eventType, err)
 	}
-	// If payload has no explicit type (e.g., flow_step_* detail), try heuristics
-	// Attempt known extension kinds based on fields
-	// This is a safe fallback; SSE event name should normally be set and used instead.
-	return &Event{Raw: data}, nil
+
+	var fields map[string]any
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return nil, fmt.Errorf("failed to parse %s fields: %w", eventType, err)
+	}
+
+	sourceID := env.AgentID
+	switch eventType {
+	case "wizard_stream_start", "wizard_content", "wizard_stream_complete":
+		sourceID = "wizard"
+	}
+
+	return &Event{
+		Name:      eventType,
+		Kind:      kind,
+		Timestamp: env.Timestamp,
+		SourceID:  sourceID,
+		Content:   env.Content,
+		Seq:       env.Sequence,
+		Fields:    fields,
+		Raw:       data,
+	}, nil
+}
+
+// ParseRaw parses event data without a separately-known event name, reading
+// the "type" field from the payload itself if present.
+func (p *Parser) ParseRaw(data []byte) (*Event, error) {
+	var probe struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return nil, fmt.Errorf("failed to parse base event: %w", err)
+	}
+	if probe.Type != "" {
+		return p.Parse(probe.Type, data)
+	}
+	// No explicit type in the payload — safe fallback; the SSE event name
+	// should normally be set and used instead.
+	return &Event{Kind: KindUnknown, Raw: data}, nil
 }

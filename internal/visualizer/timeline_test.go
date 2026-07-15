@@ -24,14 +24,10 @@ func TestAddEvent(t *testing.T) {
 	now := time.Now()
 
 	event := &events.Event{
-		Type: events.AgentStreamStart,
-		AgentStreamStart: &events.AgentStreamStartEvent{
-			BaseEvent: events.BaseEvent{
-				Type:      events.AgentStreamStart,
-				Timestamp: now,
-			},
-			AgentID: "sam_harris",
-		},
+		Name:      "agent_stream_start",
+		Kind:      events.KindStreamStart,
+		Timestamp: now,
+		SourceID:  "sam_harris",
 	}
 
 	tv.AddEvent(event)
@@ -58,31 +54,13 @@ func TestAddEvent_UpdatesTimeBounds(t *testing.T) {
 	earlier := now.Add(-3 * time.Second)
 
 	// Add events out of order
-	events := []*events.Event{
-		{
-			Type: events.AgentStreamStart,
-			AgentStreamStart: &events.AgentStreamStartEvent{
-				BaseEvent: events.BaseEvent{Timestamp: now},
-				AgentID:   "agent1",
-			},
-		},
-		{
-			Type: events.AgentStreamStart,
-			AgentStreamStart: &events.AgentStreamStartEvent{
-				BaseEvent: events.BaseEvent{Timestamp: later},
-				AgentID:   "agent2",
-			},
-		},
-		{
-			Type: events.AgentStreamStart,
-			AgentStreamStart: &events.AgentStreamStartEvent{
-				BaseEvent: events.BaseEvent{Timestamp: earlier},
-				AgentID:   "agent3",
-			},
-		},
+	evts := []*events.Event{
+		{Name: "agent_stream_start", Timestamp: now, SourceID: "agent1"},
+		{Name: "agent_stream_start", Timestamp: later, SourceID: "agent2"},
+		{Name: "agent_stream_start", Timestamp: earlier, SourceID: "agent3"},
 	}
 
-	for _, event := range events {
+	for _, event := range evts {
 		tv.AddEvent(event)
 	}
 
@@ -112,28 +90,22 @@ func TestRenderTimeline_WithEvents(t *testing.T) {
 
 	// Add agent stream
 	tv.AddEvent(&events.Event{
-		Type: events.AgentStreamStart,
-		AgentStreamStart: &events.AgentStreamStartEvent{
-			BaseEvent: events.BaseEvent{Timestamp: now},
-			AgentID:   "sam_harris",
-		},
+		Name:      "agent_stream_start",
+		Timestamp: now,
+		SourceID:  "sam_harris",
 	})
 
 	tv.AddEvent(&events.Event{
-		Type: events.AgentContent,
-		AgentContent: &events.AgentContentEvent{
-			BaseEvent: events.BaseEvent{Timestamp: now.Add(100 * time.Millisecond)},
-			AgentID:   "sam_harris",
-			Content:   "test",
-		},
+		Name:      "agent_content",
+		Timestamp: now.Add(100 * time.Millisecond),
+		SourceID:  "sam_harris",
+		Content:   "test",
 	})
 
 	tv.AddEvent(&events.Event{
-		Type: events.AgentStreamComplete,
-		AgentStreamComplete: &events.AgentStreamCompleteEvent{
-			BaseEvent: events.BaseEvent{Timestamp: now.Add(200 * time.Millisecond)},
-			AgentID:   "sam_harris",
-		},
+		Name:      "agent_stream_complete",
+		Timestamp: now.Add(200 * time.Millisecond),
+		SourceID:  "sam_harris",
 	})
 
 	output := tv.RenderTimeline(100)
@@ -170,12 +142,10 @@ func TestRenderDetailedLog_WithEvents(t *testing.T) {
 	now := time.Now()
 
 	tv.AddEvent(&events.Event{
-		Type: events.AgentContent,
-		AgentContent: &events.AgentContentEvent{
-			BaseEvent: events.BaseEvent{Timestamp: now},
-			AgentID:   "sam_harris",
-			Content:   "Hello world",
-		},
+		Name:      "agent_content",
+		Timestamp: now,
+		SourceID:  "sam_harris",
+		Content:   "Hello world",
 	})
 
 	output := tv.RenderDetailedLog()
@@ -203,38 +173,12 @@ func TestRenderParallelSummary_Sequential(t *testing.T) {
 	now := time.Now()
 
 	// Agent 1 runs then completes
-	tv.AddEvent(&events.Event{
-		Type: events.AgentStreamStart,
-		AgentStreamStart: &events.AgentStreamStartEvent{
-			BaseEvent: events.BaseEvent{Timestamp: now},
-			AgentID:   "agent1",
-		},
-	})
-
-	tv.AddEvent(&events.Event{
-		Type: events.AgentStreamComplete,
-		AgentStreamComplete: &events.AgentStreamCompleteEvent{
-			BaseEvent: events.BaseEvent{Timestamp: now.Add(1 * time.Second)},
-			AgentID:   "agent1",
-		},
-	})
+	tv.AddEvent(&events.Event{Name: "agent_stream_start", Timestamp: now, SourceID: "agent1"})
+	tv.AddEvent(&events.Event{Name: "agent_stream_complete", Timestamp: now.Add(1 * time.Second), SourceID: "agent1"})
 
 	// Agent 2 starts after agent 1 completes
-	tv.AddEvent(&events.Event{
-		Type: events.AgentStreamStart,
-		AgentStreamStart: &events.AgentStreamStartEvent{
-			BaseEvent: events.BaseEvent{Timestamp: now.Add(2 * time.Second)},
-			AgentID:   "agent2",
-		},
-	})
-
-	tv.AddEvent(&events.Event{
-		Type: events.AgentStreamComplete,
-		AgentStreamComplete: &events.AgentStreamCompleteEvent{
-			BaseEvent: events.BaseEvent{Timestamp: now.Add(3 * time.Second)},
-			AgentID:   "agent2",
-		},
-	})
+	tv.AddEvent(&events.Event{Name: "agent_stream_start", Timestamp: now.Add(2 * time.Second), SourceID: "agent2"})
+	tv.AddEvent(&events.Event{Name: "agent_stream_complete", Timestamp: now.Add(3 * time.Second), SourceID: "agent2"})
 
 	output := tv.RenderParallelSummary()
 
@@ -249,39 +193,14 @@ func TestRenderParallelSummary_Parallel(t *testing.T) {
 	now := time.Now()
 
 	// Agent 1 starts
-	tv.AddEvent(&events.Event{
-		Type: events.AgentStreamStart,
-		AgentStreamStart: &events.AgentStreamStartEvent{
-			BaseEvent: events.BaseEvent{Timestamp: now},
-			AgentID:   "agent1",
-		},
-	})
+	tv.AddEvent(&events.Event{Name: "agent_stream_start", Timestamp: now, SourceID: "agent1"})
 
 	// Agent 2 starts while agent 1 is running
-	tv.AddEvent(&events.Event{
-		Type: events.AgentStreamStart,
-		AgentStreamStart: &events.AgentStreamStartEvent{
-			BaseEvent: events.BaseEvent{Timestamp: now.Add(500 * time.Millisecond)},
-			AgentID:   "agent2",
-		},
-	})
+	tv.AddEvent(&events.Event{Name: "agent_stream_start", Timestamp: now.Add(500 * time.Millisecond), SourceID: "agent2"})
 
 	// Both complete
-	tv.AddEvent(&events.Event{
-		Type: events.AgentStreamComplete,
-		AgentStreamComplete: &events.AgentStreamCompleteEvent{
-			BaseEvent: events.BaseEvent{Timestamp: now.Add(2 * time.Second)},
-			AgentID:   "agent1",
-		},
-	})
-
-	tv.AddEvent(&events.Event{
-		Type: events.AgentStreamComplete,
-		AgentStreamComplete: &events.AgentStreamCompleteEvent{
-			BaseEvent: events.BaseEvent{Timestamp: now.Add(2500 * time.Millisecond)},
-			AgentID:   "agent2",
-		},
-	})
+	tv.AddEvent(&events.Event{Name: "agent_stream_complete", Timestamp: now.Add(2 * time.Second), SourceID: "agent1"})
+	tv.AddEvent(&events.Event{Name: "agent_stream_complete", Timestamp: now.Add(2500 * time.Millisecond), SourceID: "agent2"})
 
 	output := tv.RenderParallelSummary()
 
@@ -327,34 +246,15 @@ func TestTimelineEntry_ExtractTimestamps(t *testing.T) {
 	}{
 		{
 			"AgentContent",
-			&events.Event{
-				Type: events.AgentContent,
-				AgentContent: &events.AgentContentEvent{
-					BaseEvent: events.BaseEvent{Timestamp: now},
-					AgentID:   "test",
-					Content:   "data",
-				},
-			},
+			&events.Event{Name: "agent_content", Timestamp: now, SourceID: "test", Content: "data"},
 		},
 		{
 			"WizardContent",
-			&events.Event{
-				Type: events.WizardContent,
-				WizardContent: &events.WizardContentEvent{
-					BaseEvent: events.BaseEvent{Timestamp: now},
-					Content:   "synthesis",
-				},
-			},
+			&events.Event{Name: "wizard_content", Timestamp: now, SourceID: "wizard", Content: "synthesis"},
 		},
 		{
 			"Error",
-			&events.Event{
-				Type: events.Error,
-				Error: &events.ErrorEvent{
-					BaseEvent: events.BaseEvent{Timestamp: now},
-					ErrorType: events.RateLimitError,
-				},
-			},
+			&events.Event{Name: "error", Timestamp: now, Fields: map[string]any{"error_type": "rate_limit_error"}},
 		},
 	}
 

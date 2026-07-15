@@ -99,20 +99,12 @@ func (sl *StructuredLogger) LogEvent(event *events.Event) error {
 		}
 	}
 
-	// 2. Log to agent dimension (if agent-related)
+	// 2. Log to agent dimension (if agent-related). The parser already
+	// resolves wizard events' SourceID to "wizard", so no special case needed.
 	if dims.ByAgent {
-		if agentID := event.GetAgentID(); agentID != "" {
+		if agentID := event.SourceID; agentID != "" {
 			if err := sl.logToAgent(event, agentID); err != nil {
 				return fmt.Errorf("failed to log to agent: %w", err)
-			}
-		}
-
-		// Special case for wizard events
-		if event.Type == events.WizardStreamStart ||
-			event.Type == events.WizardContent ||
-			event.Type == events.WizardStreamComplete {
-			if err := sl.logToAgent(event, "wizard"); err != nil {
-				return fmt.Errorf("failed to log to wizard: %w", err)
 			}
 		}
 	}
@@ -129,7 +121,7 @@ func (sl *StructuredLogger) LogEvent(event *events.Event) error {
 
 // logToEventType logs to event-type-specific file
 func (sl *StructuredLogger) logToEventType(event *events.Event) error {
-	eventType := string(event.Type)
+	eventType := event.Name
 
 	// Get or create logger for this event type
 	logger, exists := sl.eventTypeLoggers[eventType]
@@ -165,7 +157,7 @@ func (sl *StructuredLogger) logToAgent(event *events.Event, agentID string) erro
 
 	logger.Info().
 		Str("agent_id", agentID).
-		Str("event_type", string(event.Type)).
+		Str("event_type", event.Name).
 		RawJSON("event", event.Raw).
 		Msg("agent_event")
 	return nil
@@ -174,8 +166,8 @@ func (sl *StructuredLogger) logToAgent(event *events.Event, agentID string) erro
 // logToSession logs to session timeline
 func (sl *StructuredLogger) logToSession(event *events.Event) error {
 	sl.sessionLogger.Info().
-		Str("event_type", string(event.Type)).
-		Str("agent_id", event.GetAgentID()).
+		Str("event_type", event.Name).
+		Str("agent_id", event.SourceID).
 		RawJSON("event", event.Raw).
 		Msg("session_event")
 	return nil

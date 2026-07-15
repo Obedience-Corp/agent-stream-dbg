@@ -58,16 +58,12 @@ func TestLogEvent_AgentContent(t *testing.T) {
 
 	// Create test event
 	event := &events.Event{
-		Type: events.AgentContent,
-		Raw:  []byte(`{"type":"agent_content","agent_id":"sam_harris","content":"test"}`),
-		AgentContent: &events.AgentContentEvent{
-			BaseEvent: events.BaseEvent{
-				Type:      events.AgentContent,
-				Timestamp: time.Now(),
-			},
-			AgentID: "sam_harris",
-			Content: "test",
-		},
+		Name:      "agent_content",
+		Kind:      events.KindContent,
+		Timestamp: time.Now(),
+		SourceID:  "sam_harris",
+		Content:   "test",
+		Raw:       []byte(`{"type":"agent_content","agent_id":"sam_harris","content":"test"}`),
 	}
 
 	err = logger.LogEvent(event)
@@ -104,15 +100,12 @@ func TestLogEvent_WizardContent(t *testing.T) {
 	defer func() { _ = logger.Close() }()
 
 	event := &events.Event{
-		Type: events.WizardContent,
-		Raw:  []byte(`{"type":"wizard_content","content":"synthesis"}`),
-		WizardContent: &events.WizardContentEvent{
-			BaseEvent: events.BaseEvent{
-				Type:      events.WizardContent,
-				Timestamp: time.Now(),
-			},
-			Content: "synthesis",
-		},
+		Name:      "wizard_content",
+		Kind:      events.KindContent,
+		Timestamp: time.Now(),
+		SourceID:  "wizard",
+		Content:   "synthesis",
+		Raw:       []byte(`{"type":"wizard_content","content":"synthesis"}`),
 	}
 
 	err = logger.LogEvent(event)
@@ -143,15 +136,11 @@ func TestLogEvent_SessionEvents(t *testing.T) {
 	defer func() { _ = logger.Close() }()
 
 	event := &events.Event{
-		Type: events.SessionStart,
-		Raw:  []byte(`{"type":"session_start","session_id":"test"}`),
-		SessionStart: &events.SessionStartEvent{
-			BaseEvent: events.BaseEvent{
-				Type:      events.SessionStart,
-				Timestamp: time.Now(),
-			},
-			SessionID: "test",
-		},
+		Name:      "session_start",
+		Kind:      events.KindSessionStart,
+		Timestamp: time.Now(),
+		Fields:    map[string]any{"session_id": "test"},
+		Raw:       []byte(`{"type":"session_start","session_id":"test"}`),
 	}
 
 	err = logger.LogEvent(event)
@@ -211,11 +200,10 @@ func TestClose(t *testing.T) {
 
 	// Log some events to open files
 	event := &events.Event{
-		Type: events.AgentContent,
-		Raw:  []byte(`{"type":"agent_content"}`),
-		AgentContent: &events.AgentContentEvent{
-			AgentID: "test_agent",
-		},
+		Name:     "agent_content",
+		Kind:     events.KindContent,
+		SourceID: "test_agent",
+		Raw:      []byte(`{"type":"agent_content"}`),
 	}
 	_ = logger.LogEvent(event)
 
@@ -249,11 +237,10 @@ func TestMultiDimensionalLogging(t *testing.T) {
 	agents := []string{"sam_harris", "tony_robbins", "wizard"}
 	for _, agentID := range agents {
 		event := &events.Event{
-			Type: events.AgentContent,
-			Raw:  []byte(`{"type":"agent_content"}`),
-			AgentContent: &events.AgentContentEvent{
-				AgentID: agentID,
-			},
+			Name:     "agent_content",
+			Kind:     events.KindContent,
+			SourceID: agentID,
+			Raw:      []byte(`{"type":"agent_content"}`),
 		}
 		_ = logger.LogEvent(event)
 	}
@@ -290,11 +277,10 @@ func TestLogEvent_RespectsDisabledDimensions(t *testing.T) {
 	defer func() { _ = logger.Close() }()
 
 	event := &events.Event{
-		Type: events.AgentContent,
-		Raw:  []byte(`{"type":"agent_content","agent_id":"sam_harris"}`),
-		AgentContent: &events.AgentContentEvent{
-			AgentID: "sam_harris",
-		},
+		Name:     "agent_content",
+		Kind:     events.KindContent,
+		SourceID: "sam_harris",
+		Raw:      []byte(`{"type":"agent_content","agent_id":"sam_harris"}`),
 	}
 	if err := logger.LogEvent(event); err != nil {
 		t.Fatalf("LogEvent: %v", err)

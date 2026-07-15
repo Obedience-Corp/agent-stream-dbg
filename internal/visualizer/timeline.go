@@ -36,56 +36,29 @@ func NewTimelineVisualizer() *TimelineVisualizer {
 // AddEvent adds an event to the timeline
 func (tv *TimelineVisualizer) AddEvent(event *events.Event) {
 	entry := TimelineEntry{
-		Event: event,
-		Type:  string(event.Type),
+		Event:     event,
+		Type:      event.Name,
+		Timestamp: event.Timestamp,
+		AgentID:   event.SourceID,
+		Content:   event.Content,
 	}
 
-	// Extract timestamp based on event type
-	switch event.Type {
-	case events.SessionStart:
-		entry.Timestamp = event.SessionStart.Timestamp
-	case events.SessionComplete:
-		entry.Timestamp = event.SessionComplete.Timestamp
-	case events.AgentStreamStart:
-		entry.Timestamp = event.AgentStreamStart.Timestamp
-		entry.AgentID = event.AgentStreamStart.AgentID
-	case events.AgentContent:
-		entry.Timestamp = event.AgentContent.Timestamp
-		entry.AgentID = event.AgentContent.AgentID
-		entry.Content = event.AgentContent.Content
-	case events.AgentStreamComplete:
-		entry.Timestamp = event.AgentStreamComplete.Timestamp
-		entry.AgentID = event.AgentStreamComplete.AgentID
-	case events.WizardStreamStart:
-		entry.Timestamp = event.WizardStreamStart.Timestamp
-		entry.AgentID = "wizard"
-	case events.WizardContent:
-		entry.Timestamp = event.WizardContent.Timestamp
-		entry.AgentID = "wizard"
-		entry.Content = event.WizardContent.Content
-	case events.WizardStreamComplete:
-		entry.Timestamp = event.WizardStreamComplete.Timestamp
-		entry.AgentID = "wizard"
-	case events.Error:
-		entry.Timestamp = event.Error.Timestamp
-		entry.AgentID = event.Error.AgentID
-	case events.FlowStepStart:
-		entry.Timestamp = event.FlowStepStart.Timestamp
+	// Build a richer content summary for event types with no incremental Content.
+	switch event.Name {
+	case "flow_step_start":
 		entry.AgentID = "system"
-		entry.Content = fmt.Sprintf("flow: %s start", event.FlowStepStart.Step)
-	case events.FlowStepEnd:
-		entry.Timestamp = event.FlowStepEnd.Timestamp
+		entry.Content = fmt.Sprintf("flow: %s start", event.StringField("step"))
+	case "flow_step_end":
 		entry.AgentID = "system"
-		entry.Content = fmt.Sprintf("flow: %s end", event.FlowStepEnd.Step)
-	case events.FlowStepDetail:
-		entry.Timestamp = event.FlowStepDetail.Timestamp
+		entry.Content = fmt.Sprintf("flow: %s end", event.StringField("step"))
+	case "flow_step_detail":
 		entry.AgentID = "system"
 		// Build a concise content line based on step
-		step := event.FlowStepDetail.Step
+		step := event.StringField("step")
 		switch step {
 		case "synthesis":
-			plan := event.FlowStepDetail.PlanID
-			prev := event.FlowStepDetail.SynthesisPreview
+			plan := event.StringField("plan_id")
+			prev := event.StringField("synthesis_preview")
 			if len(prev) > 80 {
 				prev = prev[:77] + "..."
 			}
@@ -95,13 +68,15 @@ func (tv *TimelineVisualizer) AddEvent(event *events.Event) {
 				entry.Content = fmt.Sprintf("synthesis: %q", prev)
 			}
 		case "filter":
-			changed := len(event.FlowStepDetail.FilteredAgents)
+			changed := len(event.StringSliceField("filtered_agents"))
 			entry.Content = fmt.Sprintf("filter changed=%d", changed)
 		case "agent_exec":
-			if event.FlowStepDetail.AgentID != "" && event.FlowStepDetail.ProviderThreadID != "" {
-				entry.Content = fmt.Sprintf("agent=%s thread=%s provider=%s", event.FlowStepDetail.AgentID, event.FlowStepDetail.ProviderThreadID, event.FlowStepDetail.Provider)
+			agentID := event.StringField("agent_id")
+			threadID := event.StringField("provider_thread_id")
+			if agentID != "" && threadID != "" {
+				entry.Content = fmt.Sprintf("agent=%s thread=%s provider=%s", agentID, threadID, event.StringField("provider"))
 			} else {
-				entry.Content = fmt.Sprintf("agents=%v", event.FlowStepDetail.Agents)
+				entry.Content = fmt.Sprintf("agents=%v", event.StringSliceField("agents"))
 			}
 		default:
 			entry.Content = step
@@ -341,10 +316,10 @@ func (tv *TimelineVisualizer) RenderParallelSummary() string {
 		}
 
 		switch entry.Type {
-		case string(events.AgentStreamStart), string(events.WizardStreamStart):
+		case "agent_stream_start", "wizard_stream_start":
 			activeAgents[entry.AgentID] = entry.Timestamp
 
-		case string(events.AgentStreamComplete), string(events.WizardStreamComplete):
+		case "agent_stream_complete", "wizard_stream_complete":
 			if start, ok := activeAgents[entry.AgentID]; ok {
 				periods = append(periods, ActivePeriod{
 					agent: entry.AgentID,

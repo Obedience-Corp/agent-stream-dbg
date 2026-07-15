@@ -448,18 +448,18 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 	// Log event to structured logger (errors are silently ignored)
 	_ = m.logger.LogEvent(event)
 
-	switch event.Type {
-	case events.SessionStart:
+	switch event.Name {
+	case "session_start":
 		m.sessionActive = true
-		if event.SessionStart.FlowID != "" {
-			m.FlowID = event.SessionStart.FlowID
+		if flowID := event.StringField("flow_id"); flowID != "" {
+			m.FlowID = flowID
 		}
 
-	case events.SessionComplete:
+	case "session_complete":
 		m.sessionActive = false
 
-	case events.AgentStreamStart:
-		agentID := event.AgentStreamStart.AgentID
+	case "agent_stream_start":
+		agentID := event.SourceID
 		m.agents[agentID] = &AgentState{
 			ID:             agentID,
 			Active:         true,
@@ -468,121 +468,114 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 			LastUpdate:     time.Now(),
 		}
 
-	case events.AgentContent:
-		agentID := event.AgentContent.AgentID
+	case "agent_content":
+		agentID := event.SourceID
 		if agent, ok := m.agents[agentID]; ok {
-			agent.Content.WriteString(event.AgentContent.Content)
+			agent.Content.WriteString(event.Content)
 			agent.TokenCount++
-			agent.Sequence = event.AgentContent.Sequence
+			agent.Sequence = event.Seq
 			agent.LastUpdate = time.Now()
 			m.totalTokens++
 		}
 
-	case events.AgentStreamComplete:
-		agentID := event.AgentStreamComplete.AgentID
+	case "agent_stream_complete":
+		agentID := event.SourceID
 		if agent, ok := m.agents[agentID]; ok {
 			agent.Active = false
 			agent.EndTime = time.Now()
 		}
 
-	case events.WizardStreamStart:
+	case "wizard_stream_start":
 		m.wizardState.Active = true
 		m.wizardState.StartTime = time.Now()
 
-	case events.WizardContent:
-		m.wizardState.Content.WriteString(event.WizardContent.Content)
+	case "wizard_content":
+		m.wizardState.Content.WriteString(event.Content)
 		m.wizardState.TokenCount++
-		m.wizardState.Sequence = event.WizardContent.Sequence
+		m.wizardState.Sequence = event.Seq
 		m.totalTokens++
 
-	case events.WizardStreamComplete:
+	case "wizard_stream_complete":
 		m.wizardState.Active = false
 		m.wizardState.EndTime = time.Now()
 
-	case events.Error:
+	case "error":
 		m.errorCount++
 
-	case events.FlowStepStart:
-		if s := event.FlowStepStart; s != nil {
-			step := s.Step
-			st := m.flow[step]
-			if st == nil {
-				st = &FlowStepStatus{Step: step}
-				m.flow[step] = st
-			}
-			st.Enabled = s.Enabled
-			st.Started = true
-			st.Ended = false
-			if step == "agent_exec" {
-				st.AgentCount = s.NonWizardCount
-			}
+	case "flow_step_start":
+		step := event.StringField("step")
+		st := m.flow[step]
+		if st == nil {
+			st = &FlowStepStatus{Step: step}
+			m.flow[step] = st
+		}
+		st.Enabled = event.BoolField("enabled")
+		st.Started = true
+		st.Ended = false
+		if step == "agent_exec" {
+			st.AgentCount = event.IntField("non_wizard_count")
 		}
 
-	case events.FlowStepEnd:
-		if s := event.FlowStepEnd; s != nil {
-			step := s.Step
-			st := m.flow[step]
-			if st == nil {
-				st = &FlowStepStatus{Step: step}
-				m.flow[step] = st
-			}
-			st.Enabled = s.Enabled
-			st.Ended = true
-			if s.AgentCount > 0 {
-				st.AgentCount = s.AgentCount
-			}
-			if step == "routing" {
-				st.RoutingMode = s.RoutingMode
-				st.RouteTaken = s.RouteTaken
-				st.RouteReason = s.RouteReason
-				st.RouteAgents = s.RouteAgents
-			}
-			if s.DurationMs > 0 {
-				st.DurationMs = s.DurationMs
-			}
-			if s.PromptRef != nil {
-				m.lastPromptRef = s.PromptRef
-				m.lastPromptStep = s.Step
-			}
+	case "flow_step_end":
+		step := event.StringField("step")
+		st := m.flow[step]
+		if st == nil {
+			st = &FlowStepStatus{Step: step}
+			m.flow[step] = st
+		}
+		st.Enabled = event.BoolField("enabled")
+		st.Ended = true
+		if agentCount := event.IntField("agent_count"); agentCount > 0 {
+			st.AgentCount = agentCount
+		}
+		if step == "routing" {
+			st.RoutingMode = event.StringField("routing_mode")
+			st.RouteTaken = event.StringField("route_taken")
+			st.RouteReason = event.StringField("route_reason")
+			st.RouteAgents = event.StringSliceField("route_agents")
+		}
+		if durationMs := event.IntField("duration_ms"); durationMs > 0 {
+			st.DurationMs = durationMs
+		}
+		if promptRef := event.MapField("prompt_ref"); promptRef != nil {
+			m.lastPromptRef = promptRef
+			m.lastPromptStep = step
 		}
 
-	case events.PromptInfo:
-		if pi := event.PromptInfo; pi != nil {
-			state := m.promptInfo[pi.AgentID]
-			if state == nil {
-				state = &PromptInfoState{AgentID: pi.AgentID}
-				m.promptInfo[pi.AgentID] = state
-			}
-			state.PromptFile = pi.PromptFile
-			state.PromptSnippet = pi.PromptSnippet
-			state.PromptLength = pi.PromptLength
+	case "prompt_info":
+		agentID := event.StringField("agent_id")
+		state := m.promptInfo[agentID]
+		if state == nil {
+			state = &PromptInfoState{AgentID: agentID}
+			m.promptInfo[agentID] = state
 		}
+		state.PromptFile = event.StringField("prompt_file")
+		state.PromptSnippet = event.StringField("prompt_snippet")
+		state.PromptLength = event.IntField("prompt_length")
 
-	case events.PromptFull:
-		if pf := event.PromptFull; pf != nil {
-			state := m.promptInfo[pf.AgentID]
-			if state == nil {
-				state = &PromptInfoState{AgentID: pf.AgentID}
-				m.promptInfo[pf.AgentID] = state
-			}
-			state.SystemPrompt = pf.SystemPrompt
+	case "prompt_full":
+		agentID := event.StringField("agent_id")
+		state := m.promptInfo[agentID]
+		if state == nil {
+			state = &PromptInfoState{AgentID: agentID}
+			m.promptInfo[agentID] = state
 		}
+		state.SystemPrompt = event.StringField("system_prompt")
 
-	case events.FlowConfig:
-		if fc := event.FlowConfig; fc != nil {
-			m.flowConfig = &FlowConfigState{
-				FlowID:         fc.FlowID,
-				FlowFile:       fc.FlowFile,
-				StagesOrder:    fc.StagesOrder,
-				StagesEnabled:  fc.StagesEnabled,
-				RoutingMode:    fc.RoutingMode,
-				AgentCount:     fc.AgentCount,
-				NonWizardCount: fc.NonWizardCount,
-			}
-			// Also set FlowID if not already set
-			if m.FlowID == "" && fc.FlowID != "" {
-				m.FlowID = fc.FlowID
-			}
+	case "flow_config":
+		flowID := event.StringField("flow_id")
+		m.flowConfig = &FlowConfigState{
+			FlowID:         flowID,
+			FlowFile:       event.StringField("flow_file"),
+			StagesOrder:    event.StringSliceField("stages_order"),
+			StagesEnabled:  event.BoolMapField("stages_enabled"),
+			RoutingMode:    event.StringField("routing_mode"),
+			AgentCount:     event.IntField("agent_count"),
+			NonWizardCount: event.IntField("non_wizard_count"),
+		}
+		// Also set FlowID if not already set
+		if m.FlowID == "" && flowID != "" {
+			m.FlowID = flowID
 		}
 	}
 
