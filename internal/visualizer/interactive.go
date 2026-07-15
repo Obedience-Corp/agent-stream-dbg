@@ -1942,10 +1942,11 @@ func (m InteractiveModel) renderWizardDebugSummary(wizard *AgentResponse) string
 func (m InteractiveModel) renderAgentSummaries(msg Message) string {
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
 
-	// Sort agents for stable display (excluding wizard)
+	// Sort agents for stable display (excluding the aggregator lane,
+	// which gets its own dedicated summary elsewhere).
 	agentIDs := make([]string, 0, len(msg.AgentResponses))
 	for id := range msg.AgentResponses {
-		if id != "wizard" {
+		if m.dialectFlow.role(&events.Event{SourceID: id}) != "aggregator" {
 			agentIDs = append(agentIDs, id)
 		}
 	}

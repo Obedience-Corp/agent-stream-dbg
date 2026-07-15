@@ -5,6 +5,7 @@ import (
 
 	"github.com/lancekrogers/stream-debugger/internal/config"
 	"github.com/lancekrogers/stream-debugger/internal/events"
+	"github.com/lancekrogers/stream-debugger/internal/mapping"
 )
 
 // newTestInteractiveModel returns a model ready for applyParsedEvent,
@@ -110,5 +111,77 @@ func TestDeriveAgentsFromEvents_ExcludesAggregator(t *testing.T) {
 		if agents[i] != w {
 			t.Errorf("agent %d: expected %q, got %q", i, w, agents[i])
 		}
+	}
+}
+
+// testFlowStateWithAggregator builds a flowState directly from a
+// hand-constructed FlowSpec, bypassing bridge.Flow()'s single global
+// (brainyard-loaded) dialect entirely — the only way to prove role
+// resolution generalizes to a DIFFERENT aggregator source name than
+// brainyard's own "wizard", rather than merely regression-testing
+// against the one string every other test in this file happens to use.
+func testFlowStateWithAggregator(aggregatorSource string) flowState {
+	return flowState{spec: &mapping.FlowSpec{
+		Lanes:       []mapping.LaneRule{{Match: mapping.LaneMatchSpec{Source: aggregatorSource}, Role: "aggregator"}},
+		DefaultRole: "worker",
+	}}
+}
+
+// TestApplyParsedEvent_AggregatorRoleGeneralizesBeyondWizard is the
+// genericity proof a self-review found missing: every other test in
+// this file uses "wizard" as the aggregator's SourceID, so a regression
+// to hardcoded string comparison would pass them all undetected (a
+// mutation test confirmed this directly). Here the aggregator lane is
+// named "supervisor" — a literal "wizard" SourceID is ALSO present and
+// must get NO special treatment, proving resolution is genuinely
+// role-based, not the same old string check moved one layer down.
+func TestApplyParsedEvent_AggregatorRoleGeneralizesBeyondWizard(t *testing.T) {
+	m := NewInteractiveModel(&config.EnhancedConfig{})
+	m.dialectFlow = testFlowStateWithAggregator("supervisor")
+	m.messages = append(m.messages, Message{})
+	m.streamIndex = 0
+
+	// A lane literally named "wizard" — NOT the declared aggregator here
+	// — must be treated as an ordinary worker.
+	m.applyParsedEvent(&events.Event{Kind: events.KindStreamStart, SourceID: "wizard"})
+	m.applyParsedEvent(&events.Event{Kind: events.KindContent, SourceID: "wizard", Content: "not the aggregator"})
+	m.applyParsedEvent(&events.Event{Kind: events.KindStreamEnd, SourceID: "wizard"})
+
+	// The declared aggregator lane, named "supervisor".
+	m.applyParsedEvent(&events.Event{Kind: events.KindStreamStart, SourceID: "supervisor"})
+	m.applyParsedEvent(&events.Event{Kind: events.KindContent, SourceID: "supervisor", Content: "synthesized"})
+	m.applyParsedEvent(&events.Event{Kind: events.KindStreamEnd, SourceID: "supervisor"})
+
+	wizardLane := m.messages[0].AgentResponses["wizard"]
+	if wizardLane == nil {
+		t.Fatal("expected an AgentResponse for the 'wizard'-named lane")
+	}
+	if !wizardLane.StartTime.IsZero() {
+		t.Errorf("expected the 'wizard'-named lane's StartTime to stay zero (it is NOT the declared aggregator here), got %v", wizardLane.StartTime)
+	}
+
+	aggregator := m.aggregatorResponse(m.messages[0])
+	if aggregator == nil {
+		t.Fatal("expected aggregatorResponse to find the 'supervisor' lane")
+	}
+	if aggregator.AgentID != "supervisor" {
+		t.Errorf("expected the resolved aggregator to be 'supervisor', got %q", aggregator.AgentID)
+	}
+	if aggregator.StartTime.IsZero() {
+		t.Error("expected the 'supervisor' lane's StartTime to be tracked (it IS the declared aggregator)")
+	}
+
+	nonAggregators := m.deriveAgentsFromEvents(m.messages[0].Events)
+	found := false
+	for _, id := range nonAggregators {
+		if id == "supervisor" {
+			found = true
+		}
+	}
+	if found {
+		t.Errorf("expected 'supervisor' (the aggregator) excluded from the derived worker list, got %v", nonAggregators)
+	}
+	if len(nonAggregators) != 1 || nonAggregators[0] != "wizard" {
+		t.Errorf("expected the 'wizard'-named lane to appear as an ordinary worker, got %v", nonAggregators)
 	}
 }
