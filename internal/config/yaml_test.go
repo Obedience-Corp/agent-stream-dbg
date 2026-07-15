@@ -209,6 +209,7 @@ transport:
   method: "/agent.v1.AgentService/StreamSession"
   discriminator: oneof
   plaintext: true
+  descriptor_set: "testdata/agent.binpb"
   auth:
     type: metadata
     header_name: authorization
@@ -233,6 +234,9 @@ transport:
 	}
 	if !cfg.Transport.Plaintext {
 		t.Error("expected plaintext true")
+	}
+	if cfg.Transport.DescriptorSet != "testdata/agent.binpb" {
+		t.Errorf("expected descriptor_set to be stored, got %q", cfg.Transport.DescriptorSet)
 	}
 	key, value, ok := cfg.Transport.Auth.Metadata()
 	if !ok {

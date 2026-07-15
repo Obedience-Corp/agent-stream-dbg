@@ -16,6 +16,18 @@ proto-gen:
         --go-grpc_out=. --go-grpc_opt=module=github.com/lancekrogers/stream-debugger \
         --proto_path=testdata/proto testdata/proto/agentstream.proto
 
+# Regenerate the compiled FileDescriptorSet used to test the gRPC
+# transport's descriptor-set fallback tier (reflection-disabled servers).
+# --include_imports is required: agentstream.proto imports
+# google/protobuf/any.proto, and protodesc.NewFiles needs that dependency
+# present in the set to resolve it, not just agentstream.proto itself.
+testdata-descriptorset:
+    mkdir -p testdata/descriptorsets
+    protoc --proto_path=testdata/proto \
+        --descriptor_set_out=testdata/descriptorsets/agentstream.binpb \
+        --include_imports \
+        testdata/proto/agentstream.proto
+
 # Build the binary
 build:
     mkdir -p bin

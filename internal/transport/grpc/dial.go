@@ -74,6 +74,14 @@ type Config struct {
 	// DiscriminatorField is the field name Discriminator "field:type"
 	// reads as Frame.Name. Ignored for every other mode.
 	DiscriminatorField string
+
+	// DescriptorSetPath, if set, resolves Method against a compiled
+	// FileDescriptorSet on disk instead of via server reflection — for
+	// targets with reflection disabled (common in production). See
+	// LoadDescriptorSet. Checked before Connect ever dials the network:
+	// a bad path fails fast and locally, the same way a malformed dialect
+	// file fails before any connection is attempted.
+	DescriptorSetPath string
 }
 
 // Transport dials one gRPC target and, when Config.Method is set,
@@ -124,9 +132,24 @@ func (t *Transport) Name() string { return "grpc" }
 // connection (which would only surface a dial failure on the first RPC),
 // a debugger needs "can't reach this target" to fail here, at Connect,
 // with a wrapped and actionable error. If cfg.Method is set, Connect
-// also discovers that method via reflection and starts streaming it into
-// Frames() — see stream.go.
+// also resolves that method — via a descriptor set if cfg.DescriptorSetPath
+// is set, reflection otherwise — and starts streaming it into Frames();
+// see stream.go.
+//
+// A configured DescriptorSetPath is loaded FIRST, before any dial: it's a
+// pure local file read with no network dependency, so a missing or
+// malformed file fails fast and locally, exactly like a malformed dialect
+// file would, rather than only surfacing after a (wasted) successful dial.
 func (t *Transport) Connect(ctx context.Context) error {
+	var md *desc.MethodDescriptor
+	if t.cfg.Method != "" && t.cfg.DescriptorSetPath != "" {
+		resolved, err := LoadDescriptorSet(t.cfg.DescriptorSetPath, t.cfg.Method)
+		if err != nil {
+			return err
+		}
+		md = resolved
+	}
+
 	var creds credentials.TransportCredentials
 	if t.cfg.Plaintext {
 		creds = insecure.NewCredentials()
@@ -159,7 +182,7 @@ func (t *Transport) Connect(ctx context.Context) error {
 	if t.cfg.Method == "" {
 		return nil
 	}
-	if err := t.startStream(ctx); err != nil {
+	if err := t.startStream(ctx, md); err != nil {
 		_ = conn.Close()
 		t.conn = nil
 		return err

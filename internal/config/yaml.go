@@ -44,6 +44,7 @@ type YAMLConfig struct {
 		Method        string   `yaml:"method"`        // fully-qualified RPC method, e.g. /agent.v1.AgentService/StreamSession
 		Discriminator string   `yaml:"discriminator"` // oneof | field:type | message_type | none — resolved in sequence 03
 		Plaintext     bool     `yaml:"plaintext"`
+		DescriptorSet string   `yaml:"descriptor_set"` // path to a compiled FileDescriptorSet — fallback when the target has reflection disabled
 		Auth          authYAML `yaml:"auth"`
 	} `yaml:"transport"`
 
@@ -129,6 +130,7 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 			GRPCMethod:    yamlCfg.Transport.Method,
 			Discriminator: yamlCfg.Transport.Discriminator,
 			Plaintext:     yamlCfg.Transport.Plaintext,
+			DescriptorSet: yamlCfg.Transport.DescriptorSet,
 			Auth:          auth,
 		}
 	default: // sse
@@ -303,6 +305,7 @@ type TransportConfig struct {
 	GRPCMethod    string // fully-qualified RPC method, e.g. /agent.v1.AgentService/StreamSession
 	Discriminator string // oneof | field:type | message_type | none
 	Plaintext     bool
+	DescriptorSet string // path to a compiled FileDescriptorSet — fallback when reflection is disabled
 
 	// Shared: one auth vocabulary for both transports.
 	Auth AuthConfig

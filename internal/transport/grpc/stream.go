@@ -58,17 +58,26 @@ const grpcStatusEventName = "grpc_status"
 // silently break every dialect rule for gRPC frames.
 var jsonMarshaler = &jsonpb.Marshaler{OrigName: true}
 
-// startStream discovers cfg.Method via reflection and opens either a
-// server-stream (the common case, request built from cfg.Request) or a
-// bidi stream (Send pushes further client messages after this returns),
-// per what the method descriptor says — not a separate config flag
-// duplicating information the descriptor already has. Either way it
-// starts the read-loop goroutine that decodes responses into Frames().
-// Called from Connect; conn must already be dialed.
-func (t *Transport) startStream(ctx context.Context) error {
-	md, err := Discover(ctx, t.conn, t.cfg.Method)
-	if err != nil {
-		return err
+// startStream resolves cfg.Method — via reflection if resolved is nil
+// (Connect didn't already load a descriptor set), used as-is otherwise —
+// and opens either a server-stream (the common case, request built from
+// cfg.Request) or a bidi stream (Send pushes further client messages
+// after this returns), per what the method descriptor says — not a
+// separate config flag duplicating information the descriptor already
+// has. Either way it starts the read-loop goroutine that decodes
+// responses into Frames(). Called from Connect; conn must already be
+// dialed. This is the ONLY place that branches on which acquisition tier
+// is in play — everything below (decode, discriminator, errors, Send)
+// takes the resulting *desc.MethodDescriptor and never learns which tier
+// produced it.
+func (t *Transport) startStream(ctx context.Context, resolved *desc.MethodDescriptor) error {
+	md := resolved
+	if md == nil {
+		discovered, err := Discover(ctx, t.conn, t.cfg.Method)
+		if err != nil {
+			return err
+		}
+		md = discovered
 	}
 
 	stub := grpcdynamic.NewStub(t.conn)
