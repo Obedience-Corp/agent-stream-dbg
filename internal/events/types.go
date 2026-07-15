@@ -4,8 +4,9 @@ import "time"
 
 // Kind is the closed, cross-system vocabulary the visualizer renders
 // against. Triangulated from OTel GenAI semconv, the Vercel AI SDK, and
-// A2A — deliberately not derived from any single system's event names,
-// which would reproduce that system's blind spots at the universal layer.
+// the Agent2Agent open standard — deliberately not derived from any single
+// system's event names, which would reproduce that system's blind spots at
+// the universal layer.
 type Kind string
 
 const (
