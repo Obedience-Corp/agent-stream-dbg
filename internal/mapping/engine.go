@@ -61,7 +61,7 @@ type dialectYAML struct {
 	Name          string        `yaml:"name"`
 	Description   string        `yaml:"description,omitempty"`
 	Discriminator Discriminator `yaml:"discriminator"`
-	Setup         yaml.Node     `yaml:"setup,omitempty"`
+	Setup         *setupYAML    `yaml:"setup,omitempty"`
 	Send          yaml.Node     `yaml:"send,omitempty"`
 	Rules         []ruleYAML    `yaml:"rules"`
 	Flow          yaml.Node     `yaml:"flow,omitempty"`
@@ -72,6 +72,7 @@ type Engine struct {
 	Version       int
 	Name          string
 	Discriminator Discriminator
+	Setup         *SetupSpec
 	Rules         []Rule
 }
 
@@ -121,10 +122,17 @@ func Load(data []byte) (*Engine, error) {
 		})
 	}
 
+	var setup *SetupSpec
+	if doc.Setup != nil {
+		s := doc.Setup.compile()
+		setup = &s
+	}
+
 	return &Engine{
 		Version:       doc.Version,
 		Name:          doc.Name,
 		Discriminator: doc.Discriminator,
+		Setup:         setup,
 		Rules:         rules,
 	}, nil
 }
