@@ -31,26 +31,24 @@ var knownKinds = map[string]bool{
 	"unknown":       true,
 }
 
-// Rule is one compiled frame → Event mapping rule. Value extraction
-// (source/content/seq/fields) is parsed but evaluated by Engine.Decode,
-// added alongside dispatch in this same sequence.
+// Rule is one compiled frame → Event mapping rule.
 type Rule struct {
 	Match   MatchSpec
 	Kind    string
-	Source  yaml.Node
-	Content yaml.Node
-	Seq     yaml.Node
-	Fields  map[string]yaml.Node
+	Source  ValueForm
+	Content ValueForm
+	Seq     ValueForm
+	Fields  map[string]ValueForm
 }
 
 // ruleYAML is the raw YAML shape of a rule, strictly decoded.
 type ruleYAML struct {
 	Match   MatchSpec            `yaml:"match"`
 	Kind    string               `yaml:"kind"`
-	Source  yaml.Node            `yaml:"source,omitempty"`
-	Content yaml.Node            `yaml:"content,omitempty"`
-	Seq     yaml.Node            `yaml:"seq,omitempty"`
-	Fields  map[string]yaml.Node `yaml:"fields,omitempty"`
+	Source  ValueForm            `yaml:"source,omitempty"`
+	Content ValueForm            `yaml:"content,omitempty"`
+	Seq     ValueForm            `yaml:"seq,omitempty"`
+	Fields  map[string]ValueForm `yaml:"fields,omitempty"`
 }
 
 // dialectYAML is the top-level dialect document shape.
