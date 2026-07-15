@@ -37,9 +37,10 @@ func TestSSEClient_EndToEndAgainstMockServer(t *testing.T) {
 		t.Fatalf("Connect: %v", err)
 	}
 
-	// 12 concurrent per-event-type connections race independently, so collect
-	// until the stream has been quiet for a bit rather than stopping on the
-	// first session_complete seen (which offers no ordering guarantee).
+	// Collect until the stream has been quiet for a bit rather than
+	// stopping on the first session_complete frame, since readLoop's
+	// buffered channel send doesn't guarantee the reader observes frames
+	// in lockstep with the writer.
 	seenTypes := map[string]bool{}
 	seenAgents := map[string]bool{}
 	idle := time.NewTimer(300 * time.Millisecond)

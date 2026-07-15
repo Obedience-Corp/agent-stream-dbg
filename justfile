@@ -27,7 +27,7 @@ demo:
     ./bin/stream-debugger timeline testdata/fixtures/brainyard-session.jsonl
 
 # Run the debugger with a test message
-stream message="What is consciousness?" config="configs/generic-sse.yaml":
+stream message="What is consciousness?" config="configs/brainyard-v3.yaml":
     @mkdir -p bin
     @test -f bin/stream-debugger || just build
     ./bin/stream-debugger stream --config "{{config}}" "{{message}}"
@@ -72,8 +72,12 @@ clean:
     rm -rf bin/
     rm -rf logs/*
 
-# Run with race detector
-race message="Test message":
+# Run the test suite under the race detector (offline, no backend needed)
+race:
+    go test -race ./...
+
+# Run the compiled binary under the race detector against a live backend
+race-live message="Test message":
     mkdir -p bin
     go run -race ./cmd/stream-debugger stream "{{message}}"
 

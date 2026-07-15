@@ -7,7 +7,6 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/joho/godotenv v1.5.1
-	github.com/r3labs/sse/v2 v2.10.0
 	github.com/rs/zerolog v1.34.0
 	github.com/tidwall/gjson v1.19.0
 	github.com/urfave/cli/v2 v2.27.7
@@ -37,8 +36,6 @@ require (
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
-	golang.org/x/net v0.0.0-20191116160921-f9c825593386 // indirect
 	golang.org/x/sys v0.36.0 // indirect
 	golang.org/x/text v0.3.8 // indirect
-	gopkg.in/cenkalti/backoff.v1 v1.1.0 // indirect
 )

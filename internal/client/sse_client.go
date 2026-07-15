@@ -4,57 +4,49 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"slices"
+	"sync"
 
 	"github.com/lancekrogers/stream-debugger/internal/bridge"
 	"github.com/lancekrogers/stream-debugger/internal/config"
 	"github.com/lancekrogers/stream-debugger/internal/events"
 	"github.com/lancekrogers/stream-debugger/internal/mapping"
-	"github.com/r3labs/sse/v2"
+	"github.com/lancekrogers/stream-debugger/internal/transport/sse"
 )
 
-// defaultEventTypes is used when the config does not specify events.types.
-var defaultEventTypes = []string{
-	"session_start",
-	"session_complete",
-	"agent_stream_start",
-	"agent_content",
-	"agent_stream_complete",
-	"wizard_stream_start",
-	"wizard_content",
-	"wizard_stream_complete",
-	"error",
-	"flow_step_start",
-	"flow_step_end",
-	"flow_step_detail",
-}
-
-// SSEClient handles Server-Sent Events connection to the backend
+// SSEClient streams parsed events from the backend over the stdlib SSE
+// transport, applying the dialect (via internal/bridge) to every frame.
 type SSEClient struct {
-	config  *config.EnhancedConfig
-	client  *sse.Client
-	parser  *bridge.Parser
+	config *config.EnhancedConfig
+	parser *bridge.Parser
+
 	eventCh chan *events.Event
 	errCh   chan error
+
+	mu        sync.Mutex
+	transport *sse.Transport
+
+	// wg tracks every readLoop goroutine ever started, across reconnects
+	// (Connect may be called more than once on the same client — see
+	// visualizer.Model.reconnect). Close waits on it before closing the
+	// channels, so a send can never race a close by construction.
+	wg sync.WaitGroup
 }
 
-// NewSSEClient creates a new SSE client
+// NewSSEClient creates a new SSE client.
 func NewSSEClient(cfg *config.EnhancedConfig) *SSEClient {
-	client := sse.NewClient(cfg.StreamEndpointURL())
-
-	// Set up authentication and custom headers from config
-	client.Headers = cfg.Transport.ResolvedHeaders()
-	client.Headers["Accept"] = "text/event-stream"
-
 	return &SSEClient{
 		config:  cfg,
-		client:  client,
 		parser:  bridge.NewParser(),
 		eventCh: make(chan *events.Event, 100),
 		errCh:   make(chan error, 10),
 	}
 }
 
-// Connect establishes SSE connection and starts streaming events
+// Connect renders the dialect's send: template and starts streaming
+// events from the result. Safe to call again on the same client (e.g. to
+// reconnect with a new debug level) — the previous transport, if any, is
+// closed first, but Events()/Errors() keep delivering across the switch.
 func (c *SSEClient) Connect(ctx context.Context, message string) error {
 	vars := mapping.InterpolationVars{
 		BaseURL:   c.config.Transport.BaseURL,
@@ -66,7 +58,7 @@ func (c *SSEClient) Connect(ctx context.Context, message string) error {
 		return fmt.Errorf("failed to render send request: %w", err)
 	}
 	if method != "GET" || body != nil {
-		return fmt.Errorf("stream mode can only execute a GET-style send (no body) today; dialect declared %s with a body — needs the stdlib SSE transport", method)
+		return fmt.Errorf("stream mode can only execute a GET-style send (no body) today; dialect declared %s with a body — needs a POST-capable transport", method)
 	}
 
 	if c.config.Debug.Level != "" {
@@ -80,60 +72,68 @@ func (c *SSEClient) Connect(ctx context.Context, message string) error {
 		renderedURL = u.String()
 	}
 
-	// Update client URL
-	c.client = sse.NewClient(renderedURL)
-	c.client.Headers = c.config.Transport.ResolvedHeaders()
-	c.client.Headers["Accept"] = "text/event-stream"
+	headers := c.config.Transport.ResolvedHeaders()
+	headers["Accept"] = "text/event-stream"
 
-	eventTypes := c.config.Events.Types
-	if len(eventTypes) == 0 {
-		eventTypes = defaultEventTypes
+	tr := sse.New(method, renderedURL, nil, headers)
+	if err := tr.Connect(ctx); err != nil {
+		return fmt.Errorf("failed to connect: %w", err)
 	}
 
-	for _, eventType := range eventTypes {
-		c.subscribeToEvent(ctx, eventType)
+	c.mu.Lock()
+	previous := c.transport
+	c.transport = tr
+	c.mu.Unlock()
+	if previous != nil {
+		_ = previous.Close()
 	}
 
+	c.wg.Add(1)
+	go c.readLoop(tr)
 	return nil
 }
 
-// subscribeToEvent subscribes to a specific SSE event type
-func (c *SSEClient) subscribeToEvent(ctx context.Context, eventType string) {
-	go func() {
-		err := c.client.SubscribeWithContext(ctx, eventType, func(msg *sse.Event) {
-			// Parse the event
-			event, parseErr := c.parser.Parse(string(msg.Event), msg.Data)
-			if parseErr != nil {
-				c.errCh <- fmt.Errorf("failed to parse event %s: %w", eventType, parseErr)
-				return
-			}
+// readLoop forwards frames from one transport connection to Events()/
+// Errors() until that transport's stream ends. It never closes the
+// channels itself — Close does, once every readLoop has exited.
+func (c *SSEClient) readLoop(tr *sse.Transport) {
+	defer c.wg.Done()
 
-			// Send to event channel
-			select {
-			case c.eventCh <- event:
-			case <-ctx.Done():
-				return
-			}
-		})
-
-		if err != nil && ctx.Err() == nil {
-			c.errCh <- fmt.Errorf("subscription error for %s: %w", eventType, err)
+	allowed := c.config.Events.Types
+	for frame := range tr.Frames() {
+		if frame.Err != nil {
+			c.errCh <- fmt.Errorf("malformed frame (name=%q, raw=%q): %w", frame.Name, frame.Raw, frame.Err)
+			continue
 		}
-	}()
+		if len(allowed) > 0 && !slices.Contains(allowed, frame.Name) {
+			continue
+		}
+		event, _ := c.parser.Parse(frame.Name, frame.Data)
+		c.eventCh <- event
+	}
 }
 
-// Events returns the channel for receiving parsed events
+// Events returns the channel for receiving parsed events.
 func (c *SSEClient) Events() <-chan *events.Event {
 	return c.eventCh
 }
 
-// Errors returns the channel for receiving errors
+// Errors returns the channel for receiving errors.
 func (c *SSEClient) Errors() <-chan error {
 	return c.errCh
 }
 
-// Close closes the SSE connection
+// Close shuts down the current transport and waits for every readLoop
+// goroutine started by this client to exit before closing Events()/
+// Errors() — so a send can never race the close.
 func (c *SSEClient) Close() {
+	c.mu.Lock()
+	tr := c.transport
+	c.mu.Unlock()
+	if tr != nil {
+		_ = tr.Close()
+	}
+	c.wg.Wait()
 	close(c.eventCh)
 	close(c.errCh)
 }
