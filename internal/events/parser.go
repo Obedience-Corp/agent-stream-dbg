@@ -3,7 +3,6 @@ package events
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 )
 
 // Parser is the temporary Brainyard-specific bridge from wire JSON to the
@@ -22,11 +21,11 @@ func NewParser() *Parser {
 // wireEnvelope captures the fields common to Brainyard's wire events, for
 // extracting the Event core's typed fields before the rest lands in Fields.
 type wireEnvelope struct {
-	MessageID string    `json:"message_id"`
-	Timestamp time.Time `json:"timestamp"`
-	AgentID   string    `json:"agent_id"`
-	Content   string    `json:"content"`
-	Sequence  int       `json:"sequence"`
+	MessageID string          `json:"message_id"`
+	Timestamp json.RawMessage `json:"timestamp"`
+	AgentID   string          `json:"agent_id"`
+	Content   string          `json:"content"`
+	Sequence  int             `json:"sequence"`
 }
 
 // kindOf maps Brainyard's 19 wire event names to the closed Kind
@@ -87,7 +86,7 @@ func (p *Parser) Parse(eventType string, data []byte) (*Event, error) {
 	return &Event{
 		Name:      eventType,
 		Kind:      kind,
-		Timestamp: env.Timestamp,
+		Timestamp: ParseTimestamp(env.Timestamp),
 		SourceID:  sourceID,
 		Content:   env.Content,
 		Seq:       env.Sequence,
