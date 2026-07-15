@@ -321,7 +321,7 @@ func (m *Model) renderAgent(agent *AgentState) string {
 	status := lipgloss.NewStyle().Foreground(lipgloss.Color(statusColor)).Render(statusIcon)
 
 	// Get color for agent
-	color := getAgentColor(agent.ID)
+	color := getAgentColor(agent.ID, m.agentColorOverrides())
 	agentName := lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(agent.ID)
 
 	header := fmt.Sprintf("%s %s", status, agentName)
@@ -732,7 +732,7 @@ func (m *Model) renderPromptPanel() string {
 	if len(m.promptInfo) > 0 {
 		lines = append(lines, headerStyle.Render("Agent Prompts"))
 		for agentID, info := range m.promptInfo {
-			color := getAgentColor(agentID)
+			color := getAgentColor(agentID, m.agentColorOverrides())
 			agentName := lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(agentID)
 
 			line := fmt.Sprintf("  %s", agentName)
@@ -801,18 +801,33 @@ func (m *Model) tickCmd() tea.Cmd {
 	})
 }
 
+// agentColorOverrides returns the config-declared agent_colors map, or
+// nil if none is configured — safe to pass straight to getAgentColor.
+func (m *Model) agentColorOverrides() map[string]string {
+	if m.config == nil || m.config.Display == nil {
+		return nil
+	}
+	return m.config.Display.AgentColors
+}
+
 // agentColorPalette is a fixed set of visually distinct ANSI colors,
 // assigned by hashing the agent ID rather than a hardcoded persona table
 // — so a stranger's dialect renders with stable, distinct colors without
 // this package knowing any agent's name in advance.
 var agentColorPalette = []string{"13", "9", "10", "12", "14", "5", "3", "6", "11", "1", "2", "4"}
 
-// getAgentColor deterministically maps an agent ID to a color: the same
-// ID always yields the same color, and different IDs are spread across
-// the palette.
-func getAgentColor(agentID string) string {
+// getAgentColor maps an agent ID to a color: an explicit override in
+// agentColors (config's display.agent_colors) wins; otherwise the same ID
+// always hashes to the same palette entry, spread deterministically
+// across different IDs. agentColors may be nil (reading a nil map is a
+// safe, ok=false lookup) — every caller without color config gets the
+// hash-only behavior this function always had.
+func getAgentColor(agentID string, agentColors map[string]string) string {
 	if agentID == "" {
 		return "7" // Default gray
+	}
+	if color, ok := agentColors[agentID]; ok {
+		return color
 	}
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(agentID))

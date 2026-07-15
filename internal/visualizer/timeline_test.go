@@ -222,20 +222,46 @@ func TestRenderParallelSummary_Parallel(t *testing.T) {
 // for ANY dialect's agent IDs — determinism and a sane empty-ID default
 // — rather than pinning specific persona-name-to-color assignments.
 func TestGetAgentColor(t *testing.T) {
-	if got := getAgentColor(""); got != "7" {
+	if got := getAgentColor("", nil); got != "7" {
 		t.Errorf("expected default gray %q for empty agent ID, got %q", "7", got)
 	}
 
 	for _, id := range []string{"agent_a", "some-agent-from-a-strangers-dialect", "assistant"} {
-		first := getAgentColor(id)
+		first := getAgentColor(id, nil)
 		if first == "" {
 			t.Errorf("expected a non-empty color for agent %q", id)
 		}
 		for i := 0; i < 5; i++ {
-			if got := getAgentColor(id); got != first {
+			if got := getAgentColor(id, nil); got != first {
 				t.Errorf("expected stable color for repeated calls with %q, got %q then %q", id, first, got)
 			}
 		}
+	}
+}
+
+// TestGetAgentColor_AgentColorsOverride proves an agent_colors entry
+// wins over the hash-based default, while an agent absent from the
+// override map still gets a hash-derived color, not flat gray — the two
+// halves architecture.md describes as one function's job (this task
+// unified them; previously only interactive.go's copy had the override
+// half, and only tui.go's had the hash half).
+func TestGetAgentColor_AgentColorsOverride(t *testing.T) {
+	overrides := map[string]string{"agent_a": "42"}
+
+	if got := getAgentColor("agent_a", overrides); got != "42" {
+		t.Errorf("expected the configured override %q for agent_a, got %q", "42", got)
+	}
+
+	// An agent absent from the override map must still get a
+	// hash-derived color — not the override map's absence collapsing it
+	// to flat gray (interactive.go's pre-unification bug).
+	unconfigured := getAgentColor("agent_b", overrides)
+	hashOnly := getAgentColor("agent_b", nil)
+	if unconfigured != hashOnly {
+		t.Errorf("expected agent_b (absent from overrides) to get the same hash-derived color as with no overrides at all: got %q, want %q", unconfigured, hashOnly)
+	}
+	if unconfigured == "7" {
+		t.Error("expected agent_b to get a hash-spread color, not flat gray, despite an (unrelated) agent_colors map being present")
 	}
 }
 

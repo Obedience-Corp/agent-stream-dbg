@@ -1194,16 +1194,22 @@ func buildAgentResponses(evts []*events.Event) map[string]*AgentResponse {
 	return responses
 }
 
-// getAgentColor returns the lipgloss color for an agent
+// getAgentColor returns the lipgloss color for an agent: an
+// agent_colors override wins, otherwise the same hash-based palette
+// spread tui.go's Model uses — thin wrapper over the shared
+// package-level getAgentColor so both TUIs stay in sync rather than
+// each keeping its own half-correct copy.
 func (m InteractiveModel) getAgentColor(agentID string) lipgloss.Color {
-	// Check if config has agent colors
-	if m.cfg != nil && m.cfg.Display != nil && m.cfg.Display.AgentColors != nil {
-		if color, exists := m.cfg.Display.AgentColors[agentID]; exists {
-			return lipgloss.Color(color)
-		}
+	return lipgloss.Color(getAgentColor(agentID, m.agentColorOverrides()))
+}
+
+// agentColorOverrides returns the config-declared agent_colors map, or
+// nil if none is configured — safe to pass straight to getAgentColor.
+func (m InteractiveModel) agentColorOverrides() map[string]string {
+	if m.cfg == nil || m.cfg.Display == nil {
+		return nil
 	}
-	// Default color
-	return lipgloss.Color("7")
+	return m.cfg.Display.AgentColors
 }
 
 // renderRawView renders the raw SSE stream

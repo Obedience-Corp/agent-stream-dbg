@@ -24,6 +24,10 @@ type TimelineVisualizer struct {
 	entries   []TimelineEntry
 	startTime time.Time
 	endTime   time.Time
+	// AgentColors overrides getAgentColor's hash-based default per agent
+	// ID (config's display.agent_colors) — nil for the offline replay/
+	// timeline CLI paths, which have no config to source it from today.
+	AgentColors map[string]string
 }
 
 // NewTimelineVisualizer creates a new timeline visualizer
@@ -148,7 +152,7 @@ func (tv *TimelineVisualizer) RenderTimeline(width int) string {
 	sb.WriteString("  ")
 
 	for _, agent := range agents {
-		color := getAgentColor(agent)
+		color := getAgentColor(agent, tv.AgentColors)
 		agentStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Width(15)
 		sb.WriteString(agentStyle.Render(agent))
 		sb.WriteString("  ")
@@ -198,7 +202,7 @@ func (tv *TimelineVisualizer) RenderTimeline(width int) string {
 
 		// Agent columns
 		for _, agent := range agents {
-			color := getAgentColor(agent)
+			color := getAgentColor(agent, tv.AgentColors)
 			cellStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Width(15)
 
 			entries := bucket.events[agent]
@@ -269,7 +273,7 @@ func (tv *TimelineVisualizer) RenderDetailedLog() string {
 		elapsed := entry.Timestamp.Sub(tv.startTime)
 
 		// Agent color
-		color := getAgentColor(entry.AgentID)
+		color := getAgentColor(entry.AgentID, tv.AgentColors)
 		agentStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
 
 		// Format: [+1.234s] agent_a | agent_content | "hello"
@@ -373,7 +377,7 @@ func (tv *TimelineVisualizer) RenderParallelSummary() string {
 
 	// Report
 	for agent, others := range overlaps {
-		color := getAgentColor(agent)
+		color := getAgentColor(agent, tv.AgentColors)
 		agentStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
 
 		// Deduplicate
