@@ -74,6 +74,52 @@ transport:
 	}
 }
 
+func TestLoadConfigFile_MalformedYAML(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+	}{
+		{
+			name: "bad indentation",
+			yaml: `
+transport:
+  base_url: "http://localhost:8080"
+ stream_endpoint:
+    url: "/api/stream"
+`,
+		},
+		{
+			name: "unterminated flow sequence",
+			yaml: `
+transport:
+  base_url: "http://localhost:8080"
+session:
+  default_agents: [a, b
+`,
+		},
+		{
+			name: "not a mapping at all",
+			yaml: `- just
+- a
+- list
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeYAMLConfig(t, tt.yaml)
+			_, err := LoadConfigFile(path)
+			if err == nil {
+				t.Fatalf("expected error for malformed YAML, got nil")
+			}
+			if !strings.Contains(err.Error(), path) {
+				t.Errorf("expected error to name the config file %q, got: %v", path, err)
+			}
+		})
+	}
+}
+
 func TestLoadConfigFile_ValidConfigLoads(t *testing.T) {
 	_ = os.Setenv("API_KEY", "test-key")
 	defer func() { _ = os.Unsetenv("API_KEY") }()
@@ -100,5 +146,54 @@ session:
 	}
 	if cfg.APIKey != "test-key" {
 		t.Errorf("expected APIKey from env, got %q", cfg.APIKey)
+	}
+}
+
+func TestLoadConfigFile_DialectFileReference(t *testing.T) {
+	_ = os.Setenv("API_KEY", "test-key")
+	defer func() { _ = os.Unsetenv("API_KEY") }()
+
+	path := writeYAMLConfig(t, `
+transport:
+  base_url: "http://localhost:8080"
+  stream_endpoint:
+    url: "/api/stream"
+    auth:
+      token_env: "API_KEY"
+dialect:
+  file: "dialects/brainyard.yaml"
+`)
+
+	cfg, err := LoadConfigFile(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Dialect.File != "dialects/brainyard.yaml" {
+		t.Errorf("expected dialect.file to be stored, got %q", cfg.Dialect.File)
+	}
+}
+
+func TestLoadConfigFile_VarsResolution(t *testing.T) {
+	_ = os.Setenv("API_KEY", "test-key")
+	defer func() { _ = os.Unsetenv("API_KEY") }()
+
+	path := writeYAMLConfig(t, `
+transport:
+  base_url: "http://localhost:8080"
+  stream_endpoint:
+    url: "/api/stream"
+    auth:
+      token_env: "API_KEY"
+vars:
+  region: "us-west"
+  tier: "premium"
+`)
+
+	cfg, err := LoadConfigFile(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Vars["region"] != "us-west" || cfg.Vars["tier"] != "premium" {
+		t.Errorf("expected vars to be passed through, got %+v", cfg.Vars)
 	}
 }
