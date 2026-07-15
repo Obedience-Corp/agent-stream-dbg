@@ -336,8 +336,8 @@ func (c *EnhancedConfig) StreamEndpointURL() string {
 	return fmt.Sprintf("%s%s", c.Transport.BaseURL, endpoint)
 }
 
-// Normalize fills in generic (non-system-specific) defaults. It no longer
-// injects Brainyard's base URL or endpoint paths — those belong in a run
+// Normalize fills in generic (non-system-specific) defaults. It never
+// injects a backend's base URL or endpoint paths — those belong in a run
 // config (or, from phase 004, the dialect's setup:/send: templates), not in
 // library code that claims to be system-agnostic.
 func (c *EnhancedConfig) Normalize() {

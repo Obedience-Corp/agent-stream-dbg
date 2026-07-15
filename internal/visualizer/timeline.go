@@ -195,19 +195,22 @@ func (tv *TimelineVisualizer) RenderTimeline(width int) string {
 			if len(entries) == 0 {
 				sb.WriteString(cellStyle.Render("│"))
 			} else {
-				// Render event indicator
+				// Render event indicator, dispatching on the normalized
+				// Kind rather than the wire event name, so any dialect's
+				// stream lifecycle renders the same way regardless of
+				// what its per-source event names happen to be.
 				indicator := ""
 				for _, entry := range entries {
-					switch entry.Type {
-					case "agent_stream_start", "wizard_stream_start":
+					switch entry.Event.Kind {
+					case events.KindStreamStart:
 						indicator = "▶ START"
-					case "agent_content", "wizard_content":
+					case events.KindContent:
 						if indicator == "" {
 							indicator = "█" // Token
 						}
-					case "agent_stream_complete", "wizard_stream_complete":
+					case events.KindStreamEnd:
 						indicator = "■ DONE"
-					case "error":
+					case events.KindError:
 						indicator = "✗ ERROR"
 					}
 				}
@@ -255,7 +258,7 @@ func (tv *TimelineVisualizer) RenderDetailedLog() string {
 		color := getAgentColor(entry.AgentID)
 		agentStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
 
-		// Format: [+1.234s] sam_harris | agent_content | "hello"
+		// Format: [+1.234s] agent_a | agent_content | "hello"
 		line := fmt.Sprintf("[%s] ",
 			timeStyle.Render(fmt.Sprintf("+%7.3fs", elapsed.Seconds())))
 
@@ -315,11 +318,11 @@ func (tv *TimelineVisualizer) RenderParallelSummary() string {
 			continue
 		}
 
-		switch entry.Type {
-		case "agent_stream_start", "wizard_stream_start":
+		switch entry.Event.Kind {
+		case events.KindStreamStart:
 			activeAgents[entry.AgentID] = entry.Timestamp
 
-		case "agent_stream_complete", "wizard_stream_complete":
+		case events.KindStreamEnd:
 			if start, ok := activeAgents[entry.AgentID]; ok {
 				periods = append(periods, ActivePeriod{
 					agent: entry.AgentID,

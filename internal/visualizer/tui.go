@@ -3,6 +3,7 @@ package visualizer
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
 	"strings"
 	"time"
 
@@ -778,24 +779,20 @@ func (m *Model) tickCmd() tea.Cmd {
 	})
 }
 
-// getAgentColor returns a color for an agent based on their ID
-func getAgentColor(agentID string) string {
-	colors := map[string]string{
-		"sam_harris":      "13", // Magenta
-		"tony_robbins":    "9",  // Red
-		"david_goggins":   "1",  // Dark red
-		"eckhart_tolle":   "10", // Green
-		"marcus_aurelius": "12", // Blue
-		"bruce_lee":       "14", // Cyan
-		"alan_watts":      "5",  // Purple
-		"carl_jung":       "3",  // Yellow
-		"viktor_frankl":   "6",  // Cyan
-		"rumi":            "11", // Yellow
-		"wizard":          "11", // Yellow/Gold
-	}
+// agentColorPalette is a fixed set of visually distinct ANSI colors,
+// assigned by hashing the agent ID rather than a hardcoded persona table
+// — so a stranger's dialect renders with stable, distinct colors without
+// this package knowing any agent's name in advance.
+var agentColorPalette = []string{"13", "9", "10", "12", "14", "5", "3", "6", "11", "1", "2", "4"}
 
-	if color, ok := colors[agentID]; ok {
-		return color
+// getAgentColor deterministically maps an agent ID to a color: the same
+// ID always yields the same color, and different IDs are spread across
+// the palette.
+func getAgentColor(agentID string) string {
+	if agentID == "" {
+		return "7" // Default gray
 	}
-	return "7" // Default gray
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(agentID))
+	return agentColorPalette[h.Sum32()%uint32(len(agentColorPalette))]
 }

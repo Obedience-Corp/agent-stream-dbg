@@ -67,7 +67,7 @@ func readFixtureLines(fixturePath string) ([][]byte, error) {
 	return lines, nil
 }
 
-// handle serves the brainyard session-stream endpoint: it streams fixture
+// handle serves a session-stream endpoint: it streams fixture
 // lines as SSE frames, in order, over a single response. A `stream` query
 // parameter (as sent by the real SSE client, one connection per event type)
 // filters replay to only that event type, matching the real backend contract.

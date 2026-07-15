@@ -27,7 +27,7 @@ func TestAddEvent(t *testing.T) {
 		Name:      "agent_stream_start",
 		Kind:      events.KindStreamStart,
 		Timestamp: now,
-		SourceID:  "sam_harris",
+		SourceID:  "agent_a",
 	}
 
 	tv.AddEvent(event)
@@ -37,8 +37,8 @@ func TestAddEvent(t *testing.T) {
 	}
 
 	entry := tv.entries[0]
-	if entry.AgentID != "sam_harris" {
-		t.Errorf("Expected agent_id 'sam_harris', got '%s'", entry.AgentID)
+	if entry.AgentID != "agent_a" {
+		t.Errorf("Expected agent_id 'agent_a', got '%s'", entry.AgentID)
 	}
 
 	if entry.Type != "agent_stream_start" {
@@ -91,21 +91,24 @@ func TestRenderTimeline_WithEvents(t *testing.T) {
 	// Add agent stream
 	tv.AddEvent(&events.Event{
 		Name:      "agent_stream_start",
+		Kind:      events.KindStreamStart,
 		Timestamp: now,
-		SourceID:  "sam_harris",
+		SourceID:  "agent_a",
 	})
 
 	tv.AddEvent(&events.Event{
 		Name:      "agent_content",
+		Kind:      events.KindContent,
 		Timestamp: now.Add(100 * time.Millisecond),
-		SourceID:  "sam_harris",
+		SourceID:  "agent_a",
 		Content:   "test",
 	})
 
 	tv.AddEvent(&events.Event{
 		Name:      "agent_stream_complete",
+		Kind:      events.KindStreamEnd,
 		Timestamp: now.Add(200 * time.Millisecond),
-		SourceID:  "sam_harris",
+		SourceID:  "agent_a",
 	})
 
 	output := tv.RenderTimeline(100)
@@ -115,7 +118,7 @@ func TestRenderTimeline_WithEvents(t *testing.T) {
 		t.Error("Expected timeline header")
 	}
 
-	if !strings.Contains(output, "sam_harris") {
+	if !strings.Contains(output, "agent_a") {
 		t.Error("Expected agent name in output")
 	}
 
@@ -143,8 +146,9 @@ func TestRenderDetailedLog_WithEvents(t *testing.T) {
 
 	tv.AddEvent(&events.Event{
 		Name:      "agent_content",
+		Kind:      events.KindContent,
 		Timestamp: now,
-		SourceID:  "sam_harris",
+		SourceID:  "agent_a",
 		Content:   "Hello world",
 	})
 
@@ -155,7 +159,7 @@ func TestRenderDetailedLog_WithEvents(t *testing.T) {
 		t.Error("Expected detailed log header")
 	}
 
-	if !strings.Contains(output, "sam_harris") {
+	if !strings.Contains(output, "agent_a") {
 		t.Error("Expected agent name")
 	}
 
@@ -173,12 +177,12 @@ func TestRenderParallelSummary_Sequential(t *testing.T) {
 	now := time.Now()
 
 	// Agent 1 runs then completes
-	tv.AddEvent(&events.Event{Name: "agent_stream_start", Timestamp: now, SourceID: "agent1"})
-	tv.AddEvent(&events.Event{Name: "agent_stream_complete", Timestamp: now.Add(1 * time.Second), SourceID: "agent1"})
+	tv.AddEvent(&events.Event{Name: "agent_stream_start", Kind: events.KindStreamStart, Timestamp: now, SourceID: "agent1"})
+	tv.AddEvent(&events.Event{Name: "agent_stream_complete", Kind: events.KindStreamEnd, Timestamp: now.Add(1 * time.Second), SourceID: "agent1"})
 
 	// Agent 2 starts after agent 1 completes
-	tv.AddEvent(&events.Event{Name: "agent_stream_start", Timestamp: now.Add(2 * time.Second), SourceID: "agent2"})
-	tv.AddEvent(&events.Event{Name: "agent_stream_complete", Timestamp: now.Add(3 * time.Second), SourceID: "agent2"})
+	tv.AddEvent(&events.Event{Name: "agent_stream_start", Kind: events.KindStreamStart, Timestamp: now.Add(2 * time.Second), SourceID: "agent2"})
+	tv.AddEvent(&events.Event{Name: "agent_stream_complete", Kind: events.KindStreamEnd, Timestamp: now.Add(3 * time.Second), SourceID: "agent2"})
 
 	output := tv.RenderParallelSummary()
 
@@ -193,14 +197,14 @@ func TestRenderParallelSummary_Parallel(t *testing.T) {
 	now := time.Now()
 
 	// Agent 1 starts
-	tv.AddEvent(&events.Event{Name: "agent_stream_start", Timestamp: now, SourceID: "agent1"})
+	tv.AddEvent(&events.Event{Name: "agent_stream_start", Kind: events.KindStreamStart, Timestamp: now, SourceID: "agent1"})
 
 	// Agent 2 starts while agent 1 is running
-	tv.AddEvent(&events.Event{Name: "agent_stream_start", Timestamp: now.Add(500 * time.Millisecond), SourceID: "agent2"})
+	tv.AddEvent(&events.Event{Name: "agent_stream_start", Kind: events.KindStreamStart, Timestamp: now.Add(500 * time.Millisecond), SourceID: "agent2"})
 
 	// Both complete
-	tv.AddEvent(&events.Event{Name: "agent_stream_complete", Timestamp: now.Add(2 * time.Second), SourceID: "agent1"})
-	tv.AddEvent(&events.Event{Name: "agent_stream_complete", Timestamp: now.Add(2500 * time.Millisecond), SourceID: "agent2"})
+	tv.AddEvent(&events.Event{Name: "agent_stream_complete", Kind: events.KindStreamEnd, Timestamp: now.Add(2 * time.Second), SourceID: "agent1"})
+	tv.AddEvent(&events.Event{Name: "agent_stream_complete", Kind: events.KindStreamEnd, Timestamp: now.Add(2500 * time.Millisecond), SourceID: "agent2"})
 
 	output := tv.RenderParallelSummary()
 
@@ -214,24 +218,24 @@ func TestRenderParallelSummary_Parallel(t *testing.T) {
 	}
 }
 
+// TestGetAgentColor checks the generic contract getAgentColor must hold
+// for ANY dialect's agent IDs — determinism and a sane empty-ID default
+// — rather than pinning specific persona-name-to-color assignments.
 func TestGetAgentColor(t *testing.T) {
-	tests := []struct {
-		agentID string
-		want    string
-	}{
-		{"sam_harris", "13"},
-		{"tony_robbins", "9"},
-		{"wizard", "11"},
-		{"unknown_agent", "7"}, // Default
+	if got := getAgentColor(""); got != "7" {
+		t.Errorf("expected default gray %q for empty agent ID, got %q", "7", got)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.agentID, func(t *testing.T) {
-			color := getAgentColor(tt.agentID)
-			if color != tt.want {
-				t.Errorf("Expected color %s for %s, got %s", tt.want, tt.agentID, color)
+	for _, id := range []string{"agent_a", "some-agent-from-a-strangers-dialect", "assistant"} {
+		first := getAgentColor(id)
+		if first == "" {
+			t.Errorf("expected a non-empty color for agent %q", id)
+		}
+		for i := 0; i < 5; i++ {
+			if got := getAgentColor(id); got != first {
+				t.Errorf("expected stable color for repeated calls with %q, got %q then %q", id, first, got)
 			}
-		})
+		}
 	}
 }
 
@@ -249,8 +253,8 @@ func TestTimelineEntry_ExtractTimestamps(t *testing.T) {
 			&events.Event{Name: "agent_content", Timestamp: now, SourceID: "test", Content: "data"},
 		},
 		{
-			"WizardContent",
-			&events.Event{Name: "wizard_content", Timestamp: now, SourceID: "wizard", Content: "synthesis"},
+			"AggregatorContent",
+			&events.Event{Name: "synth_content", Kind: events.KindContent, Timestamp: now, SourceID: "aggregator", Content: "synthesis"},
 		},
 		{
 			"Error",

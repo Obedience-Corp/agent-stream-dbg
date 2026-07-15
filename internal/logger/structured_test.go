@@ -61,9 +61,9 @@ func TestLogEvent_AgentContent(t *testing.T) {
 		Name:      "agent_content",
 		Kind:      events.KindContent,
 		Timestamp: time.Now(),
-		SourceID:  "sam_harris",
+		SourceID:  "agent_a",
 		Content:   "test",
-		Raw:       []byte(`{"type":"agent_content","agent_id":"sam_harris","content":"test"}`),
+		Raw:       []byte(`{"type":"agent_content","agent_id":"agent_a","content":"test"}`),
 	}
 
 	err = logger.LogEvent(event)
@@ -73,7 +73,7 @@ func TestLogEvent_AgentContent(t *testing.T) {
 
 	// Verify log files were created
 	eventTypeLog := filepath.Join(tmpDir, "by-event-type", "agent_content.jsonl")
-	agentLog := filepath.Join(tmpDir, "by-agent", "sam_harris.jsonl")
+	agentLog := filepath.Join(tmpDir, "by-agent", "agent_a.jsonl")
 
 	if _, err := os.Stat(eventTypeLog); os.IsNotExist(err) {
 		t.Errorf("Expected event type log file to exist: %s", eventTypeLog)
@@ -84,7 +84,7 @@ func TestLogEvent_AgentContent(t *testing.T) {
 	}
 }
 
-func TestLogEvent_WizardContent(t *testing.T) {
+func TestLogEvent_AggregatorSourceContent(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	cfg := &config.EnhancedConfig{
@@ -100,12 +100,12 @@ func TestLogEvent_WizardContent(t *testing.T) {
 	defer func() { _ = logger.Close() }()
 
 	event := &events.Event{
-		Name:      "wizard_content",
+		Name:      "synth_content",
 		Kind:      events.KindContent,
 		Timestamp: time.Now(),
-		SourceID:  "wizard",
+		SourceID:  "aggregator",
 		Content:   "synthesis",
-		Raw:       []byte(`{"type":"wizard_content","content":"synthesis"}`),
+		Raw:       []byte(`{"type":"synth_content","content":"synthesis"}`),
 	}
 
 	err = logger.LogEvent(event)
@@ -113,10 +113,11 @@ func TestLogEvent_WizardContent(t *testing.T) {
 		t.Fatalf("Failed to log event: %v", err)
 	}
 
-	// Verify wizard log was created
-	wizardLog := filepath.Join(tmpDir, "by-agent", "wizard.jsonl")
-	if _, err := os.Stat(wizardLog); os.IsNotExist(err) {
-		t.Errorf("Expected wizard log file to exist: %s", wizardLog)
+	// Verify the aggregator's own log file was created — same
+	// per-source splitting any agent ID gets, no special case.
+	aggregatorLog := filepath.Join(tmpDir, "by-agent", "aggregator.jsonl")
+	if _, err := os.Stat(aggregatorLog); os.IsNotExist(err) {
+		t.Errorf("Expected aggregator log file to exist: %s", aggregatorLog)
 	}
 }
 
@@ -234,7 +235,7 @@ func TestMultiDimensionalLogging(t *testing.T) {
 	defer func() { _ = logger.Close() }()
 
 	// Log multiple agents
-	agents := []string{"sam_harris", "tony_robbins", "wizard"}
+	agents := []string{"agent_a", "agent_b", "aggregator"}
 	for _, agentID := range agents {
 		event := &events.Event{
 			Name:     "agent_content",
@@ -279,8 +280,8 @@ func TestLogEvent_RespectsDisabledDimensions(t *testing.T) {
 	event := &events.Event{
 		Name:     "agent_content",
 		Kind:     events.KindContent,
-		SourceID: "sam_harris",
-		Raw:      []byte(`{"type":"agent_content","agent_id":"sam_harris"}`),
+		SourceID: "agent_a",
+		Raw:      []byte(`{"type":"agent_content","agent_id":"agent_a"}`),
 	}
 	if err := logger.LogEvent(event); err != nil {
 		t.Fatalf("LogEvent: %v", err)
@@ -290,7 +291,7 @@ func TestLogEvent_RespectsDisabledDimensions(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(tmpDir, "by-event-type", "agent_content.jsonl")); os.IsNotExist(err) {
 		t.Error("expected by-event-type log to exist (dimension enabled)")
 	}
-	if _, err := os.Stat(filepath.Join(tmpDir, "by-agent", "sam_harris.jsonl")); err == nil {
+	if _, err := os.Stat(filepath.Join(tmpDir, "by-agent", "agent_a.jsonl")); err == nil {
 		t.Error("expected by-agent log NOT to exist (dimension disabled)")
 	}
 	sessionFiles, _ := filepath.Glob(filepath.Join(tmpDir, "by-session", "*.jsonl"))
