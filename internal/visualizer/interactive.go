@@ -2921,9 +2921,6 @@ func urlQueryEscape(s string) string { return neturl.QueryEscape(s) }
 func (m InteractiveModel) startStreamingCmd(message string, index int) tea.Cmd {
 	return func() tea.Msg {
 		url := m.cfg.StreamEndpointURL()
-		fmt.Fprintf(os.Stderr, "DEBUG: Calling URL: %s\n", url)
-		fmt.Fprintf(os.Stderr, "DEBUG: BaseURL=%q Endpoint=%q SessionID=%q\n",
-			m.cfg.Backend.BaseURL, m.cfg.Backend.StreamEndpoint, m.cfg.Session.ID)
 
 		requestBody := map[string]interface{}{"message": message, "stream": true}
 		// Pass through stream debug level if set (enables flow_step_detail synthesis output)
