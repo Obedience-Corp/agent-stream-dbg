@@ -259,3 +259,35 @@ rules:
 			grpcEvt.SourceID, grpcEvt.Content, grpcEvt.Seq)
 	}
 }
+
+// TestDiscriminator_Oneof_FindsPopulatedOneofPastFirstDeclared regression-
+// tests the self-review finding on resolveFrame: MultiOneofEvent declares
+// two independent top-level oneofs ("first", "second"); this message
+// populates only the second one. Before the fix, resolveFrame checked only
+// oneofs[0] ("first") and, finding it unpopulated, would resolve an empty
+// name instead of searching "second". discriminator: oneof must find
+// whichever oneof is actually populated, not just the first declared.
+func TestDiscriminator_Oneof_FindsPopulatedOneofPastFirstDeclared(t *testing.T) {
+	srv, err := mockgrpc.New(nil)
+	if err != nil {
+		t.Fatalf("mockgrpc.New: %v", err)
+	}
+	defer srv.Close()
+	srv.SetMultiOneofEvents([]*agentstreampb.MultiOneofEvent{
+		{Second: &agentstreampb.MultiOneofEvent_SecondContent{SecondContent: &agentstreampb.AgentContent{AgentId: "agent_a", Content: "hi"}}},
+	})
+
+	tr := connectStreamingTransport(t, srv.Addr(), Config{
+		Method:        "/agentstream.v1.AgentStream/StreamMultiOneof",
+		Request:       map[string]any{"session_id": "s1"},
+		Discriminator: "oneof",
+	})
+
+	f := <-tr.Frames()
+	if f.Err != nil {
+		t.Fatalf("unexpected frame error: %v", f.Err)
+	}
+	if f.Name != "second_content" {
+		t.Errorf("expected name 'second_content' (the populated oneof, past the unpopulated 'first'), got %q", f.Name)
+	}
+}

@@ -149,7 +149,18 @@ func (t *Transport) readLoop(md *desc.MethodDescriptor, stream *grpcdynamic.Serv
 // break a dialect field path like `source: agent_id` — that path only
 // works flat, exactly like SSE's data: line. Unwrapping is what makes
 // "the same dialect YAML runs over SSE and gRPC unchanged" actually true
-// for the oneof case, not just the happy path on paper.
+// for the oneof case, not just the happy path on paper. A scalar
+// (non-message) oneof member has no fields to unwrap into, so it stays
+// nested under its case name regardless — there's no flatter shape for a
+// single scalar value to take.
+//
+// If the response message declares more than one top-level oneof (the
+// auto-default only ever picks "oneof" mode when there's exactly one,
+// but an explicit discriminator: oneof can still name a message with
+// several), every oneof is checked in declaration order and the first
+// one with a field actually populated wins — not just the first
+// declared — since oneof groups are independent of each other and any
+// of them could be the one a given message actually set.
 func (t *Transport) resolveFrame(md *desc.MethodDescriptor, dm *dynamic.Message) (name string, toMarshal *dynamic.Message) {
 	mode := t.cfg.Discriminator
 	if mode == "" {
@@ -170,9 +181,16 @@ func (t *Transport) resolveFrame(md *desc.MethodDescriptor, dm *dynamic.Message)
 		if len(oneofs) == 0 {
 			return md.GetOutputType().GetFullyQualifiedName(), dm
 		}
-		fd, val := dm.GetOneOfField(oneofs[0])
+		var fd *desc.FieldDescriptor
+		var val any
+		for _, od := range oneofs {
+			if candidateFd, candidateVal := dm.GetOneOfField(od); candidateFd != nil {
+				fd, val = candidateFd, candidateVal
+				break
+			}
+		}
 		if fd == nil {
-			return "", dm // oneof declared but nothing populated — proto3 allows this
+			return "", dm // every oneof declared but nothing populated — proto3 allows this
 		}
 		if inner, ok := val.(*dynamic.Message); ok {
 			return fd.GetName(), inner

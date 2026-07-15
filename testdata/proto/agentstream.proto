@@ -16,10 +16,15 @@ option go_package = "github.com/lancekrogers/stream-debugger/internal/testutil/m
 // of TypedEnvelope for the discriminator: field:type test case, which
 // needs a plain string tag paired with a google.protobuf.Any payload —
 // StreamEvent's oneof can't exercise that shape.
+// StreamMultiOneof exists solely to regression-test discriminator: oneof
+// against a message declaring more than one top-level oneof — resolving
+// must find whichever oneof is actually populated, not just the first
+// one declared.
 service AgentStream {
   rpc Stream(StreamRequest) returns (stream StreamEvent);
   rpc Chat(stream ChatMessage) returns (stream StreamEvent);
   rpc StreamTyped(StreamRequest) returns (stream TypedEnvelope);
+  rpc StreamMultiOneof(StreamRequest) returns (stream MultiOneofEvent);
 }
 
 message StreamRequest {
@@ -64,4 +69,16 @@ message ToolCall {
 message TypedEnvelope {
   string type = 1;
   google.protobuf.Any payload = 2;
+}
+
+// MultiOneofEvent has two independent top-level oneofs — test-only,
+// proving discriminator: oneof resolves whichever one a given message
+// actually populated, not just the first declared.
+message MultiOneofEvent {
+  oneof first {
+    SessionStart first_start = 1;
+  }
+  oneof second {
+    AgentContent second_content = 2;
+  }
 }

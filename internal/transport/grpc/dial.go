@@ -58,12 +58,14 @@ type Config struct {
 	// Discriminator resolves Frame.Name from a decoded message — gRPC's
 	// one genuine impedance mismatch with SSE's native event: name.
 	// One of "oneof" (the populated oneof case's field name — the happy
-	// path), "field:type" (DiscriminatorField's string value), "message_type"
-	// (the response type's full proto name), or "none"/"" (Frame.Name
-	// stays empty; the dialect uses discriminator: auto, same as SSE's
-	// openai.yaml). This is purely a transport-layer concern: the
-	// resolved name feeds the SAME unmodified mapping.Engine a
-	// discriminator: event dialect already expects from any transport.
+	// path; if the response declares more than one top-level oneof, the
+	// first one with a field actually populated wins, checked in
+	// declaration order), "field:type" (DiscriminatorField's string
+	// value), "message_type" (the response type's full proto name), or
+	// "none"/"" (Frame.Name stays empty; the dialect uses discriminator:
+	// auto, same as SSE's openai.yaml). This is purely a transport-layer
+	// concern: the resolved name feeds the SAME unmodified mapping.Engine
+	// a discriminator: event dialect already expects from any transport.
 	Discriminator string
 
 	// DiscriminatorField is the field name Discriminator "field:type"

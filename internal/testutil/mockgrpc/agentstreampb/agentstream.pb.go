@@ -443,6 +443,105 @@ func (x *TypedEnvelope) GetPayload() *anypb.Any {
 	return nil
 }
 
+// MultiOneofEvent has two independent top-level oneofs — test-only,
+// proving discriminator: oneof resolves whichever one a given message
+// actually populated, not just the first declared.
+type MultiOneofEvent struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to First:
+	//
+	//	*MultiOneofEvent_FirstStart
+	First isMultiOneofEvent_First `protobuf_oneof:"first"`
+	// Types that are valid to be assigned to Second:
+	//
+	//	*MultiOneofEvent_SecondContent
+	Second        isMultiOneofEvent_Second `protobuf_oneof:"second"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MultiOneofEvent) Reset() {
+	*x = MultiOneofEvent{}
+	mi := &file_agentstream_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MultiOneofEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MultiOneofEvent) ProtoMessage() {}
+
+func (x *MultiOneofEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_agentstream_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MultiOneofEvent.ProtoReflect.Descriptor instead.
+func (*MultiOneofEvent) Descriptor() ([]byte, []int) {
+	return file_agentstream_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *MultiOneofEvent) GetFirst() isMultiOneofEvent_First {
+	if x != nil {
+		return x.First
+	}
+	return nil
+}
+
+func (x *MultiOneofEvent) GetFirstStart() *SessionStart {
+	if x != nil {
+		if x, ok := x.First.(*MultiOneofEvent_FirstStart); ok {
+			return x.FirstStart
+		}
+	}
+	return nil
+}
+
+func (x *MultiOneofEvent) GetSecond() isMultiOneofEvent_Second {
+	if x != nil {
+		return x.Second
+	}
+	return nil
+}
+
+func (x *MultiOneofEvent) GetSecondContent() *AgentContent {
+	if x != nil {
+		if x, ok := x.Second.(*MultiOneofEvent_SecondContent); ok {
+			return x.SecondContent
+		}
+	}
+	return nil
+}
+
+type isMultiOneofEvent_First interface {
+	isMultiOneofEvent_First()
+}
+
+type MultiOneofEvent_FirstStart struct {
+	FirstStart *SessionStart `protobuf:"bytes,1,opt,name=first_start,json=firstStart,proto3,oneof"`
+}
+
+func (*MultiOneofEvent_FirstStart) isMultiOneofEvent_First() {}
+
+type isMultiOneofEvent_Second interface {
+	isMultiOneofEvent_Second()
+}
+
+type MultiOneofEvent_SecondContent struct {
+	SecondContent *AgentContent `protobuf:"bytes,2,opt,name=second_content,json=secondContent,proto3,oneof"`
+}
+
+func (*MultiOneofEvent_SecondContent) isMultiOneofEvent_Second() {}
+
 var File_agentstream_proto protoreflect.FileDescriptor
 
 const file_agentstream_proto_rawDesc = "" +
@@ -472,11 +571,18 @@ const file_agentstream_proto_rawDesc = "" +
 	"\targuments\x18\x03 \x01(\tR\targuments\"S\n" +
 	"\rTypedEnvelope\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12.\n" +
-	"\apayload\x18\x02 \x01(\v2\x14.google.protobuf.AnyR\apayload2\xea\x01\n" +
+	"\apayload\x18\x02 \x01(\v2\x14.google.protobuf.AnyR\apayload\"\xac\x01\n" +
+	"\x0fMultiOneofEvent\x12?\n" +
+	"\vfirst_start\x18\x01 \x01(\v2\x1c.agentstream.v1.SessionStartH\x00R\n" +
+	"firstStart\x12E\n" +
+	"\x0esecond_content\x18\x02 \x01(\v2\x1c.agentstream.v1.AgentContentH\x01R\rsecondContentB\a\n" +
+	"\x05firstB\b\n" +
+	"\x06second2\xc0\x02\n" +
 	"\vAgentStream\x12F\n" +
 	"\x06Stream\x12\x1d.agentstream.v1.StreamRequest\x1a\x1b.agentstream.v1.StreamEvent0\x01\x12D\n" +
 	"\x04Chat\x12\x1b.agentstream.v1.ChatMessage\x1a\x1b.agentstream.v1.StreamEvent(\x010\x01\x12M\n" +
-	"\vStreamTyped\x12\x1d.agentstream.v1.StreamRequest\x1a\x1d.agentstream.v1.TypedEnvelope0\x01BRZPgithub.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc/agentstreampbb\x06proto3"
+	"\vStreamTyped\x12\x1d.agentstream.v1.StreamRequest\x1a\x1d.agentstream.v1.TypedEnvelope0\x01\x12T\n" +
+	"\x10StreamMultiOneof\x12\x1d.agentstream.v1.StreamRequest\x1a\x1f.agentstream.v1.MultiOneofEvent0\x01BRZPgithub.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc/agentstreampbb\x06proto3"
 
 var (
 	file_agentstream_proto_rawDescOnce sync.Once
@@ -490,33 +596,38 @@ func file_agentstream_proto_rawDescGZIP() []byte {
 	return file_agentstream_proto_rawDescData
 }
 
-var file_agentstream_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_agentstream_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_agentstream_proto_goTypes = []any{
-	(*StreamRequest)(nil), // 0: agentstream.v1.StreamRequest
-	(*ChatMessage)(nil),   // 1: agentstream.v1.ChatMessage
-	(*StreamEvent)(nil),   // 2: agentstream.v1.StreamEvent
-	(*SessionStart)(nil),  // 3: agentstream.v1.SessionStart
-	(*AgentContent)(nil),  // 4: agentstream.v1.AgentContent
-	(*ToolCall)(nil),      // 5: agentstream.v1.ToolCall
-	(*TypedEnvelope)(nil), // 6: agentstream.v1.TypedEnvelope
-	(*anypb.Any)(nil),     // 7: google.protobuf.Any
+	(*StreamRequest)(nil),   // 0: agentstream.v1.StreamRequest
+	(*ChatMessage)(nil),     // 1: agentstream.v1.ChatMessage
+	(*StreamEvent)(nil),     // 2: agentstream.v1.StreamEvent
+	(*SessionStart)(nil),    // 3: agentstream.v1.SessionStart
+	(*AgentContent)(nil),    // 4: agentstream.v1.AgentContent
+	(*ToolCall)(nil),        // 5: agentstream.v1.ToolCall
+	(*TypedEnvelope)(nil),   // 6: agentstream.v1.TypedEnvelope
+	(*MultiOneofEvent)(nil), // 7: agentstream.v1.MultiOneofEvent
+	(*anypb.Any)(nil),       // 8: google.protobuf.Any
 }
 var file_agentstream_proto_depIdxs = []int32{
-	3, // 0: agentstream.v1.StreamEvent.session_start:type_name -> agentstream.v1.SessionStart
-	4, // 1: agentstream.v1.StreamEvent.agent_content:type_name -> agentstream.v1.AgentContent
-	5, // 2: agentstream.v1.StreamEvent.tool_call:type_name -> agentstream.v1.ToolCall
-	7, // 3: agentstream.v1.TypedEnvelope.payload:type_name -> google.protobuf.Any
-	0, // 4: agentstream.v1.AgentStream.Stream:input_type -> agentstream.v1.StreamRequest
-	1, // 5: agentstream.v1.AgentStream.Chat:input_type -> agentstream.v1.ChatMessage
-	0, // 6: agentstream.v1.AgentStream.StreamTyped:input_type -> agentstream.v1.StreamRequest
-	2, // 7: agentstream.v1.AgentStream.Stream:output_type -> agentstream.v1.StreamEvent
-	2, // 8: agentstream.v1.AgentStream.Chat:output_type -> agentstream.v1.StreamEvent
-	6, // 9: agentstream.v1.AgentStream.StreamTyped:output_type -> agentstream.v1.TypedEnvelope
-	7, // [7:10] is the sub-list for method output_type
-	4, // [4:7] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	3,  // 0: agentstream.v1.StreamEvent.session_start:type_name -> agentstream.v1.SessionStart
+	4,  // 1: agentstream.v1.StreamEvent.agent_content:type_name -> agentstream.v1.AgentContent
+	5,  // 2: agentstream.v1.StreamEvent.tool_call:type_name -> agentstream.v1.ToolCall
+	8,  // 3: agentstream.v1.TypedEnvelope.payload:type_name -> google.protobuf.Any
+	3,  // 4: agentstream.v1.MultiOneofEvent.first_start:type_name -> agentstream.v1.SessionStart
+	4,  // 5: agentstream.v1.MultiOneofEvent.second_content:type_name -> agentstream.v1.AgentContent
+	0,  // 6: agentstream.v1.AgentStream.Stream:input_type -> agentstream.v1.StreamRequest
+	1,  // 7: agentstream.v1.AgentStream.Chat:input_type -> agentstream.v1.ChatMessage
+	0,  // 8: agentstream.v1.AgentStream.StreamTyped:input_type -> agentstream.v1.StreamRequest
+	0,  // 9: agentstream.v1.AgentStream.StreamMultiOneof:input_type -> agentstream.v1.StreamRequest
+	2,  // 10: agentstream.v1.AgentStream.Stream:output_type -> agentstream.v1.StreamEvent
+	2,  // 11: agentstream.v1.AgentStream.Chat:output_type -> agentstream.v1.StreamEvent
+	6,  // 12: agentstream.v1.AgentStream.StreamTyped:output_type -> agentstream.v1.TypedEnvelope
+	7,  // 13: agentstream.v1.AgentStream.StreamMultiOneof:output_type -> agentstream.v1.MultiOneofEvent
+	10, // [10:14] is the sub-list for method output_type
+	6,  // [6:10] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_agentstream_proto_init() }
@@ -529,13 +640,17 @@ func file_agentstream_proto_init() {
 		(*StreamEvent_AgentContent)(nil),
 		(*StreamEvent_ToolCall)(nil),
 	}
+	file_agentstream_proto_msgTypes[7].OneofWrappers = []any{
+		(*MultiOneofEvent_FirstStart)(nil),
+		(*MultiOneofEvent_SecondContent)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agentstream_proto_rawDesc), len(file_agentstream_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

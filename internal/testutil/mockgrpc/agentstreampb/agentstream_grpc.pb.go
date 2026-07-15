@@ -24,9 +24,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AgentStream_Stream_FullMethodName      = "/agentstream.v1.AgentStream/Stream"
-	AgentStream_Chat_FullMethodName        = "/agentstream.v1.AgentStream/Chat"
-	AgentStream_StreamTyped_FullMethodName = "/agentstream.v1.AgentStream/StreamTyped"
+	AgentStream_Stream_FullMethodName           = "/agentstream.v1.AgentStream/Stream"
+	AgentStream_Chat_FullMethodName             = "/agentstream.v1.AgentStream/Chat"
+	AgentStream_StreamTyped_FullMethodName      = "/agentstream.v1.AgentStream/StreamTyped"
+	AgentStream_StreamMultiOneof_FullMethodName = "/agentstream.v1.AgentStream/StreamMultiOneof"
 )
 
 // AgentStreamClient is the client API for AgentStream service.
@@ -39,10 +40,15 @@ const (
 // of TypedEnvelope for the discriminator: field:type test case, which
 // needs a plain string tag paired with a google.protobuf.Any payload —
 // StreamEvent's oneof can't exercise that shape.
+// StreamMultiOneof exists solely to regression-test discriminator: oneof
+// against a message declaring more than one top-level oneof — resolving
+// must find whichever oneof is actually populated, not just the first
+// one declared.
 type AgentStreamClient interface {
 	Stream(ctx context.Context, in *StreamRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamEvent], error)
 	Chat(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ChatMessage, StreamEvent], error)
 	StreamTyped(ctx context.Context, in *StreamRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TypedEnvelope], error)
+	StreamMultiOneof(ctx context.Context, in *StreamRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[MultiOneofEvent], error)
 }
 
 type agentStreamClient struct {
@@ -104,6 +110,25 @@ func (c *agentStreamClient) StreamTyped(ctx context.Context, in *StreamRequest, 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type AgentStream_StreamTypedClient = grpc.ServerStreamingClient[TypedEnvelope]
 
+func (c *agentStreamClient) StreamMultiOneof(ctx context.Context, in *StreamRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[MultiOneofEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &AgentStream_ServiceDesc.Streams[3], AgentStream_StreamMultiOneof_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[StreamRequest, MultiOneofEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AgentStream_StreamMultiOneofClient = grpc.ServerStreamingClient[MultiOneofEvent]
+
 // AgentStreamServer is the server API for AgentStream service.
 // All implementations must embed UnimplementedAgentStreamServer
 // for forward compatibility.
@@ -114,10 +139,15 @@ type AgentStream_StreamTypedClient = grpc.ServerStreamingClient[TypedEnvelope]
 // of TypedEnvelope for the discriminator: field:type test case, which
 // needs a plain string tag paired with a google.protobuf.Any payload —
 // StreamEvent's oneof can't exercise that shape.
+// StreamMultiOneof exists solely to regression-test discriminator: oneof
+// against a message declaring more than one top-level oneof — resolving
+// must find whichever oneof is actually populated, not just the first
+// one declared.
 type AgentStreamServer interface {
 	Stream(*StreamRequest, grpc.ServerStreamingServer[StreamEvent]) error
 	Chat(grpc.BidiStreamingServer[ChatMessage, StreamEvent]) error
 	StreamTyped(*StreamRequest, grpc.ServerStreamingServer[TypedEnvelope]) error
+	StreamMultiOneof(*StreamRequest, grpc.ServerStreamingServer[MultiOneofEvent]) error
 	mustEmbedUnimplementedAgentStreamServer()
 }
 
@@ -136,6 +166,9 @@ func (UnimplementedAgentStreamServer) Chat(grpc.BidiStreamingServer[ChatMessage,
 }
 func (UnimplementedAgentStreamServer) StreamTyped(*StreamRequest, grpc.ServerStreamingServer[TypedEnvelope]) error {
 	return status.Error(codes.Unimplemented, "method StreamTyped not implemented")
+}
+func (UnimplementedAgentStreamServer) StreamMultiOneof(*StreamRequest, grpc.ServerStreamingServer[MultiOneofEvent]) error {
+	return status.Error(codes.Unimplemented, "method StreamMultiOneof not implemented")
 }
 func (UnimplementedAgentStreamServer) mustEmbedUnimplementedAgentStreamServer() {}
 func (UnimplementedAgentStreamServer) testEmbeddedByValue()                     {}
@@ -187,6 +220,17 @@ func _AgentStream_StreamTyped_Handler(srv interface{}, stream grpc.ServerStream)
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type AgentStream_StreamTypedServer = grpc.ServerStreamingServer[TypedEnvelope]
 
+func _AgentStream_StreamMultiOneof_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(StreamRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(AgentStreamServer).StreamMultiOneof(m, &grpc.GenericServerStream[StreamRequest, MultiOneofEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AgentStream_StreamMultiOneofServer = grpc.ServerStreamingServer[MultiOneofEvent]
+
 // AgentStream_ServiceDesc is the grpc.ServiceDesc for AgentStream service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -209,6 +253,11 @@ var AgentStream_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "StreamTyped",
 			Handler:       _AgentStream_StreamTyped_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "StreamMultiOneof",
+			Handler:       _AgentStream_StreamMultiOneof_Handler,
 			ServerStreams: true,
 		},
 	},

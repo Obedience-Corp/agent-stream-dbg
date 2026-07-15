@@ -37,6 +37,7 @@ type Server struct {
 
 	events           []*agentstreampb.StreamEvent
 	typedEvents      []*agentstreampb.TypedEnvelope
+	multiOneofEvents []*agentstreampb.MultiOneofEvent
 	skipReflection   bool
 	grpcServer       *grpc.Server
 	listener         net.Listener
@@ -144,6 +145,25 @@ func (s *Server) SetTypedEvents(events []*agentstreampb.TypedEnvelope) {
 func (s *Server) StreamTyped(req *agentstreampb.StreamRequest, stream grpc.ServerStreamingServer[agentstreampb.TypedEnvelope]) error {
 	s.captureMetadata(stream.Context())
 	for _, evt := range s.typedEvents {
+		if err := stream.Send(evt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SetMultiOneofEvents scripts the sequence StreamMultiOneof replays —
+// for regression-testing discriminator: oneof against a message with
+// more than one top-level oneof.
+func (s *Server) SetMultiOneofEvents(events []*agentstreampb.MultiOneofEvent) {
+	s.multiOneofEvents = events
+}
+
+// StreamMultiOneof implements agentstreampb.AgentStreamServer: replays
+// the scripted MultiOneofEvent sequence verbatim, in order.
+func (s *Server) StreamMultiOneof(req *agentstreampb.StreamRequest, stream grpc.ServerStreamingServer[agentstreampb.MultiOneofEvent]) error {
+	s.captureMetadata(stream.Context())
+	for _, evt := range s.multiOneofEvents {
 		if err := stream.Send(evt); err != nil {
 			return err
 		}
