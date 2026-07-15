@@ -1,0 +1,5 @@
+{"session_id":"demo-grpc","type":"session_start"}
+{"agent_id":"agent_a","content":"Let me check the weather.","sequence":1,"type":"agent_content"}
+{"agent_id":"agent_a","arguments":"{\"city\":\"Denver\"}","tool_name":"get_weather","type":"tool_call"}
+{"agent_id":"agent_a","content":"It's sunny in Denver.","sequence":2,"type":"agent_content"}
+{"code":"OK","message":"","trailers":{"trace-id":"demo-trace-001"},"type":"grpc_status"}
