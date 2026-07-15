@@ -143,6 +143,11 @@ type InteractiveModel struct {
 
 	// Save status message
 	saveStatus string
+
+	// dialectFlow resolves stage order (and, later, lane roles) from the
+	// loaded dialect's flow: spec, or derives them live from observed
+	// events when it declared none.
+	dialectFlow flowState
 }
 
 type Message struct {
@@ -205,6 +210,7 @@ func NewInteractiveModel(cfg *config.EnhancedConfig) InteractiveModel {
 		// Events pane expandable nodes
 		eventExpanded:    make(map[int]bool),
 		selectedEventIdx: 0,
+		dialectFlow:      newFlowState(),
 	}
 	// Set an initial placeholder so the viewport isn't blank before first refresh
 	m.viewport.SetContent(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
@@ -505,7 +511,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				// Flow pane: toggle expand/collapse
 				if m.activePane == PaneFlow {
-					steps := []string{"routing", "discovery", "agent_exec", "filter", "synthesis", "wizard"}
+					steps := m.dialectFlow.stages()
 					if m.selectedStepIndex < len(steps) {
 						step := steps[m.selectedStepIndex]
 						m.flowExpanded[step] = !m.flowExpanded[step]
@@ -522,7 +528,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "o":
 				// Flow pane: open in App pane with focus on selected step's content
 				if m.activePane == PaneFlow {
-					steps := []string{"routing", "discovery", "agent_exec", "filter", "synthesis", "wizard"}
+					steps := m.dialectFlow.stages()
 					if m.selectedStepIndex < len(steps) {
 						step := steps[m.selectedStepIndex]
 						switch step {
@@ -1002,6 +1008,8 @@ func (m *InteractiveModel) incrementalParseSSE(chunk []byte) {
 
 // applyParsedEvent updates agent responses incrementally from a parsed event
 func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
+	m.dialectFlow.observe(evt)
+
 	idx := m.streamIndex
 	if idx >= len(m.messages) {
 		return
@@ -1435,7 +1443,7 @@ func (m InteractiveModel) renderFlowPane() string {
 	}
 
 	nodes := m.buildFlowNodes(msg.Events)
-	steps := []string{"routing", "discovery", "agent_exec", "filter", "synthesis", "wizard"}
+	steps := m.dialectFlow.stages()
 
 	// Header detail: show turn index for context
 	b.WriteString(dimStyle.Render(fmt.Sprintf("Turn %d of %d  ([ ] to navigate)", turn+1, len(m.messages))))
@@ -1596,7 +1604,7 @@ func (m InteractiveModel) renderFlowAllPane() string {
 		}
 
 		// Step rows
-		steps := []string{"routing", "discovery", "agent_exec", "filter", "synthesis", "wizard"}
+		steps := m.dialectFlow.stages()
 		for _, step := range steps {
 			n := nodes[step]
 			if n == nil {
@@ -1985,7 +1993,7 @@ func (m InteractiveModel) renderTimelinePane() string {
 
 	// Show stage durations from flow events
 	nodes := m.buildFlowNodes(msg.Events)
-	stages := []string{"routing", "discovery", "agent_exec", "filter", "synthesis", "wizard"}
+	stages := m.dialectFlow.stages()
 
 	b.WriteString(lipgloss.NewStyle().Bold(true).Render("Stages"))
 	b.WriteString("\n")

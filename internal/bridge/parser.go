@@ -90,3 +90,11 @@ func RenderSend(vars mapping.InterpolationVars) (method, url string, body []byte
 func RunSetup(ctx context.Context, vars mapping.InterpolationVars, headers map[string]string, httpClient *http.Client) (string, error) {
 	return mapping.RunSetup(ctx, engine().Setup, vars, headers, httpClient)
 }
+
+// Flow returns the loaded dialect's flow: spec, nil if it declared none
+// — internal/visualizer's flow view derives lanes/stages/roles instead
+// when this is nil (see mapping.FlowDeriver), rather than treating a nil
+// FlowSpec as an empty-but-declared one.
+func Flow() *mapping.FlowSpec {
+	return engine().Flow
+}

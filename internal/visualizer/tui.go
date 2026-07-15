@@ -54,6 +54,11 @@ type Model struct {
 	// Prompt/Flow debug info (debug mode only)
 	promptInfo map[string]*PromptInfoState // agent_id -> prompt info
 	flowConfig *FlowConfigState
+
+	// dialectFlow resolves stage order (and, later, lane roles) from the
+	// loaded dialect's flow: spec, or derives them live from observed
+	// events when it declared none.
+	dialectFlow flowState
 }
 
 // AgentState tracks the state of a single agent
@@ -144,6 +149,7 @@ func NewModel(cfg *config.EnhancedConfig, sseClient *client.SSEClient, structure
 		startTime:     time.Now(),
 		flow:          make(map[string]*FlowStepStatus),
 		promptInfo:    make(map[string]*PromptInfoState),
+		dialectFlow:   newFlowState(),
 	}
 }
 
@@ -445,6 +451,7 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 	}
 
 	m.totalEvents++
+	m.dialectFlow.observe(event)
 
 	// Log event to structured logger (errors are silently ignored)
 	_ = m.logger.LogEvent(event)
@@ -589,8 +596,10 @@ func (m *Model) renderFlowStatus() string {
 		return ""
 	}
 
-	// Order of steps to show
-	steps := []string{"routing", "discovery", "agent_exec", "synthesis", "wizard"}
+	// Order of steps to show — from the dialect's flow: spec (declared
+	// or derived), not a hardcoded literal that can drift out of sync
+	// with interactive.go's own copy.
+	steps := m.dialectFlow.stages()
 	var parts []string
 
 	for _, step := range steps {
