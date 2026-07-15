@@ -14,7 +14,8 @@ import (
 
 // YAMLConfig represents the full YAML configuration structure
 type YAMLConfig struct {
-	Backend struct {
+	Transport struct {
+		Type           string `yaml:"type"` // sse (only supported today; grpc/replay land in 006)
 		BaseURL        string `yaml:"base_url"`
 		StreamEndpoint struct {
 			URL     string            `yaml:"url"`
@@ -28,7 +29,18 @@ type YAMLConfig struct {
 				PasswordEnv string `yaml:"password_env"`
 			} `yaml:"auth"`
 		} `yaml:"stream_endpoint"`
-	} `yaml:"backend"`
+	} `yaml:"transport"`
+
+	// Dialect declares which mapping file interprets this system's frames.
+	// Not yet loaded — the mapping engine lands in phase 004. Declared now so
+	// run configs don't need a second migration when it does.
+	Dialect struct {
+		File string `yaml:"file"`
+	} `yaml:"dialect"`
+
+	// Vars are user-defined values available for interpolation in a
+	// dialect's setup:/send: templates (phase 004).
+	Vars map[string]string `yaml:"vars"`
 
 	Session struct {
 		ID            string   `yaml:"id"`
@@ -75,25 +87,33 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 		return nil, fmt.Errorf("failed to parse YAML config %s: %w", configPath, err)
 	}
 
+	transportType := yamlCfg.Transport.Type
+	if transportType == "" {
+		transportType = "sse"
+	}
+	if transportType != "sse" {
+		return nil, fmt.Errorf("unknown transport.type %q (only %q is currently supported; grpc and replay arrive in later phases)", transportType, "sse")
+	}
+
 	// Load environment variables (for secrets like API_KEY)
 	_ = godotenv.Load()
 
 	// Resolve the token unconditionally: bearer/api_key require it, but other
 	// clients (session auto-setup, config API) still read cfg.APIKey directly.
-	tokenEnv := yamlCfg.Backend.StreamEndpoint.Auth.TokenEnv
+	tokenEnv := yamlCfg.Transport.StreamEndpoint.Auth.TokenEnv
 	apiKey := os.Getenv(tokenEnv)
 	if apiKey == "" {
 		apiKey = os.Getenv("API_KEY") // Fallback
 	}
 
-	authType := yamlCfg.Backend.StreamEndpoint.Auth.Type
+	authType := yamlCfg.Transport.StreamEndpoint.Auth.Type
 	if authType == "" {
 		authType = "bearer"
 	}
 
 	auth := AuthConfig{
 		Type:       authType,
-		HeaderName: yamlCfg.Backend.StreamEndpoint.Auth.HeaderName,
+		HeaderName: yamlCfg.Transport.StreamEndpoint.Auth.HeaderName,
 		Token:      apiKey,
 	}
 
@@ -107,11 +127,11 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 			return nil, fmt.Errorf("%s environment variable not set", envName)
 		}
 	case "basic":
-		auth.Username = os.Getenv(yamlCfg.Backend.StreamEndpoint.Auth.UsernameEnv)
-		auth.Password = os.Getenv(yamlCfg.Backend.StreamEndpoint.Auth.PasswordEnv)
+		auth.Username = os.Getenv(yamlCfg.Transport.StreamEndpoint.Auth.UsernameEnv)
+		auth.Password = os.Getenv(yamlCfg.Transport.StreamEndpoint.Auth.PasswordEnv)
 		if auth.Username == "" || auth.Password == "" {
 			return nil, fmt.Errorf("basic auth requires %s and %s environment variables",
-				yamlCfg.Backend.StreamEndpoint.Auth.UsernameEnv, yamlCfg.Backend.StreamEndpoint.Auth.PasswordEnv)
+				yamlCfg.Transport.StreamEndpoint.Auth.UsernameEnv, yamlCfg.Transport.StreamEndpoint.Auth.PasswordEnv)
 		}
 	case "none":
 		// No credentials required.
@@ -132,13 +152,15 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 
 	// Build enhanced config
 	cfg := &EnhancedConfig{
-		Backend: BackendConfig{
-			BaseURL:        yamlCfg.Backend.BaseURL,
-			StreamEndpoint: yamlCfg.Backend.StreamEndpoint.URL,
-			Method:         yamlCfg.Backend.StreamEndpoint.Method,
-			Headers:        yamlCfg.Backend.StreamEndpoint.Headers,
+		Transport: TransportConfig{
+			BaseURL:        yamlCfg.Transport.BaseURL,
+			StreamEndpoint: yamlCfg.Transport.StreamEndpoint.URL,
+			Method:         yamlCfg.Transport.StreamEndpoint.Method,
+			Headers:        yamlCfg.Transport.StreamEndpoint.Headers,
 			Auth:           auth,
 		},
+		Dialect: DialectConfig{File: yamlCfg.Dialect.File},
+		Vars:    yamlCfg.Vars,
 		Session: SessionConfig{
 			ID:            sessionID,
 			AutoSetup:     yamlCfg.Session.AutoSetup,
@@ -178,13 +200,15 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 
 // EnhancedConfig is the unified configuration structure
 type EnhancedConfig struct {
-	Backend BackendConfig
-	Session SessionConfig
-	Display *DisplayConfig
-	Events  EventsConfig
-	Logging LoggingConfig
-	APIKey  string
-	Debug   DebugConfig
+	Transport TransportConfig
+	Dialect   DialectConfig
+	Vars      map[string]string
+	Session   SessionConfig
+	Display   *DisplayConfig
+	Events    EventsConfig
+	Logging   LoggingConfig
+	APIKey    string
+	Debug     DebugConfig
 
 	// Logging
 	LogDir string
@@ -207,8 +231,8 @@ type DebugConfig struct {
 	Level string `yaml:"level"`
 }
 
-// BackendConfig holds backend API configuration
-type BackendConfig struct {
+// TransportConfig holds transport-level connection configuration.
+type TransportConfig struct {
 	BaseURL        string
 	StreamEndpoint string
 	Method         string
@@ -216,15 +240,21 @@ type BackendConfig struct {
 	Auth           AuthConfig
 }
 
-// ResolvedHeaders returns backend.headers merged with the resolved
+// ResolvedHeaders returns transport.headers merged with the resolved
 // authentication header (if any), ready to attach to an outgoing request.
-func (b BackendConfig) ResolvedHeaders() map[string]string {
-	h := make(map[string]string, len(b.Headers)+1)
-	maps.Copy(h, b.Headers)
-	if name, value, ok := b.Auth.Header(); ok {
+func (t TransportConfig) ResolvedHeaders() map[string]string {
+	h := make(map[string]string, len(t.Headers)+1)
+	maps.Copy(h, t.Headers)
+	if name, value, ok := t.Auth.Header(); ok {
 		h[name] = value
 	}
 	return h
+}
+
+// DialectConfig declares which mapping file interprets this system's
+// frames. Not yet loaded by this phase — see YAMLConfig.Dialect.
+type DialectConfig struct {
+	File string
 }
 
 // AuthConfig holds resolved authentication settings for backend requests.
@@ -297,26 +327,20 @@ type EventsConfig struct {
 // StreamEndpointURL returns the full streaming endpoint URL
 func (c *EnhancedConfig) StreamEndpointURL() string {
 	// Replace {session_id} placeholder
-	endpoint := c.Backend.StreamEndpoint
+	endpoint := c.Transport.StreamEndpoint
 	sessionID := c.Session.ID
 
 	// Simple string replacement for {session_id}
 	endpoint = strings.Replace(endpoint, "{session_id}", sessionID, 1)
 
-	return fmt.Sprintf("%s%s", c.Backend.BaseURL, endpoint)
+	return fmt.Sprintf("%s%s", c.Transport.BaseURL, endpoint)
 }
 
-// Normalize fills in sensible defaults for missing endpoints
+// Normalize fills in generic (non-system-specific) defaults. It no longer
+// injects Brainyard's base URL or endpoint paths — those belong in a run
+// config (or, from phase 004, the dialect's setup:/send: templates), not in
+// library code that claims to be system-agnostic.
 func (c *EnhancedConfig) Normalize() {
-	if c.Backend.BaseURL == "" {
-		c.Backend.BaseURL = "http://localhost:5003"
-	}
-	if c.Session.SetupEndpoint == "" {
-		c.Session.SetupEndpoint = "/api/v3/debug/session"
-	}
-	if c.Backend.StreamEndpoint == "" {
-		c.Backend.StreamEndpoint = "/api/v3/sessions/{session_id}/stream"
-	}
 	if c.LogDir == "" {
 		c.LogDir = "./logs"
 	}

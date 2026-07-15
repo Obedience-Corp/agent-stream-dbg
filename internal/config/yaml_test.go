@@ -26,7 +26,7 @@ func TestLoadConfigFile_StrictUnknownFields(t *testing.T) {
 		{
 			name: "typo'd top-level key",
 			yaml: `
-backend:
+transport:
   base_url: "http://localhost:8080"
   stream_endpoint:
     url: "/api/stream"
@@ -40,7 +40,7 @@ sesion:
 		{
 			name: "typo'd nested key",
 			yaml: `
-backend:
+transport:
   base_url: "http://localhost:8080"
   stream_endpoint:
     url: "/api/stream"
@@ -79,7 +79,7 @@ func TestLoadConfigFile_ValidConfigLoads(t *testing.T) {
 	defer func() { _ = os.Unsetenv("API_KEY") }()
 
 	path := writeYAMLConfig(t, `
-backend:
+transport:
   base_url: "http://localhost:8080"
   stream_endpoint:
     url: "/api/stream"
@@ -95,8 +95,8 @@ session:
 	if err != nil {
 		t.Fatalf("unexpected error loading valid config: %v", err)
 	}
-	if cfg.Backend.BaseURL != "http://localhost:8080" {
-		t.Errorf("expected base_url to load, got %q", cfg.Backend.BaseURL)
+	if cfg.Transport.BaseURL != "http://localhost:8080" {
+		t.Errorf("expected base_url to load, got %q", cfg.Transport.BaseURL)
 	}
 	if cfg.APIKey != "test-key" {
 		t.Errorf("expected APIKey from env, got %q", cfg.APIKey)

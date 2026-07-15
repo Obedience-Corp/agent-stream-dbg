@@ -2925,7 +2925,7 @@ func (m InteractiveModel) startStreamingCmd(message string, index int) tea.Cmd {
 			return streamErrorMsg{err: fmt.Errorf("failed to create request: %w", err)}
 		}
 		req.Header.Set("Content-Type", "application/json")
-		for k, v := range m.cfg.Backend.ResolvedHeaders() {
+		for k, v := range m.cfg.Transport.ResolvedHeaders() {
 			req.Header.Set(k, v)
 		}
 		req.Header.Set("Accept", "text/event-stream")
@@ -2948,7 +2948,7 @@ func (m InteractiveModel) startStreamingCmd(message string, index int) tea.Cmd {
 				cancel() // Cancel context on error to avoid leak
 				return streamErrorMsg{err: fmt.Errorf("failed to create GET request: %w", err)}
 			}
-			for k, v := range m.cfg.Backend.ResolvedHeaders() {
+			for k, v := range m.cfg.Transport.ResolvedHeaders() {
 				req.Header.Set(k, v)
 			}
 			req.Header.Set("Accept", "text/event-stream")

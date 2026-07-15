@@ -45,7 +45,7 @@ func NewSessionSetupClient(cfg *config.EnhancedConfig, apiKey string) *SessionSe
 func (c *SessionSetupClient) CreateOrGetSession() (*SessionSetupResponse, error) {
 	// Build the setup endpoint URL
 	url := fmt.Sprintf("%s%s",
-		c.config.Backend.BaseURL,
+		c.config.Transport.BaseURL,
 		c.config.Session.SetupEndpoint,
 	)
 

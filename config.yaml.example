@@ -1,7 +1,12 @@
 # Stream Debugger Configuration
+#
+# This is a RUN config: it says how to connect (transport) and, once the
+# dialect engine lands, what the bytes mean (dialect). It never encodes
+# any one system's defaults — every value below must be set explicitly.
 
-# Backend API Configuration
-backend:
+# Transport: how bytes arrive. Only "sse" is supported today.
+transport:
+  type: "sse"
   base_url: "http://localhost:5003"
 
   # How to initiate streaming
@@ -26,6 +31,15 @@ backend:
       # For basic type:
       # username_env: "API_USERNAME"
       # password_env: "API_PASSWORD"
+
+# Dialect: what the bytes mean. Not yet loaded (the mapping engine lands in
+# phase 004) — declared now so run configs don't need a second migration.
+# dialect:
+#   file: "dialects/generic.yaml"
+
+# Vars: user-defined values available for interpolation in a dialect's
+# setup:/send: templates (phase 004).
+# vars: {}
 
 # Session Configuration
 session:

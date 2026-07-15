@@ -22,14 +22,14 @@ func NewConfigAPIClient(cfg *config.EnhancedConfig) *ConfigAPIClient {
 
 // GetFlowVizConfig fetches the current flow visualization config
 func (c *ConfigAPIClient) GetFlowVizConfig() ([]byte, int, error) {
-	url := fmt.Sprintf("%s/api/flow-viz-config", c.config.Backend.BaseURL)
+	url := fmt.Sprintf("%s/api/flow-viz-config", c.config.Transport.BaseURL)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	for k, v := range c.config.Backend.ResolvedHeaders() {
+	for k, v := range c.config.Transport.ResolvedHeaders() {
 		req.Header.Set(k, v)
 	}
 	req.Header.Set("Accept", "application/json")
@@ -51,14 +51,14 @@ func (c *ConfigAPIClient) GetFlowVizConfig() ([]byte, int, error) {
 
 // ReloadPrompts triggers a prompt reload and returns validation results
 func (c *ConfigAPIClient) ReloadPrompts() ([]byte, int, error) {
-	url := fmt.Sprintf("%s/api/reload-prompts", c.config.Backend.BaseURL)
+	url := fmt.Sprintf("%s/api/reload-prompts", c.config.Transport.BaseURL)
 
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer([]byte("{}")))
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	for k, v := range c.config.Backend.ResolvedHeaders() {
+	for k, v := range c.config.Transport.ResolvedHeaders() {
 		req.Header.Set(k, v)
 	}
 	req.Header.Set("Content-Type", "application/json")

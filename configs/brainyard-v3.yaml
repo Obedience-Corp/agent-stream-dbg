@@ -1,7 +1,8 @@
-# BrainyardV3 Configuration
-# Specific configuration for BrainyardV3 backend
+# BrainyardV3 run config: a system-specific example built on the
+# system-agnostic transport:/dialect: shape.
 
-backend:
+transport:
+  type: "sse"
   base_url: "http://localhost:5003"
 
   stream_endpoint:
@@ -14,6 +15,11 @@ backend:
     auth:
       type: "bearer"
       token_env: "API_KEY"
+
+# Not yet loaded (the mapping engine lands in phase 004) — declared now so
+# this run config doesn't need a second migration when it does.
+dialect:
+  file: "dialects/brainyard.yaml"
 
 session:
   id_env: "SESSION_ID"

@@ -40,7 +40,7 @@ func NewSSEClient(cfg *config.EnhancedConfig) *SSEClient {
 	client := sse.NewClient(cfg.StreamEndpointURL())
 
 	// Set up authentication and custom headers from config
-	client.Headers = cfg.Backend.ResolvedHeaders()
+	client.Headers = cfg.Transport.ResolvedHeaders()
 	client.Headers["Accept"] = "text/event-stream"
 
 	return &SSEClient{
@@ -70,7 +70,7 @@ func (c *SSEClient) Connect(ctx context.Context, message string) error {
 
 	// Update client URL
 	c.client = sse.NewClient(u.String())
-	c.client.Headers = c.config.Backend.ResolvedHeaders()
+	c.client.Headers = c.config.Transport.ResolvedHeaders()
 	c.client.Headers["Accept"] = "text/event-stream"
 
 	eventTypes := c.config.Events.Types

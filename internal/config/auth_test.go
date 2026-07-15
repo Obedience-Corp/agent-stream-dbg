@@ -16,7 +16,7 @@ func TestLoadConfigFile_AuthErrors(t *testing.T) {
 		{
 			name: "bearer without token",
 			yaml: `
-backend:
+transport:
   base_url: "http://localhost:8080"
   stream_endpoint:
     url: "/api/stream"
@@ -29,7 +29,7 @@ backend:
 		{
 			name: "basic without username/password",
 			yaml: `
-backend:
+transport:
   base_url: "http://localhost:8080"
   stream_endpoint:
     url: "/api/stream"
@@ -43,7 +43,7 @@ backend:
 		{
 			name: "unknown auth type",
 			yaml: `
-backend:
+transport:
   base_url: "http://localhost:8080"
   stream_endpoint:
     url: "/api/stream"
@@ -51,6 +51,19 @@ backend:
       type: "oauth2"
 `,
 			wantErrSub: "unknown auth.type",
+		},
+		{
+			name: "unknown transport type",
+			yaml: `
+transport:
+  type: "carrier_pigeon"
+  base_url: "http://localhost:8080"
+  stream_endpoint:
+    url: "/api/stream"
+    auth:
+      type: "none"
+`,
+			wantErrSub: "unknown transport.type",
 		},
 	}
 
@@ -88,7 +101,7 @@ func TestLoadConfigFile_AuthStrategies(t *testing.T) {
 		{
 			name: "bearer (default)",
 			yaml: `
-backend:
+transport:
   base_url: "http://localhost:8080"
   stream_endpoint:
     url: "/api/stream"
@@ -102,7 +115,7 @@ backend:
 		{
 			name: "api_key with custom header name",
 			yaml: `
-backend:
+transport:
   base_url: "http://localhost:8080"
   stream_endpoint:
     url: "/api/stream"
@@ -118,7 +131,7 @@ backend:
 		{
 			name: "api_key defaults header name to X-API-Key",
 			yaml: `
-backend:
+transport:
   base_url: "http://localhost:8080"
   stream_endpoint:
     url: "/api/stream"
@@ -133,7 +146,7 @@ backend:
 		{
 			name: "basic auth",
 			yaml: `
-backend:
+transport:
   base_url: "http://localhost:8080"
   stream_endpoint:
     url: "/api/stream"
@@ -149,7 +162,7 @@ backend:
 		{
 			name: "none sets no auth header",
 			yaml: `
-backend:
+transport:
   base_url: "http://localhost:8080"
   stream_endpoint:
     url: "/api/stream"
@@ -177,7 +190,7 @@ backend:
 				t.Fatalf("unexpected error: %v", err)
 			}
 
-			name, value, ok := cfg.Backend.Auth.Header()
+			name, value, ok := cfg.Transport.Auth.Header()
 			if tt.wantHeader == "" {
 				if ok {
 					t.Errorf("expected no auth header, got %s=%s", name, value)
@@ -202,7 +215,7 @@ func TestLoadConfigFile_BackendHeadersImplemented(t *testing.T) {
 	defer func() { _ = os.Unsetenv("API_KEY") }()
 
 	path := writeYAMLConfig(t, `
-backend:
+transport:
   base_url: "http://localhost:8080"
   stream_endpoint:
     url: "/api/stream"
@@ -218,7 +231,7 @@ backend:
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	headers := cfg.Backend.ResolvedHeaders()
+	headers := cfg.Transport.ResolvedHeaders()
 	if headers["X-Custom-Header"] != "custom-value" {
 		t.Errorf("expected custom header to be present, got: %v", headers)
 	}
@@ -233,7 +246,7 @@ func TestLoadConfigFile_LoggingDimensions(t *testing.T) {
 
 	t.Run("unspecified defaults all dimensions on", func(t *testing.T) {
 		path := writeYAMLConfig(t, `
-backend:
+transport:
   base_url: "http://localhost:8080"
   stream_endpoint:
     url: "/api/stream"
@@ -252,7 +265,7 @@ backend:
 
 	t.Run("explicit values respected", func(t *testing.T) {
 		path := writeYAMLConfig(t, `
-backend:
+transport:
   base_url: "http://localhost:8080"
   stream_endpoint:
     url: "/api/stream"
@@ -282,7 +295,7 @@ func TestLoadConfigFile_SessionIDDirect(t *testing.T) {
 
 	t.Run("session.id used directly", func(t *testing.T) {
 		path := writeYAMLConfig(t, `
-backend:
+transport:
   base_url: "http://localhost:8080"
   stream_endpoint:
     url: "/api/stream"
@@ -305,7 +318,7 @@ session:
 		defer func() { _ = os.Unsetenv("MY_SESSION_ID") }()
 
 		path := writeYAMLConfig(t, `
-backend:
+transport:
   base_url: "http://localhost:8080"
   stream_endpoint:
     url: "/api/stream"

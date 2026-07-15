@@ -21,7 +21,7 @@ func TestSSEClient_EndToEndAgainstMockServer(t *testing.T) {
 	defer srv.Close()
 
 	cfg := &config.EnhancedConfig{
-		Backend: config.BackendConfig{
+		Transport: config.TransportConfig{
 			BaseURL: srv.URL(),
 			Auth:    config.AuthConfig{Type: "bearer", Token: "test-key"},
 		},
@@ -102,7 +102,7 @@ func TestSSEClient_APIKeyAuthHeaderArrives(t *testing.T) {
 	defer srv.Close()
 
 	cfg := &config.EnhancedConfig{
-		Backend: config.BackendConfig{
+		Transport: config.TransportConfig{
 			BaseURL: srv.URL(),
 			Auth: config.AuthConfig{
 				Type:       "api_key",

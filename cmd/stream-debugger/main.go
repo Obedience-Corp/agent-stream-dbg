@@ -141,7 +141,7 @@ func runInteractive(configPath string) error {
 	}
 
 	fmt.Printf("🔧 Configuration loaded from: %s\n", configPath)
-	fmt.Printf("   Backend: %s\n", cfg.Backend.BaseURL)
+	fmt.Printf("   Backend: %s\n", cfg.Transport.BaseURL)
 	fmt.Printf("   Session: %s\n", cfg.Session.ID)
 	fmt.Printf("   Log Dir: %s\n\n", cfg.LogDir)
 
@@ -193,7 +193,7 @@ func runStream(configPath string, message string) error {
 	}
 
 	fmt.Printf("🔧 Configuration loaded\n")
-	fmt.Printf("   Backend: %s\n", cfg.Backend.BaseURL)
+	fmt.Printf("   Backend: %s\n", cfg.Transport.BaseURL)
 	fmt.Printf("   Session: %s\n", cfg.Session.ID)
 	fmt.Printf("   Log Dir: %s\n\n", cfg.LogDir)
 
