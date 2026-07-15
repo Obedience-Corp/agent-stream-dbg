@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"strings"
@@ -64,10 +65,12 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	// Parse YAML
+	// Parse YAML strictly: unknown keys error at load instead of being silently dropped.
 	var yamlCfg YAMLConfig
-	if err := yaml.Unmarshal(data, &yamlCfg); err != nil {
-		return nil, fmt.Errorf("failed to parse YAML config: %w", err)
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&yamlCfg); err != nil {
+		return nil, fmt.Errorf("failed to parse YAML config %s: %w", configPath, err)
 	}
 
 	// Load environment variables (for secrets like API_KEY)
