@@ -76,11 +76,19 @@ type flowYAML struct {
 
 // compileFlow parses raw (the dialect's flow: yaml.Node, decoded
 // generically by the strict top-level decoder since its shape wasn't
-// known until now) into a *FlowSpec. Returns (nil, nil) if flow: was
-// never set in the source document — yaml.Node's zero value — which is
-// the "no flow: block" case derivation exists for, not an error.
+// known until now) into a *FlowSpec. Returns (nil, nil) — the "no flow:
+// block" case derivation exists for, not an error — both when flow: was
+// never set at all (yaml.Node's zero value) and when it was set to a
+// null scalar (a bare `flow:` key, `flow: null`, or `flow: ~`, all
+// tagged "!!null" by the YAML parser). Both read as "I haven't
+// configured a flow view" — a bare `flow:` stub is exactly what a
+// copy-pasted dialect skeleton or an unfinished edit looks like, and
+// treating it as "declared, deliberately empty" would silently suppress
+// derivation for what's almost certainly an unintentional empty view.
+// An explicit `flow: {}` (an empty MAPPING, not a null scalar) is the
+// only way to genuinely opt out of derivation with an empty spec.
 func compileFlow(raw yaml.Node) (*FlowSpec, error) {
-	if raw.IsZero() {
+	if raw.IsZero() || raw.Tag == "!!null" {
 		return nil, nil
 	}
 
@@ -129,6 +137,14 @@ func (f *FlowSpec) RoleFor(evt *events.Event) string {
 // architecture.md's Layer 4 table. Unlike FlowSpec (immutable, compiled
 // once at Load), a FlowDeriver is stateful: call Observe for every event
 // in a session, in order, and it accumulates what it's seen.
+//
+// Not safe for concurrent use — Observe and the accumulator reads
+// (Lanes/Stages) share unsynchronized maps and slices. This is a
+// deliberate, not accidental, omission: the intended caller is a Bubble
+// Tea model's single-threaded Update loop (see internal/visualizer/
+// tui.go's tea.Cmd/tea.Msg pattern), where nothing outside that loop
+// ever touches model state concurrently. Add synchronization if a future
+// caller genuinely needs concurrent access — don't pay for it here.
 type FlowDeriver struct {
 	lanes     []string
 	seenLane  map[string]bool

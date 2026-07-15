@@ -90,6 +90,57 @@ rules:
 	}
 }
 
+// TestLoad_NullFlowBlock_AlsoFlowIsNil regression-tests a self-review
+// finding: a bare `flow:` key (or `flow: null`/`flow: ~`) is exactly
+// what a copy-pasted dialect skeleton or an unfinished edit looks like —
+// it must derive, the same as a fully absent flow: key, not silently
+// suppress derivation by being treated as "declared, deliberately
+// empty."
+func TestLoad_NullFlowBlock_AlsoFlowIsNil(t *testing.T) {
+	for _, variant := range []string{"flow:\n", "flow: null\n", "flow: ~\n"} {
+		engine, err := mapping.Load([]byte(`
+version: 1
+name: test-null-flow
+discriminator: event
+rules:
+  - match: {event: content}
+    kind: content
+` + variant))
+		if err != nil {
+			t.Fatalf("mapping.Load(%q): %v", variant, err)
+		}
+		if engine.Flow != nil {
+			t.Errorf("variant %q: expected nil Flow, got %+v", variant, engine.Flow)
+		}
+	}
+}
+
+// TestLoad_ExplicitEmptyFlowBlock_IsDeclaredNotDerived proves the other
+// side of that same distinction: `flow: {}` is an explicit empty MAPPING
+// (not a null scalar) — a genuine, deliberate opt-out of derivation, and
+// must stay non-nil with zero lanes/stages, not be treated the same as
+// an absent/null key.
+func TestLoad_ExplicitEmptyFlowBlock_IsDeclaredNotDerived(t *testing.T) {
+	engine, err := mapping.Load([]byte(`
+version: 1
+name: test-empty-flow
+discriminator: event
+rules:
+  - match: {event: content}
+    kind: content
+flow: {}
+`))
+	if err != nil {
+		t.Fatalf("mapping.Load: %v", err)
+	}
+	if engine.Flow == nil {
+		t.Fatal("expected non-nil Flow for an explicit flow: {}, got nil (should not derive)")
+	}
+	if len(engine.Flow.Stages) != 0 || len(engine.Flow.Lanes) != 0 {
+		t.Errorf("expected empty Stages/Lanes for flow: {}, got %+v", engine.Flow)
+	}
+}
+
 // TestFlowDeriver_DerivesLanesAndStagesInFirstSeenOrder is this task's
 // other explicit Done-When: proves the derive-by-default path
 // independently of brainyard.yaml (the only dialect that happens to
@@ -98,14 +149,19 @@ rules:
 func TestFlowDeriver_DerivesLanesAndStagesInFirstSeenOrder(t *testing.T) {
 	d := mapping.NewFlowDeriver()
 
+	// Stage order deliberately inverted from alphabetical (synthesis
+	// before discovery): a broken implementation that sorted instead of
+	// preserving first-seen order would pass an alphabetically-ordered
+	// fixture by coincidence — this fixture only passes if order is
+	// genuinely first-seen.
 	seq := []*events.Event{
-		{SourceID: "agent_b", Kind: events.KindStepStart, Fields: map[string]any{"step": "discovery"}},
+		{SourceID: "agent_b", Kind: events.KindStepStart, Fields: map[string]any{"step": "synthesis"}},
 		{SourceID: "agent_a", Kind: events.KindContent},
-		{SourceID: "agent_b", Kind: events.KindStepEnd, Fields: map[string]any{"step": "discovery"}},
-		{SourceID: "agent_a", Kind: events.KindStepStart, Fields: map[string]any{"step": "synthesis"}},
+		{SourceID: "agent_b", Kind: events.KindStepEnd, Fields: map[string]any{"step": "synthesis"}},
+		{SourceID: "agent_a", Kind: events.KindStepStart, Fields: map[string]any{"step": "discovery"}},
 		{SourceID: "agent_c", Kind: events.KindContent},
 		// A repeated stage/lane must not duplicate.
-		{SourceID: "agent_b", Kind: events.KindStepStart, Fields: map[string]any{"step": "discovery"}},
+		{SourceID: "agent_b", Kind: events.KindStepStart, Fields: map[string]any{"step": "synthesis"}},
 	}
 	for _, evt := range seq {
 		d.Observe(evt)
@@ -116,7 +172,7 @@ func TestFlowDeriver_DerivesLanesAndStagesInFirstSeenOrder(t *testing.T) {
 		t.Errorf("expected lanes %v (first-seen order, deduplicated), got %v", wantLanes, gotLanes)
 	}
 
-	wantStages := []string{"discovery", "synthesis"}
+	wantStages := []string{"synthesis", "discovery"}
 	if gotStages := d.Stages(); !equalStrings(gotStages, wantStages) {
 		t.Errorf("expected stages %v (first-seen order, deduplicated), got %v", wantStages, gotStages)
 	}
