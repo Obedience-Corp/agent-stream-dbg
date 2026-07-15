@@ -153,6 +153,30 @@ func (v ValueForm) Extract(data []byte) (any, bool) {
 	}
 }
 
+// Describe renders a human-readable description of this value form's
+// source — e.g. "agent_id" for a bare path, "const: assistant" for a
+// constant — for debugging tools (like `explain`) that need to show HOW
+// a value was derived, not just what it resolved to.
+func (v ValueForm) Describe() string {
+	switch v.kind {
+	case valueFormPath:
+		return v.path
+	case valueFormConst:
+		return fmt.Sprintf("const: %v", v.constVal)
+	case valueFormPathDefault:
+		if v.def != nil {
+			return fmt.Sprintf("%s (default: %v)", v.path, v.def)
+		}
+		return v.path
+	case valueFormFirst:
+		return fmt.Sprintf("first: %v", v.first)
+	case valueFormRaw:
+		return "raw"
+	default: // valueFormNone
+		return ""
+	}
+}
+
 // String extracts this value form as a string, or "" if unset/missing.
 func (v ValueForm) String(data []byte) string {
 	val, ok := v.Extract(data)

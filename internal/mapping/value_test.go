@@ -202,3 +202,31 @@ rules:
 		t.Errorf("expected fields.pseudo_agent 'synthesizer' (const), got %q", s)
 	}
 }
+
+func TestValueForm_Describe(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+		want string
+	}{
+		{"bare path", `agent_id`, "agent_id"},
+		{"const", `{const: synthesizer}`, "const: synthesizer"},
+		{"path with default", `{path: model, default: unknown}`, "model (default: unknown)"},
+		{"path without default", `{path: model}`, "model"},
+		{"first", `{first: [a, b]}`, "first: [a b]"},
+		{"raw", `{raw: true}`, "raw"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			vf := unmarshalValueForm(t, tt.yaml)
+			if got := vf.Describe(); got != tt.want {
+				t.Errorf("expected Describe() %q, got %q", tt.want, got)
+			}
+		})
+	}
+
+	var unset ValueForm
+	if got := unset.Describe(); got != "" {
+		t.Errorf("expected empty Describe() for unset ValueForm, got %q", got)
+	}
+}

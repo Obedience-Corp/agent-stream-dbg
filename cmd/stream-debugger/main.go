@@ -16,6 +16,7 @@ import (
 	"github.com/lancekrogers/stream-debugger/internal/config"
 	"github.com/lancekrogers/stream-debugger/internal/dialectinit"
 	"github.com/lancekrogers/stream-debugger/internal/events"
+	"github.com/lancekrogers/stream-debugger/internal/explain"
 	"github.com/lancekrogers/stream-debugger/internal/help"
 	"github.com/lancekrogers/stream-debugger/internal/logger"
 	"github.com/lancekrogers/stream-debugger/internal/mapping"
@@ -110,6 +111,27 @@ func main() {
 				},
 				Action: initAction,
 			},
+			{
+				Name:  "explain",
+				Usage: "Trace every frame through a dialect: which rule matched, what was extracted, why not",
+				Description: `Debug your own config: for every frame, shows which rule matched (or a
+   hint for why none did) and, per matched rule, each extracted field's
+   declared path and resolved value — flagging empty extractions, which
+   usually mean the path is wrong.
+
+   Exit code reflects health: 0 if every frame matched with no empty
+   extractions, 1 otherwise — usable as a CI check for a shipped dialect.
+
+   Example:
+     $ stream-debugger explain --dialect dialects/brainyard.yaml --from testdata/fixtures/brainyard-session.jsonl`,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "dialect", Required: true, Usage: "Path to the dialect YAML file"},
+					&cli.StringFlag{Name: "from", Usage: "JSONL fixture to trace (mutually exclusive with --url)"},
+					&cli.StringFlag{Name: "url", Usage: "SSE endpoint to trace live (mutually exclusive with --from)"},
+					&cli.StringFlag{Name: "send", Usage: "Message to send when tracing --url"},
+				},
+				Action: explainAction,
+			},
 		},
 		Action: defaultAction, // Interactive mode when no command
 	}
@@ -179,6 +201,36 @@ func initAction(c *cli.Context) error {
 		target = url + "?message=" + neturl.QueryEscape(send)
 	}
 	return runInitLive(target, url)
+}
+
+// explainAction handles the explain command
+func explainAction(c *cli.Context) error {
+	dialectPath := c.String("dialect")
+	url := c.String("url")
+	from := c.String("from")
+	send := c.String("send")
+
+	if url == "" && from == "" {
+		return fmt.Errorf("one of --url or --from is required")
+	}
+	if url != "" && from != "" {
+		return fmt.Errorf("--url and --from are mutually exclusive")
+	}
+
+	engine, err := mapping.LoadFile(dialectPath)
+	if err != nil {
+		return fmt.Errorf("failed to load dialect: %w", err)
+	}
+
+	if from != "" {
+		return runExplain(engine, from)
+	}
+
+	target := url
+	if send != "" {
+		target = url + "?message=" + neturl.QueryEscape(send)
+	}
+	return runExplainLive(engine, target)
 }
 
 func runInteractive(configPath string) error {
@@ -464,4 +516,63 @@ func collectSamples(frames <-chan transport.Frame) []dialectinit.Sample {
 		samples = append(samples, dialectinit.Sample{Name: f.Name, Data: f.Data})
 	}
 	return samples
+}
+
+// runExplain traces every frame in a recorded JSONL fixture through
+// engine and prints the result.
+func runExplain(engine *mapping.Engine, fixturePath string) error {
+	tr, err := replay.New(fixturePath, 0)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := tr.Connect(ctx); err != nil {
+		return fmt.Errorf("failed to start replay: %w", err)
+	}
+	defer func() { _ = tr.Close() }()
+
+	return renderExplainTraces(engine, tr.Frames())
+}
+
+// runExplainLive traces every frame from a live SSE endpoint (sampled for
+// up to 10 seconds) through engine and prints the result.
+func runExplainLive(engine *mapping.Engine, requestURL string) error {
+	tr := sse.New(http.MethodGet, requestURL, nil, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := tr.Connect(ctx); err != nil {
+		return fmt.Errorf("failed to connect: %w", err)
+	}
+	defer func() { _ = tr.Close() }()
+
+	return renderExplainTraces(engine, tr.Frames())
+}
+
+// renderExplainTraces prints a trace per frame and exits nonzero if any
+// frame is unhealthy (unmatched, or an empty extraction) — the "explain
+// doubles as the CI harness" property.
+func renderExplainTraces(engine *mapping.Engine, frames <-chan transport.Frame) error {
+	index := 0
+	unhealthy := false
+	for f := range frames {
+		index++
+		if f.Err != nil {
+			fmt.Printf("frame %d  ✗ malformed frame: %v\n", index, f.Err)
+			unhealthy = true
+			continue
+		}
+		trace := explain.Trace(engine, f.Name, f.Data, index)
+		fmt.Print(trace.Render())
+		if trace.Unhealthy() {
+			unhealthy = true
+		}
+	}
+	if index == 0 {
+		return fmt.Errorf("no frames observed")
+	}
+	if unhealthy {
+		os.Exit(1)
+	}
+	return nil
 }
