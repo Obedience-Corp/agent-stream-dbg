@@ -13,9 +13,9 @@ Real-time TUI for watching streams + timeline analysis for understanding paralle
 
 🎬 **Real-Time TUI** - Watch SSE streams live in your terminal
 📊 **Timeline Visualization** - Analyze parallel execution from logs
-⚙️ **Configuration-Driven** - Works with any SSE API via YAML config
+⚙️ **Configuration-Driven** - Built for brainyard-shaped SSE APIs today via YAML config (generic dialect support is in progress)
 📝 **Multi-Dimensional Logging** - Events logged by type, agent, session, and API calls
-🎯 **9 Event Types** - Full SSE lifecycle support
+🎯 **19 Event Types** - Full SSE lifecycle support
 🚀 **Performance Tracking** - Tokens/sec, latency, sequence numbers
 
 ---
@@ -79,7 +79,7 @@ This opens an **interactive chat interface** where you can:
 ### 3. Stream Mode (Single Message)
 
 ```bash
-stream-debugger stream "What is consciousness?" --config my-config.yaml
+stream-debugger stream --config my-config.yaml "What is consciousness?"
 ```
 
 This sends a single message and exits when complete. Useful for CI/CD and scripting.
@@ -102,13 +102,13 @@ This prints a visual timeline showing which agents ran in parallel.
 # Interactive mode (multi-turn chat)
 stream-debugger --config my-config.yaml
 
-# Stream mode (single message) - ⚠️ message MUST come before --config
-stream-debugger stream "your message" --config my-config.yaml
+# Stream mode (single message) - ⚠️ flags MUST come before the message
+stream-debugger stream --config my-config.yaml "your message"
 
 # Timeline visualization from logs
 stream-debugger timeline logs/by-session/session_*.jsonl
 
-# Detailed event log (coming soon)
+# Detailed event log
 stream-debugger replay logs/by-session/session_*.jsonl
 
 # Help
@@ -380,7 +380,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Credits
 
-Built for debugging complex SSE streaming systems. Originally created for [BrainyardV3](https://github.com/lancekrogers/BrainyardV3) but designed to be generic and reusable.
+Built for debugging complex SSE streaming systems. Originally created for a private multi-agent backend but designed to be generic and reusable.
 
 **Technologies:**
 - [Bubbletea](https://github.com/charmbracelet/bubbletea) - Terminal UI framework
