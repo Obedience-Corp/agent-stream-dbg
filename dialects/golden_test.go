@@ -31,6 +31,7 @@ var goldenCases = []goldenCase{
 	{"brainyard.yaml", "../testdata/fixtures/brainyard-session.jsonl", "../testdata/goldens/brainyard.explain.txt"},
 	{"openai.yaml", "../testdata/fixtures/openai-chat.jsonl", "../testdata/goldens/openai.explain.txt"},
 	{"anthropic.yaml", "../testdata/fixtures/anthropic-messages.jsonl", "../testdata/goldens/anthropic.explain.txt"},
+	{"a2a.yaml", "../testdata/fixtures/a2a-session.jsonl", "../testdata/goldens/a2a.explain.txt"},
 }
 
 // renderExplain runs every frame in fixturePath through the dialect
@@ -143,5 +144,59 @@ func TestExplainGoldens_DetectsRenamedEventRegression(t *testing.T) {
 	}
 	if !strings.Contains(b.String(), "no rule matched") {
 		t.Error("expected agent_content frames to fall through unmatched after the rename")
+	}
+}
+
+// TestExplainGoldens_DetectsRenamedEventRegression_A2A is the a2a
+// counterpart to TestExplainGoldens_DetectsRenamedEventRegression above: a
+// deliberate regression (renaming the field a2a.yaml's statusUpdate rule
+// matches on) must fail against the recorded golden, not silently pass.
+// a2a.yaml has no wire discriminator (discriminator: auto — see the
+// dialect's own header comment), so this is a separate function rather
+// than a generalization of the brainyard test: the mutation target here is
+// a match: {exists: ...} clause, not an event: string, and generalizing
+// would obscure that structural difference behind a shared mutation table.
+func TestExplainGoldens_DetectsRenamedEventRegression_A2A(t *testing.T) {
+	original, err := os.ReadFile("a2a.yaml")
+	if err != nil {
+		t.Fatalf("failed to read a2a.yaml: %v", err)
+	}
+	mutated := strings.Replace(string(original), "exists: statusUpdate", "exists: renamedStatusUpdate", 1)
+	if mutated == string(original) {
+		t.Fatal("expected to find 'exists: statusUpdate' to mutate — has a2a.yaml changed?")
+	}
+
+	engine, err := mapping.Load([]byte(mutated))
+	if err != nil {
+		t.Fatalf("failed to load mutated dialect: %v", err)
+	}
+
+	tr, err := replay.New("../testdata/fixtures/a2a-session.jsonl", 0)
+	if err != nil {
+		t.Fatalf("failed to open fixture: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := tr.Connect(ctx); err != nil {
+		t.Fatalf("failed to start replay: %v", err)
+	}
+	defer func() { _ = tr.Close() }()
+
+	var b strings.Builder
+	index := 0
+	for f := range tr.Frames() {
+		index++
+		b.WriteString(explain.Trace(engine, f.Name, f.Data, index).Render())
+	}
+
+	golden, err := os.ReadFile("../testdata/goldens/a2a.explain.txt")
+	if err != nil {
+		t.Fatalf("failed to read golden: %v", err)
+	}
+	if b.String() == string(golden) {
+		t.Error("expected the renamed-field regression to change the explain trace, but it matched the golden unchanged")
+	}
+	if !strings.Contains(b.String(), "no rule matched") {
+		t.Error("expected statusUpdate frames to fall through unmatched after the rename")
 	}
 }
