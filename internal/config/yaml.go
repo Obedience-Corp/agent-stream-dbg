@@ -12,23 +12,39 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// authYAML is the raw YAML shape of an auth: block, shared verbatim
+// between transport.stream_endpoint.auth (SSE) and transport.auth (gRPC)
+// — one auth vocabulary for both transports, per architecture.md's gRPC
+// config example.
+type authYAML struct {
+	Type        string `yaml:"type"` // bearer | api_key | basic | metadata | none
+	TokenEnv    string `yaml:"token_env"`
+	HeaderName  string `yaml:"header_name"` // HTTP header name (SSE) or metadata key (gRPC)
+	UsernameEnv string `yaml:"username_env"`
+	PasswordEnv string `yaml:"password_env"`
+}
+
 // YAMLConfig represents the full YAML configuration structure
 type YAMLConfig struct {
 	Transport struct {
-		Type           string `yaml:"type"` // sse (only supported today; grpc/replay land in 006)
+		Type           string `yaml:"type"` // sse | grpc (replay lands as a transport, not a config type, in phase 004)
 		BaseURL        string `yaml:"base_url"`
 		StreamEndpoint struct {
 			URL     string            `yaml:"url"`
 			Method  string            `yaml:"method"`
 			Headers map[string]string `yaml:"headers"`
-			Auth    struct {
-				Type        string `yaml:"type"`
-				TokenEnv    string `yaml:"token_env"`
-				HeaderName  string `yaml:"header_name"`
-				UsernameEnv string `yaml:"username_env"`
-				PasswordEnv string `yaml:"password_env"`
-			} `yaml:"auth"`
+			Auth    authYAML          `yaml:"auth"`
 		} `yaml:"stream_endpoint"`
+
+		// gRPC-specific (type: grpc). Flat, matching architecture.md's
+		// example shape (transport.target/method/discriminator/plaintext),
+		// not nested like SSE's stream_endpoint — gRPC has no equivalent
+		// concept to nest under.
+		Target        string   `yaml:"target"`
+		Method        string   `yaml:"method"`        // fully-qualified RPC method, e.g. /agent.v1.AgentService/StreamSession
+		Discriminator string   `yaml:"discriminator"` // oneof | field:type | message_type | none — resolved in sequence 03
+		Plaintext     bool     `yaml:"plaintext"`
+		Auth          authYAML `yaml:"auth"`
 	} `yaml:"transport"`
 
 	// Dialect declares which mapping file interprets this system's frames.
@@ -91,52 +107,44 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 	if transportType == "" {
 		transportType = "sse"
 	}
-	if transportType != "sse" {
-		return nil, fmt.Errorf("unknown transport.type %q (only %q is currently supported; grpc and replay arrive in later phases)", transportType, "sse")
+	if transportType != "sse" && transportType != "grpc" {
+		return nil, fmt.Errorf("unknown transport.type %q (must be \"sse\" or \"grpc\")", transportType)
 	}
 
 	// Load environment variables (for secrets like API_KEY)
 	_ = godotenv.Load()
 
-	// Resolve the token unconditionally: bearer/api_key require it, but other
-	// clients (session auto-setup, config API) still read cfg.APIKey directly.
-	tokenEnv := yamlCfg.Transport.StreamEndpoint.Auth.TokenEnv
-	apiKey := os.Getenv(tokenEnv)
-	if apiKey == "" {
-		apiKey = os.Getenv("API_KEY") // Fallback
-	}
-
-	authType := yamlCfg.Transport.StreamEndpoint.Auth.Type
-	if authType == "" {
-		authType = "bearer"
-	}
-
-	auth := AuthConfig{
-		Type:       authType,
-		HeaderName: yamlCfg.Transport.StreamEndpoint.Auth.HeaderName,
-		Token:      apiKey,
-	}
-
-	switch authType {
-	case "bearer", "api_key":
-		if apiKey == "" {
-			envName := tokenEnv
-			if envName == "" {
-				envName = "API_KEY"
-			}
-			return nil, fmt.Errorf("%s environment variable not set", envName)
+	var transport TransportConfig
+	var apiKey string
+	switch transportType {
+	case "grpc":
+		auth, resolvedToken, err := resolveAuth(yamlCfg.Transport.Auth, "none")
+		if err != nil {
+			return nil, err
 		}
-	case "basic":
-		auth.Username = os.Getenv(yamlCfg.Transport.StreamEndpoint.Auth.UsernameEnv)
-		auth.Password = os.Getenv(yamlCfg.Transport.StreamEndpoint.Auth.PasswordEnv)
-		if auth.Username == "" || auth.Password == "" {
-			return nil, fmt.Errorf("basic auth requires %s and %s environment variables",
-				yamlCfg.Transport.StreamEndpoint.Auth.UsernameEnv, yamlCfg.Transport.StreamEndpoint.Auth.PasswordEnv)
+		apiKey = resolvedToken
+		transport = TransportConfig{
+			Type:          "grpc",
+			Target:        yamlCfg.Transport.Target,
+			GRPCMethod:    yamlCfg.Transport.Method,
+			Discriminator: yamlCfg.Transport.Discriminator,
+			Plaintext:     yamlCfg.Transport.Plaintext,
+			Auth:          auth,
 		}
-	case "none":
-		// No credentials required.
-	default:
-		return nil, fmt.Errorf("unknown auth.type %q (must be bearer, api_key, basic, or none)", authType)
+	default: // sse
+		auth, resolvedToken, err := resolveAuth(yamlCfg.Transport.StreamEndpoint.Auth, "bearer")
+		if err != nil {
+			return nil, err
+		}
+		apiKey = resolvedToken
+		transport = TransportConfig{
+			Type:           "sse",
+			BaseURL:        yamlCfg.Transport.BaseURL,
+			StreamEndpoint: yamlCfg.Transport.StreamEndpoint.URL,
+			Method:         yamlCfg.Transport.StreamEndpoint.Method,
+			Headers:        yamlCfg.Transport.StreamEndpoint.Headers,
+			Auth:           auth,
+		}
 	}
 
 	// Get session ID: static session.id, overridden by session.id_env if set.
@@ -152,15 +160,9 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 
 	// Build enhanced config
 	cfg := &EnhancedConfig{
-		Transport: TransportConfig{
-			BaseURL:        yamlCfg.Transport.BaseURL,
-			StreamEndpoint: yamlCfg.Transport.StreamEndpoint.URL,
-			Method:         yamlCfg.Transport.StreamEndpoint.Method,
-			Headers:        yamlCfg.Transport.StreamEndpoint.Headers,
-			Auth:           auth,
-		},
-		Dialect: DialectConfig{File: yamlCfg.Dialect.File},
-		Vars:    yamlCfg.Vars,
+		Transport: transport,
+		Dialect:   DialectConfig{File: yamlCfg.Dialect.File},
+		Vars:      yamlCfg.Vars,
 		Session: SessionConfig{
 			ID:            sessionID,
 			AutoSetup:     yamlCfg.Session.AutoSetup,
@@ -198,6 +200,60 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 	return cfg, nil
 }
 
+// resolveAuth turns a raw auth: YAML block into a resolved AuthConfig,
+// reading any *_env-named credential from the environment. defaultType
+// is used when the block omits type: — "bearer" for SSE (a bare API_KEY
+// is the common case), "none" for gRPC (metadata auth needs an explicit
+// key:, so there's no sensible implicit default). Returns the resolved
+// token separately since callers outside the transport itself (session
+// auto-setup) still read EnhancedConfig.APIKey directly, regardless of
+// which auth type the primary transport ends up using.
+func resolveAuth(y authYAML, defaultType string) (AuthConfig, string, error) {
+	tokenEnv := y.TokenEnv
+	apiKey := os.Getenv(tokenEnv)
+	if apiKey == "" {
+		apiKey = os.Getenv("API_KEY") // Fallback
+	}
+
+	authType := y.Type
+	if authType == "" {
+		authType = defaultType
+	}
+
+	auth := AuthConfig{
+		Type:       authType,
+		HeaderName: y.HeaderName,
+		Token:      apiKey,
+	}
+
+	switch authType {
+	case "bearer", "api_key", "metadata":
+		if apiKey == "" {
+			envName := tokenEnv
+			if envName == "" {
+				envName = "API_KEY"
+			}
+			return AuthConfig{}, "", fmt.Errorf("%s environment variable not set", envName)
+		}
+		if authType == "metadata" && auth.HeaderName == "" {
+			return AuthConfig{}, "", fmt.Errorf("auth.type \"metadata\" requires header_name (the metadata key to attach)")
+		}
+	case "basic":
+		auth.Username = os.Getenv(y.UsernameEnv)
+		auth.Password = os.Getenv(y.PasswordEnv)
+		if auth.Username == "" || auth.Password == "" {
+			return AuthConfig{}, "", fmt.Errorf("basic auth requires %s and %s environment variables",
+				y.UsernameEnv, y.PasswordEnv)
+		}
+	case "none":
+		// No credentials required.
+	default:
+		return AuthConfig{}, "", fmt.Errorf("unknown auth.type %q (must be bearer, api_key, basic, metadata, or none)", authType)
+	}
+
+	return auth, apiKey, nil
+}
+
 // EnhancedConfig is the unified configuration structure
 type EnhancedConfig struct {
 	Transport TransportConfig
@@ -231,13 +287,25 @@ type DebugConfig struct {
 	Level string `yaml:"level"`
 }
 
-// TransportConfig holds transport-level connection configuration.
+// TransportConfig holds transport-level connection configuration for
+// either transport type; which fields apply is determined by Type.
 type TransportConfig struct {
+	Type string // "sse" (default) or "grpc"
+
+	// SSE fields.
 	BaseURL        string
 	StreamEndpoint string
 	Method         string
 	Headers        map[string]string
-	Auth           AuthConfig
+
+	// gRPC fields.
+	Target        string
+	GRPCMethod    string // fully-qualified RPC method, e.g. /agent.v1.AgentService/StreamSession
+	Discriminator string // oneof | field:type | message_type | none
+	Plaintext     bool
+
+	// Shared: one auth vocabulary for both transports.
+	Auth AuthConfig
 }
 
 // ResolvedHeaders returns transport.headers merged with the resolved
@@ -259,9 +327,9 @@ type DialectConfig struct {
 
 // AuthConfig holds resolved authentication settings for backend requests.
 type AuthConfig struct {
-	Type       string // bearer, api_key, basic, or none
-	HeaderName string // custom header name for api_key (default X-API-Key)
-	Token      string // resolved token for bearer/api_key
+	Type       string // bearer, api_key, basic, metadata, or none
+	HeaderName string // custom header name for api_key (default X-API-Key), or the metadata key for type "metadata"
+	Token      string // resolved token for bearer/api_key/metadata
 	Username   string // resolved username for basic
 	Password   string // resolved password for basic
 }
@@ -290,9 +358,21 @@ func (a AuthConfig) Header() (name, value string, ok bool) {
 		}
 		cred := base64.StdEncoding.EncodeToString([]byte(a.Username + ":" + a.Password))
 		return "Authorization", "Basic " + cred, true
-	default: // "none" or unrecognized
+	default: // "none", "metadata", or unrecognized
 		return "", "", false
 	}
+}
+
+// Metadata returns the gRPC metadata key/value to attach, or ok=false if
+// no metadata should be attached (any type other than "metadata", or
+// credentials unresolved). Distinct from Header: gRPC auth rides
+// per-RPC metadata, not an HTTP header, and "metadata" is the one auth
+// type SSE's Header never handles.
+func (a AuthConfig) Metadata() (key, value string, ok bool) {
+	if a.Type != "metadata" || a.Token == "" || a.HeaderName == "" {
+		return "", "", false
+	}
+	return a.HeaderName, a.Token, true
 }
 
 // LoggingConfig holds logging behavior settings.

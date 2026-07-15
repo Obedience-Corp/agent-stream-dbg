@@ -197,3 +197,125 @@ vars:
 		t.Errorf("expected vars to be passed through, got %+v", cfg.Vars)
 	}
 }
+
+func TestLoadConfigFile_GRPCTransport(t *testing.T) {
+	_ = os.Setenv("GRPC_TOKEN", "grpc-secret")
+	defer func() { _ = os.Unsetenv("GRPC_TOKEN") }()
+
+	path := writeYAMLConfig(t, `
+transport:
+  type: grpc
+  target: "localhost:50051"
+  method: "/agent.v1.AgentService/StreamSession"
+  discriminator: oneof
+  plaintext: true
+  auth:
+    type: metadata
+    header_name: authorization
+    token_env: GRPC_TOKEN
+`)
+
+	cfg, err := LoadConfigFile(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Transport.Type != "grpc" {
+		t.Errorf("expected transport.type 'grpc', got %q", cfg.Transport.Type)
+	}
+	if cfg.Transport.Target != "localhost:50051" {
+		t.Errorf("expected target 'localhost:50051', got %q", cfg.Transport.Target)
+	}
+	if cfg.Transport.GRPCMethod != "/agent.v1.AgentService/StreamSession" {
+		t.Errorf("expected method to be stored, got %q", cfg.Transport.GRPCMethod)
+	}
+	if cfg.Transport.Discriminator != "oneof" {
+		t.Errorf("expected discriminator 'oneof', got %q", cfg.Transport.Discriminator)
+	}
+	if !cfg.Transport.Plaintext {
+		t.Error("expected plaintext true")
+	}
+	key, value, ok := cfg.Transport.Auth.Metadata()
+	if !ok {
+		t.Fatal("expected Metadata() ok=true")
+	}
+	if key != "authorization" || value != "grpc-secret" {
+		t.Errorf("expected metadata authorization=grpc-secret, got %s=%s", key, value)
+	}
+}
+
+func TestLoadConfigFile_GRPCTransport_DefaultsToNoAuth(t *testing.T) {
+	path := writeYAMLConfig(t, `
+transport:
+  type: grpc
+  target: "localhost:50051"
+  plaintext: true
+`)
+
+	cfg, err := LoadConfigFile(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, _, ok := cfg.Transport.Auth.Metadata(); ok {
+		t.Error("expected no metadata auth when auth: block is omitted")
+	}
+}
+
+func TestLoadConfigFile_GRPCTransport_MetadataAuthRequiresHeaderName(t *testing.T) {
+	_ = os.Setenv("GRPC_TOKEN", "grpc-secret")
+	defer func() { _ = os.Unsetenv("GRPC_TOKEN") }()
+
+	path := writeYAMLConfig(t, `
+transport:
+  type: grpc
+  target: "localhost:50051"
+  plaintext: true
+  auth:
+    type: metadata
+    token_env: GRPC_TOKEN
+`)
+
+	_, err := LoadConfigFile(path)
+	if err == nil {
+		t.Fatal("expected error for metadata auth missing header_name")
+	}
+	if !strings.Contains(err.Error(), "header_name") {
+		t.Errorf("expected error to mention header_name, got: %v", err)
+	}
+}
+
+func TestLoadConfigFile_UnknownTransportType(t *testing.T) {
+	path := writeYAMLConfig(t, `
+transport:
+  type: carrier_pigeon
+`)
+
+	_, err := LoadConfigFile(path)
+	if err == nil {
+		t.Fatal("expected error for unknown transport.type")
+	}
+	if !strings.Contains(err.Error(), "carrier_pigeon") {
+		t.Errorf("expected error to name the bad type, got: %v", err)
+	}
+}
+
+func TestAuthConfig_Metadata(t *testing.T) {
+	tests := []struct {
+		name string
+		auth AuthConfig
+		ok   bool
+	}{
+		{"metadata with key and token", AuthConfig{Type: "metadata", HeaderName: "authorization", Token: "t"}, true},
+		{"metadata missing header name", AuthConfig{Type: "metadata", Token: "t"}, false},
+		{"metadata missing token", AuthConfig{Type: "metadata", HeaderName: "authorization"}, false},
+		{"bearer type never produces metadata", AuthConfig{Type: "bearer", Token: "t"}, false},
+		{"none", AuthConfig{Type: "none"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, ok := tt.auth.Metadata()
+			if ok != tt.ok {
+				t.Errorf("expected ok=%v, got %v", tt.ok, ok)
+			}
+		})
+	}
+}
