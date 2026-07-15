@@ -13,15 +13,11 @@ import (
 // ConfigAPIClient handles flow config and reload API calls
 type ConfigAPIClient struct {
 	config *config.EnhancedConfig
-	apiKey string
 }
 
 // NewConfigAPIClient creates a new config API client
-func NewConfigAPIClient(cfg *config.EnhancedConfig, apiKey string) *ConfigAPIClient {
-	return &ConfigAPIClient{
-		config: cfg,
-		apiKey: apiKey,
-	}
+func NewConfigAPIClient(cfg *config.EnhancedConfig) *ConfigAPIClient {
+	return &ConfigAPIClient{config: cfg}
 }
 
 // GetFlowVizConfig fetches the current flow visualization config
@@ -33,7 +29,9 @@ func (c *ConfigAPIClient) GetFlowVizConfig() ([]byte, int, error) {
 		return nil, 0, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiKey))
+	for k, v := range c.config.Backend.ResolvedHeaders() {
+		req.Header.Set(k, v)
+	}
 	req.Header.Set("Accept", "application/json")
 
 	client := &http.Client{}
@@ -60,7 +58,9 @@ func (c *ConfigAPIClient) ReloadPrompts() ([]byte, int, error) {
 		return nil, 0, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiKey))
+	for k, v := range c.config.Backend.ResolvedHeaders() {
+		req.Header.Set(k, v)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 

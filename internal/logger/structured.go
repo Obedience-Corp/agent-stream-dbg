@@ -90,30 +90,38 @@ func (sl *StructuredLogger) LogEvent(event *events.Event) error {
 	sl.mu.Lock()
 	defer sl.mu.Unlock()
 
-	// 1. Log to event type dimension
-	if err := sl.logToEventType(event); err != nil {
-		return fmt.Errorf("failed to log to event type: %w", err)
-	}
+	dims := sl.config.Logging.Dimensions
 
-	// 2. Log to agent dimension (if agent-related)
-	if agentID := event.GetAgentID(); agentID != "" {
-		if err := sl.logToAgent(event, agentID); err != nil {
-			return fmt.Errorf("failed to log to agent: %w", err)
+	// 1. Log to event type dimension
+	if dims.ByEventType {
+		if err := sl.logToEventType(event); err != nil {
+			return fmt.Errorf("failed to log to event type: %w", err)
 		}
 	}
 
-	// Special case for wizard events
-	if event.Type == events.WizardStreamStart ||
-		event.Type == events.WizardContent ||
-		event.Type == events.WizardStreamComplete {
-		if err := sl.logToAgent(event, "wizard"); err != nil {
-			return fmt.Errorf("failed to log to wizard: %w", err)
+	// 2. Log to agent dimension (if agent-related)
+	if dims.ByAgent {
+		if agentID := event.GetAgentID(); agentID != "" {
+			if err := sl.logToAgent(event, agentID); err != nil {
+				return fmt.Errorf("failed to log to agent: %w", err)
+			}
+		}
+
+		// Special case for wizard events
+		if event.Type == events.WizardStreamStart ||
+			event.Type == events.WizardContent ||
+			event.Type == events.WizardStreamComplete {
+			if err := sl.logToAgent(event, "wizard"); err != nil {
+				return fmt.Errorf("failed to log to wizard: %w", err)
+			}
 		}
 	}
 
 	// 3. Log to session timeline
-	if err := sl.logToSession(event); err != nil {
-		return fmt.Errorf("failed to log to session: %w", err)
+	if dims.BySession {
+		if err := sl.logToSession(event); err != nil {
+			return fmt.Errorf("failed to log to session: %w", err)
+		}
 	}
 
 	return nil
@@ -177,6 +185,10 @@ func (sl *StructuredLogger) logToSession(event *events.Event) error {
 func (sl *StructuredLogger) LogAPICall(method, url string, statusCode int, duration time.Duration, err error) {
 	sl.mu.Lock()
 	defer sl.mu.Unlock()
+
+	if !sl.config.Logging.Dimensions.APICalls {
+		return
+	}
 
 	logEvent := sl.apiLogger.Info().
 		Str("method", method).

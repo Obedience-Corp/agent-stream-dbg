@@ -22,8 +22,8 @@ func TestSSEClient_EndToEndAgainstMockServer(t *testing.T) {
 
 	cfg := &config.EnhancedConfig{
 		Backend: config.BackendConfig{
-			BaseURL:        srv.URL(),
-			StreamEndpoint: "",
+			BaseURL: srv.URL(),
+			Auth:    config.AuthConfig{Type: "bearer", Token: "test-key"},
 		},
 		APIKey:  "test-key",
 		Session: config.SessionConfig{ID: "e2e-session"},
@@ -88,5 +88,54 @@ collect:
 		if !seenAgents[wa] {
 			t.Errorf("expected to see agent %q, did not", wa)
 		}
+	}
+}
+
+// TestSSEClient_APIKeyAuthHeaderArrives verifies that auth.type: api_key
+// (with a custom header_name) actually reaches the backend, against the
+// mock server, in place of the previously hardcoded Authorization: Bearer.
+func TestSSEClient_APIKeyAuthHeaderArrives(t *testing.T) {
+	srv, err := testutil.NewMockSSEServer("../../testdata/fixtures/brainyard-session.jsonl", 0)
+	if err != nil {
+		t.Fatalf("NewMockSSEServer: %v", err)
+	}
+	defer srv.Close()
+
+	cfg := &config.EnhancedConfig{
+		Backend: config.BackendConfig{
+			BaseURL: srv.URL(),
+			Auth: config.AuthConfig{
+				Type:       "api_key",
+				HeaderName: "X-API-Key",
+				Token:      "my-api-key-value",
+			},
+		},
+		Session: config.SessionConfig{ID: "api-key-session"},
+	}
+	cfg.Normalize()
+	c := NewSSEClient(cfg)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if err := c.Connect(ctx, "hello"); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+
+	// Drain at least one event so we know a request actually reached the server.
+	select {
+	case <-c.Events():
+	case err := <-c.Errors():
+		t.Fatalf("unexpected client error: %v", err)
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for first event")
+	}
+
+	headers := srv.LastHeaders()
+	if got := headers.Get("X-API-Key"); got != "my-api-key-value" {
+		t.Errorf("expected X-API-Key header %q, got %q", "my-api-key-value", got)
+	}
+	if got := headers.Get("Authorization"); got != "" {
+		t.Errorf("expected no Authorization header for api_key auth, got %q", got)
 	}
 }

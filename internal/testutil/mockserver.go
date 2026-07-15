@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -18,6 +19,9 @@ type MockSSEServer struct {
 	srv   *httptest.Server
 	delay time.Duration
 	lines [][]byte
+
+	mu          sync.Mutex
+	lastHeaders http.Header
 }
 
 // NewMockSSEServer reads the JSONL fixture at fixturePath and returns a
@@ -76,6 +80,10 @@ func (m *MockSSEServer) handle(w http.ResponseWriter, r *http.Request) {
 
 	streamFilter := r.URL.Query().Get("stream")
 
+	m.mu.Lock()
+	m.lastHeaders = r.Header.Clone()
+	m.mu.Unlock()
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -128,6 +136,14 @@ func eventTypeOf(line []byte) string {
 // URL returns the base URL of the mock server.
 func (m *MockSSEServer) URL() string {
 	return m.srv.URL
+}
+
+// LastHeaders returns the headers of the most recently received request.
+// Useful for asserting auth headers arrived as configured.
+func (m *MockSSEServer) LastHeaders() http.Header {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.lastHeaders
 }
 
 // Close shuts down the underlying test server.

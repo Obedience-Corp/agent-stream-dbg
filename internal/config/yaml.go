@@ -2,7 +2,9 @@ package config
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
+	"maps"
 	"os"
 	"strings"
 
@@ -15,21 +17,21 @@ type YAMLConfig struct {
 	Backend struct {
 		BaseURL        string `yaml:"base_url"`
 		StreamEndpoint struct {
-			URL           string `yaml:"url"`
-			Method        string `yaml:"method"`
-			MessageFormat struct {
-				Type         string `yaml:"type"`
-				BodyTemplate string `yaml:"body_template"`
-			} `yaml:"message_format"`
+			URL     string            `yaml:"url"`
+			Method  string            `yaml:"method"`
 			Headers map[string]string `yaml:"headers"`
 			Auth    struct {
-				Type     string `yaml:"type"`
-				TokenEnv string `yaml:"token_env"`
+				Type        string `yaml:"type"`
+				TokenEnv    string `yaml:"token_env"`
+				HeaderName  string `yaml:"header_name"`
+				UsernameEnv string `yaml:"username_env"`
+				PasswordEnv string `yaml:"password_env"`
 			} `yaml:"auth"`
 		} `yaml:"stream_endpoint"`
 	} `yaml:"backend"`
 
 	Session struct {
+		ID            string   `yaml:"id"`
 		IDEnv         string   `yaml:"id_env"`
 		AutoSetup     bool     `yaml:"auto_setup"`
 		DefaultAgents []string `yaml:"default_agents"`
@@ -76,18 +78,54 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 	// Load environment variables (for secrets like API_KEY)
 	_ = godotenv.Load()
 
-	// Get API key from environment
-	apiKey := os.Getenv(yamlCfg.Backend.StreamEndpoint.Auth.TokenEnv)
+	// Resolve the token unconditionally: bearer/api_key require it, but other
+	// clients (session auto-setup, config API) still read cfg.APIKey directly.
+	tokenEnv := yamlCfg.Backend.StreamEndpoint.Auth.TokenEnv
+	apiKey := os.Getenv(tokenEnv)
 	if apiKey == "" {
 		apiKey = os.Getenv("API_KEY") // Fallback
 	}
 
-	if apiKey == "" {
-		return nil, fmt.Errorf("%s environment variable not set", yamlCfg.Backend.StreamEndpoint.Auth.TokenEnv)
+	authType := yamlCfg.Backend.StreamEndpoint.Auth.Type
+	if authType == "" {
+		authType = "bearer"
 	}
 
-	// Get session ID from environment or use default
-	sessionID := os.Getenv(yamlCfg.Session.IDEnv)
+	auth := AuthConfig{
+		Type:       authType,
+		HeaderName: yamlCfg.Backend.StreamEndpoint.Auth.HeaderName,
+		Token:      apiKey,
+	}
+
+	switch authType {
+	case "bearer", "api_key":
+		if apiKey == "" {
+			envName := tokenEnv
+			if envName == "" {
+				envName = "API_KEY"
+			}
+			return nil, fmt.Errorf("%s environment variable not set", envName)
+		}
+	case "basic":
+		auth.Username = os.Getenv(yamlCfg.Backend.StreamEndpoint.Auth.UsernameEnv)
+		auth.Password = os.Getenv(yamlCfg.Backend.StreamEndpoint.Auth.PasswordEnv)
+		if auth.Username == "" || auth.Password == "" {
+			return nil, fmt.Errorf("basic auth requires %s and %s environment variables",
+				yamlCfg.Backend.StreamEndpoint.Auth.UsernameEnv, yamlCfg.Backend.StreamEndpoint.Auth.PasswordEnv)
+		}
+	case "none":
+		// No credentials required.
+	default:
+		return nil, fmt.Errorf("unknown auth.type %q (must be bearer, api_key, basic, or none)", authType)
+	}
+
+	// Get session ID: static session.id, overridden by session.id_env if set.
+	sessionID := yamlCfg.Session.ID
+	if yamlCfg.Session.IDEnv != "" {
+		if v := os.Getenv(yamlCfg.Session.IDEnv); v != "" {
+			sessionID = v
+		}
+	}
 	if sessionID == "" {
 		sessionID = getEnv("SESSION_ID", "debug-session-001")
 	}
@@ -99,6 +137,7 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 			StreamEndpoint: yamlCfg.Backend.StreamEndpoint.URL,
 			Method:         yamlCfg.Backend.StreamEndpoint.Method,
 			Headers:        yamlCfg.Backend.StreamEndpoint.Headers,
+			Auth:           auth,
 		},
 		Session: SessionConfig{
 			ID:            sessionID,
@@ -111,7 +150,15 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 			MaxAgentsVisible: yamlCfg.Display.MaxAgentsVisible,
 			AgentColors:      yamlCfg.Display.AgentColors,
 		},
-		Events:           EventsConfig{Types: yamlCfg.Events.Types},
+		Events: EventsConfig{Types: yamlCfg.Events.Types},
+		Logging: LoggingConfig{
+			Dimensions: DimensionsConfig{
+				ByEventType: yamlCfg.Logging.Dimensions.ByEventType,
+				ByAgent:     yamlCfg.Logging.Dimensions.ByAgent,
+				BySession:   yamlCfg.Logging.Dimensions.BySession,
+				APICalls:    yamlCfg.Logging.Dimensions.APICalls,
+			},
+		},
 		APIKey:           apiKey,
 		LogDir:           yamlCfg.Logging.Dir,
 		EnableColors:     yamlCfg.Display.Colors,
@@ -135,6 +182,7 @@ type EnhancedConfig struct {
 	Session SessionConfig
 	Display *DisplayConfig
 	Events  EventsConfig
+	Logging LoggingConfig
 	APIKey  string
 	Debug   DebugConfig
 
@@ -165,6 +213,71 @@ type BackendConfig struct {
 	StreamEndpoint string
 	Method         string
 	Headers        map[string]string
+	Auth           AuthConfig
+}
+
+// ResolvedHeaders returns backend.headers merged with the resolved
+// authentication header (if any), ready to attach to an outgoing request.
+func (b BackendConfig) ResolvedHeaders() map[string]string {
+	h := make(map[string]string, len(b.Headers)+1)
+	maps.Copy(h, b.Headers)
+	if name, value, ok := b.Auth.Header(); ok {
+		h[name] = value
+	}
+	return h
+}
+
+// AuthConfig holds resolved authentication settings for backend requests.
+type AuthConfig struct {
+	Type       string // bearer, api_key, basic, or none
+	HeaderName string // custom header name for api_key (default X-API-Key)
+	Token      string // resolved token for bearer/api_key
+	Username   string // resolved username for basic
+	Password   string // resolved password for basic
+}
+
+// Header returns the auth header name/value to set, or ok=false if no
+// auth header should be attached (type "none", or credentials unresolved).
+func (a AuthConfig) Header() (name, value string, ok bool) {
+	switch a.Type {
+	case "", "bearer":
+		if a.Token == "" {
+			return "", "", false
+		}
+		return "Authorization", "Bearer " + a.Token, true
+	case "api_key":
+		if a.Token == "" {
+			return "", "", false
+		}
+		headerName := a.HeaderName
+		if headerName == "" {
+			headerName = "X-API-Key"
+		}
+		return headerName, a.Token, true
+	case "basic":
+		if a.Username == "" && a.Password == "" {
+			return "", "", false
+		}
+		cred := base64.StdEncoding.EncodeToString([]byte(a.Username + ":" + a.Password))
+		return "Authorization", "Basic " + cred, true
+	default: // "none" or unrecognized
+		return "", "", false
+	}
+}
+
+// LoggingConfig holds logging behavior settings.
+type LoggingConfig struct {
+	Dimensions DimensionsConfig
+}
+
+// DimensionsConfig controls which log dimensions are written. When all four
+// are false (the zero value — nothing specified in YAML), Normalize enables
+// all of them, preserving the tool's always-log-everything default.
+type DimensionsConfig struct {
+	ByEventType bool
+	ByAgent     bool
+	BySession   bool
+	APICalls    bool
 }
 
 // SessionConfig holds session configuration
@@ -206,6 +319,10 @@ func (c *EnhancedConfig) Normalize() {
 	}
 	if c.LogDir == "" {
 		c.LogDir = "./logs"
+	}
+	d := &c.Logging.Dimensions
+	if !d.ByEventType && !d.ByAgent && !d.BySession && !d.APICalls {
+		d.ByEventType, d.ByAgent, d.BySession, d.APICalls = true, true, true, true
 	}
 }
 

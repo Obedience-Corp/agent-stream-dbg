@@ -8,10 +8,6 @@ backend:
     url: "/api/v3/sessions/{session_id}/stream"
     method: "POST"
 
-    message_format:
-      type: "json_body"
-      body_template: '{"message": "{message}", "stream": true}'
-
     headers:
       Accept: "text/event-stream"
 

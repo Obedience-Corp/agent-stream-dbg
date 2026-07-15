@@ -169,7 +169,7 @@ func runInteractive(configPath string) error {
 	fmt.Printf("✅ Starting interactive TUI...\n\n")
 
 	// Create interactive TUI model
-	model := visualizer.NewInteractiveModel(cfg, cfg.APIKey)
+	model := visualizer.NewInteractiveModel(cfg)
 
 	// Start bubbletea program
 	p := tea.NewProgram(model, tea.WithAltScreen())

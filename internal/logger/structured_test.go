@@ -17,6 +17,7 @@ func TestNewStructuredLogger(t *testing.T) {
 	cfg := &config.EnhancedConfig{
 		LogDir:  tmpDir,
 		Session: config.SessionConfig{ID: "test-session"},
+		Logging: config.LoggingConfig{Dimensions: config.DimensionsConfig{ByEventType: true, ByAgent: true, BySession: true, APICalls: true}},
 	}
 
 	logger, err := NewStructuredLogger(cfg)
@@ -46,6 +47,7 @@ func TestLogEvent_AgentContent(t *testing.T) {
 	cfg := &config.EnhancedConfig{
 		LogDir:  tmpDir,
 		Session: config.SessionConfig{ID: "test"},
+		Logging: config.LoggingConfig{Dimensions: config.DimensionsConfig{ByEventType: true, ByAgent: true, BySession: true, APICalls: true}},
 	}
 
 	logger, err := NewStructuredLogger(cfg)
@@ -92,6 +94,7 @@ func TestLogEvent_WizardContent(t *testing.T) {
 	cfg := &config.EnhancedConfig{
 		LogDir:  tmpDir,
 		Session: config.SessionConfig{ID: "test"},
+		Logging: config.LoggingConfig{Dimensions: config.DimensionsConfig{ByEventType: true, ByAgent: true, BySession: true, APICalls: true}},
 	}
 
 	logger, err := NewStructuredLogger(cfg)
@@ -130,6 +133,7 @@ func TestLogEvent_SessionEvents(t *testing.T) {
 	cfg := &config.EnhancedConfig{
 		LogDir:  tmpDir,
 		Session: config.SessionConfig{ID: "test"},
+		Logging: config.LoggingConfig{Dimensions: config.DimensionsConfig{ByEventType: true, ByAgent: true, BySession: true, APICalls: true}},
 	}
 
 	logger, err := NewStructuredLogger(cfg)
@@ -168,6 +172,7 @@ func TestLogAPICall(t *testing.T) {
 	cfg := &config.EnhancedConfig{
 		LogDir:  tmpDir,
 		Session: config.SessionConfig{ID: "test"},
+		Logging: config.LoggingConfig{Dimensions: config.DimensionsConfig{ByEventType: true, ByAgent: true, BySession: true, APICalls: true}},
 	}
 
 	logger, err := NewStructuredLogger(cfg)
@@ -196,6 +201,7 @@ func TestClose(t *testing.T) {
 	cfg := &config.EnhancedConfig{
 		LogDir:  tmpDir,
 		Session: config.SessionConfig{ID: "test"},
+		Logging: config.LoggingConfig{Dimensions: config.DimensionsConfig{ByEventType: true, ByAgent: true, BySession: true, APICalls: true}},
 	}
 
 	logger, err := NewStructuredLogger(cfg)
@@ -230,6 +236,7 @@ func TestMultiDimensionalLogging(t *testing.T) {
 	cfg := &config.EnhancedConfig{
 		LogDir:  tmpDir,
 		Session: config.SessionConfig{ID: "test"},
+		Logging: config.LoggingConfig{Dimensions: config.DimensionsConfig{ByEventType: true, ByAgent: true, BySession: true, APICalls: true}},
 	}
 
 	logger, err := NewStructuredLogger(cfg)
@@ -263,5 +270,53 @@ func TestMultiDimensionalLogging(t *testing.T) {
 	eventTypeLog := filepath.Join(tmpDir, "by-event-type", "agent_content.jsonl")
 	if _, err := os.Stat(eventTypeLog); os.IsNotExist(err) {
 		t.Errorf("Expected event type log to exist")
+	}
+}
+
+func TestLogEvent_RespectsDisabledDimensions(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Only by_event_type enabled: by_agent, by_session, api_calls all off.
+	cfg := &config.EnhancedConfig{
+		LogDir:  tmpDir,
+		Session: config.SessionConfig{ID: "test"},
+		Logging: config.LoggingConfig{Dimensions: config.DimensionsConfig{ByEventType: true}},
+	}
+
+	logger, err := NewStructuredLogger(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create logger: %v", err)
+	}
+	defer func() { _ = logger.Close() }()
+
+	event := &events.Event{
+		Type: events.AgentContent,
+		Raw:  []byte(`{"type":"agent_content","agent_id":"sam_harris"}`),
+		AgentContent: &events.AgentContentEvent{
+			AgentID: "sam_harris",
+		},
+	}
+	if err := logger.LogEvent(event); err != nil {
+		t.Fatalf("LogEvent: %v", err)
+	}
+	logger.LogAPICall("GET", "http://example.com", 200, 0, nil)
+
+	if _, err := os.Stat(filepath.Join(tmpDir, "by-event-type", "agent_content.jsonl")); os.IsNotExist(err) {
+		t.Error("expected by-event-type log to exist (dimension enabled)")
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, "by-agent", "sam_harris.jsonl")); err == nil {
+		t.Error("expected by-agent log NOT to exist (dimension disabled)")
+	}
+	sessionFiles, _ := filepath.Glob(filepath.Join(tmpDir, "by-session", "*.jsonl"))
+	for _, f := range sessionFiles {
+		if info, statErr := os.Stat(f); statErr == nil && info.Size() > 0 {
+			t.Errorf("expected by-session log to stay empty (dimension disabled), got content in %s", f)
+		}
+	}
+	apiFiles, _ := filepath.Glob(filepath.Join(tmpDir, "api-calls", "*.jsonl"))
+	for _, f := range apiFiles {
+		if info, statErr := os.Stat(f); statErr == nil && info.Size() > 0 {
+			t.Errorf("expected api-calls log to stay empty (dimension disabled), got content in %s", f)
+		}
 	}
 }

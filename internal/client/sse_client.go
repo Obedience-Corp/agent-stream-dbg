@@ -39,11 +39,9 @@ type SSEClient struct {
 func NewSSEClient(cfg *config.EnhancedConfig) *SSEClient {
 	client := sse.NewClient(cfg.StreamEndpointURL())
 
-	// Set up authentication header
-	client.Headers = map[string]string{
-		"Authorization": fmt.Sprintf("Bearer %s", cfg.APIKey),
-		"Accept":        "text/event-stream",
-	}
+	// Set up authentication and custom headers from config
+	client.Headers = cfg.Backend.ResolvedHeaders()
+	client.Headers["Accept"] = "text/event-stream"
 
 	return &SSEClient{
 		config:  cfg,
@@ -72,10 +70,8 @@ func (c *SSEClient) Connect(ctx context.Context, message string) error {
 
 	// Update client URL
 	c.client = sse.NewClient(u.String())
-	c.client.Headers = map[string]string{
-		"Authorization": fmt.Sprintf("Bearer %s", c.config.APIKey),
-		"Accept":        "text/event-stream",
-	}
+	c.client.Headers = c.config.Backend.ResolvedHeaders()
+	c.client.Headers["Accept"] = "text/event-stream"
 
 	eventTypes := c.config.Events.Types
 	if len(eventTypes) == 0 {

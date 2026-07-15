@@ -84,7 +84,6 @@ type AgentResponse struct {
 // InteractiveModel represents the interactive TUI state
 type InteractiveModel struct {
 	cfg      *config.EnhancedConfig
-	apiKey   string
 	textarea textarea.Model
 	viewport viewport.Model
 	viewMode ViewMode
@@ -169,7 +168,7 @@ type Message struct {
 }
 
 // NewInteractiveModel creates a new interactive TUI model
-func NewInteractiveModel(cfg *config.EnhancedConfig, apiKey string) InteractiveModel {
+func NewInteractiveModel(cfg *config.EnhancedConfig) InteractiveModel {
 	ta := textarea.New()
 	ta.Placeholder = "Type your message and press Enter to send (Ctrl+C to quit)..."
 	ta.Focus()
@@ -189,7 +188,6 @@ func NewInteractiveModel(cfg *config.EnhancedConfig, apiKey string) InteractiveM
 
 	m := InteractiveModel{
 		cfg:          cfg,
-		apiKey:       apiKey,
 		textarea:     ta,
 		viewport:     vp,
 		viewMode:     ViewModeParsed, // Default to parsed view (Ctrl+T to toggle to raw)
@@ -212,7 +210,7 @@ func NewInteractiveModel(cfg *config.EnhancedConfig, apiKey string) InteractiveM
 		appFocus:       AppFocusAgents,
 		agentCollapsed: make(map[string]bool),
 		// YAML pane
-		configClient: clientapi.NewConfigAPIClient(cfg, apiKey),
+		configClient: clientapi.NewConfigAPIClient(cfg),
 		// Events pane expandable nodes
 		eventExpanded:    make(map[int]bool),
 		selectedEventIdx: 0,
@@ -2927,7 +2925,9 @@ func (m InteractiveModel) startStreamingCmd(message string, index int) tea.Cmd {
 			return streamErrorMsg{err: fmt.Errorf("failed to create request: %w", err)}
 		}
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", m.apiKey))
+		for k, v := range m.cfg.Backend.ResolvedHeaders() {
+			req.Header.Set(k, v)
+		}
 		req.Header.Set("Accept", "text/event-stream")
 
 		clientHTTP := &http.Client{} // no timeout; SSE is long-lived
@@ -2948,7 +2948,9 @@ func (m InteractiveModel) startStreamingCmd(message string, index int) tea.Cmd {
 				cancel() // Cancel context on error to avoid leak
 				return streamErrorMsg{err: fmt.Errorf("failed to create GET request: %w", err)}
 			}
-			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", m.apiKey))
+			for k, v := range m.cfg.Backend.ResolvedHeaders() {
+				req.Header.Set(k, v)
+			}
 			req.Header.Set("Accept", "text/event-stream")
 			req = req.WithContext(ctx) // Ensure GET request also uses the cancellable context
 			resp, err = clientHTTP.Do(req)
