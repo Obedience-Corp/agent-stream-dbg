@@ -197,6 +197,9 @@ func (sl *StructuredLogger) LogAPICall(method, url string, statusCode int, durat
 
 // AgentTurnMetrics contains computed metrics for a completed agent turn
 // (any lane, identified by AgentID — not exclusive to an aggregator).
+// AgentID must be non-empty — it becomes the by-agent/<agent_id>.jsonl
+// file name, the same precondition logToAgent's own callers already
+// hold themselves to.
 type AgentTurnMetrics struct {
 	SessionID    string  `json:"session_id"`
 	AgentID      string  `json:"agent_id"`

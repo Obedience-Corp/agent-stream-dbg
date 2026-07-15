@@ -265,6 +265,25 @@ func TestGetAgentColor_AgentColorsOverride(t *testing.T) {
 	}
 }
 
+// TestGetAgentColor_EmptyAgentIDCanStillBeOverridden is a review-flagged
+// regression test: an override check must run BEFORE the empty-agentID
+// short-circuit, not after — interactive.go's pre-unification
+// getAgentColor had no empty-ID special case at all, so a config
+// declaring agent_colors: {"": "..."} could override it there; checking
+// the empty-ID short-circuit first would silently drop that capability
+// for the unified function.
+func TestGetAgentColor_EmptyAgentIDCanStillBeOverridden(t *testing.T) {
+	if got := getAgentColor("", map[string]string{"": "99"}); got != "99" {
+		t.Errorf("expected an explicit override for the empty agent ID to win, got %q", got)
+	}
+	if got := getAgentColor("", nil); got != "7" {
+		t.Errorf("expected default gray %q for empty agent ID with no override configured, got %q", "7", got)
+	}
+	if got := getAgentColor("", map[string]string{"agent_a": "42"}); got != "7" {
+		t.Errorf("expected default gray %q for empty agent ID when overrides exist but don't cover it, got %q", "7", got)
+	}
+}
+
 func TestTimelineEntry_ExtractTimestamps(t *testing.T) {
 	tv := NewTimelineVisualizer()
 	now := time.Now()

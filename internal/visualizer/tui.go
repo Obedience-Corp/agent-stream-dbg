@@ -817,17 +817,21 @@ func (m *Model) agentColorOverrides() map[string]string {
 var agentColorPalette = []string{"13", "9", "10", "12", "14", "5", "3", "6", "11", "1", "2", "4"}
 
 // getAgentColor maps an agent ID to a color: an explicit override in
-// agentColors (config's display.agent_colors) wins; otherwise the same ID
-// always hashes to the same palette entry, spread deterministically
-// across different IDs. agentColors may be nil (reading a nil map is a
-// safe, ok=false lookup) — every caller without color config gets the
-// hash-only behavior this function always had.
+// agentColors (config's display.agent_colors) wins — checked first, even
+// for an empty agentID, since interactive.go's pre-unification
+// implementation allowed overriding the empty-ID case and this preserves
+// that — otherwise the same ID always hashes to the same palette entry,
+// spread deterministically across different IDs, with plain gray as the
+// final fallback for an empty, unconfigured agentID. agentColors may be
+// nil (reading a nil map is a safe, ok=false lookup) — every caller
+// without color config gets the hash-only behavior this function always
+// had.
 func getAgentColor(agentID string, agentColors map[string]string) string {
-	if agentID == "" {
-		return "7" // Default gray
-	}
 	if color, ok := agentColors[agentID]; ok {
 		return color
+	}
+	if agentID == "" {
+		return "7" // Default gray
 	}
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(agentID))

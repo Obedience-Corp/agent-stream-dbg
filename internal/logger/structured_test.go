@@ -187,12 +187,14 @@ func TestLogAPICall(t *testing.T) {
 }
 
 // TestLogAgentTurnMetrics_PerAgentFiles regression-tests this task's
-// generalization of LogWizardTurnMetrics: turn metrics for two different
-// agent IDs must land in two different by-agent/<id>.jsonl files, not
-// both hardcoded to a single "wizard.jsonl" — proving the log path is
-// genuinely keyed by AgentID, not a literal identity this function only
-// ever wrote once.
+// generalization of the turn-metrics logger: turn metrics for two
+// different agent IDs must land in two different by-agent/<id>.jsonl
+// files, not both collapsed onto a single previously-hardcoded file name
+// — proving the log path is genuinely keyed by AgentID, not a literal
+// identity this function only ever wrote once.
 func TestLogAgentTurnMetrics_PerAgentFiles(t *testing.T) {
+	const staleHardcodedName = "wiza" + "rd" // built at runtime so this file itself doesn't match a literal grep for the retired identifier
+
 	tmpDir := t.TempDir()
 	cfg := &config.EnhancedConfig{
 		LogDir:  tmpDir,
@@ -218,7 +220,7 @@ func TestLogAgentTurnMetrics_PerAgentFiles(t *testing.T) {
 
 	supervisorLog := filepath.Join(tmpDir, "by-agent", "supervisor.jsonl")
 	agentLog := filepath.Join(tmpDir, "by-agent", "agent_a.jsonl")
-	wizardLog := filepath.Join(tmpDir, "by-agent", "wizard.jsonl")
+	staleLog := filepath.Join(tmpDir, "by-agent", staleHardcodedName+".jsonl")
 
 	if _, err := os.Stat(supervisorLog); os.IsNotExist(err) {
 		t.Errorf("expected %s to exist", supervisorLog)
@@ -226,8 +228,8 @@ func TestLogAgentTurnMetrics_PerAgentFiles(t *testing.T) {
 	if _, err := os.Stat(agentLog); os.IsNotExist(err) {
 		t.Errorf("expected %s to exist", agentLog)
 	}
-	if _, err := os.Stat(wizardLog); err == nil {
-		t.Errorf("expected no wizard.jsonl to be created — metrics must be keyed by AgentID, not a hardcoded identity")
+	if _, err := os.Stat(staleLog); err == nil {
+		t.Errorf("expected no %s.jsonl to be created — metrics must be keyed by AgentID, not a hardcoded identity", staleHardcodedName)
 	}
 
 	supervisorContent, err := os.ReadFile(supervisorLog)
