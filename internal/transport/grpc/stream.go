@@ -2,8 +2,10 @@ package grpc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	// jsonpb is marked deprecated in favor of google.golang.org/protobuf/
@@ -23,9 +25,20 @@ import (
 	"github.com/jhump/protoreflect/desc"    //nolint:staticcheck // SA1019: same reasoning as reflect.go — grpcdynamic requires this type
 	"github.com/jhump/protoreflect/dynamic" //nolint:staticcheck // SA1019: grpcdynamic's own message factory produces this concrete type; see MarshalJSONPB comment above
 	"github.com/jhump/protoreflect/dynamic/grpcdynamic"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/lancekrogers/stream-debugger/internal/transport"
 )
+
+// grpcStatusEventName is the fixed sentinel Frame.Name emitStreamEnd uses
+// for the synthetic status/trailers frame — NOT affected by
+// Config.Discriminator, which only resolves Frame.Name for a genuinely
+// decoded response message. A dialect declares a rule against this exact
+// name (match: {event: grpc_status}) to turn it into Kind=Error, same as
+// any other named event; see emitStreamEnd's doc comment for why this is
+// a fixed name rather than something Config.Discriminator computes.
+const grpcStatusEventName = "grpc_status"
 
 // jsonMarshaler renders protobuf-canonical JSON with original
 // (snake_case) field names — matching every other dialect's field paths
@@ -93,16 +106,8 @@ func (t *Transport) readLoop(md *desc.MethodDescriptor, stream *grpcdynamic.Serv
 
 	for {
 		msg, err := stream.RecvMsg()
-		if err == io.EOF {
-			return
-		}
 		if err != nil {
-			// A Recv error mid-stream (canceled, connection reset) is a
-			// finding, not something to swallow — surfaced as a Frame
-			// with Err set, matching internal/transport/sse's contract,
-			// exactly like a malformed SSE frame. Status/trailer detail
-			// on top of this is sequence 04's job.
-			emit(transport.Frame{Name: fallbackName, Timestamp: time.Now(), Err: fmt.Errorf("grpc: recv: %w", err)})
+			t.emitStreamEnd(stream, err, emit)
 			return
 		}
 
@@ -133,6 +138,63 @@ func (t *Transport) readLoop(md *desc.MethodDescriptor, stream *grpcdynamic.Serv
 			return
 		}
 	}
+}
+
+// grpcStatusFrame is the JSON shape emitStreamEnd marshals into the
+// synthetic grpc_status Frame's Data — a real, documented field a dialect
+// rule can `match: {event: grpc_status}` against and pull fields out of
+// (fields: {grpc_code: code, grpc_message: message, trailers: trailers}),
+// exactly like any other named event.
+type grpcStatusFrame struct {
+	Type     string            `json:"type"`
+	Code     string            `json:"code"`
+	Message  string            `json:"message"`
+	Trailers map[string]string `json:"trailers"`
+}
+
+// emitStreamEnd runs once RecvMsg has returned its terminal error — EOF
+// for a clean end, otherwise the stream's actual failure — and decides
+// whether to emit the synthetic grpc_status Frame: on a non-OK status, or
+// on trailers sent even alongside a clean (OK/EOF) end. A genuinely clean
+// end with no trailers emits nothing, same as before this existed.
+//
+// This is deliberately NOT Frame.Err: Err is reserved for transport-level
+// malformation (unreadable bytes, an unexpected message shape — see the
+// "unexpected response message type" and marshal-failure frames above)
+// that no dialect rule could ever make sense of. A non-OK status is a
+// well-formed thing the server intentionally sent; it belongs in the same
+// Frame/Event pipeline as every other message, so a dialect — not this
+// transport — decides what Kind it becomes. Frame.Name is always the
+// fixed grpcStatusEventName sentinel here, never resolved via
+// t.cfg.Discriminator: there is no decoded response message for oneof/
+// field:type/message_type to operate on, only a status the RPC itself
+// terminated with.
+func (t *Transport) emitStreamEnd(stream *grpcdynamic.ServerStream, recvErr error, emit func(transport.Frame) bool) {
+	st, ok := status.FromError(recvErr)
+	if recvErr == io.EOF {
+		st, ok = status.New(codes.OK, ""), true
+	}
+	trailers := stream.Trailer()
+	if ok && st.Code() == codes.OK && len(trailers) == 0 {
+		return
+	}
+
+	flatTrailers := make(map[string]string, len(trailers))
+	for k, vals := range trailers {
+		flatTrailers[k] = strings.Join(vals, ",")
+	}
+
+	data, err := json.Marshal(grpcStatusFrame{
+		Type:     grpcStatusEventName,
+		Code:     st.Code().String(),
+		Message:  st.Message(),
+		Trailers: flatTrailers,
+	})
+	if err != nil {
+		emit(transport.Frame{Name: grpcStatusEventName, Timestamp: time.Now(), Err: fmt.Errorf("grpc: marshal status frame: %w", err)})
+		return
+	}
+	emit(transport.Frame{Name: grpcStatusEventName, Data: data, Raw: data, Timestamp: time.Now()})
 }
 
 // resolveFrame computes Frame.Name and which message to marshal as

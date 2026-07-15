@@ -21,9 +21,11 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/status"
 
 	"github.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc/agentstreampb"
 )
@@ -38,6 +40,9 @@ type Server struct {
 	events           []*agentstreampb.StreamEvent
 	typedEvents      []*agentstreampb.TypedEnvelope
 	multiOneofEvents []*agentstreampb.MultiOneofEvent
+	endCode          codes.Code
+	endMessage       string
+	endTrailers      metadata.MD
 	skipReflection   bool
 	grpcServer       *grpc.Server
 	listener         net.Listener
@@ -122,13 +127,35 @@ func (s *Server) TLSAddr() string { return s.tlsListener.Addr().String() }
 
 // Stream implements agentstreampb.AgentStreamServer: replays the
 // server's scripted events verbatim, in order, capturing incoming
-// metadata for LastMetadata.
+// metadata for LastMetadata, then ends per SetEndStatus (OK, no
+// trailers, by default).
 func (s *Server) Stream(req *agentstreampb.StreamRequest, stream grpc.ServerStreamingServer[agentstreampb.StreamEvent]) error {
 	s.captureMetadata(stream.Context())
 	for _, evt := range s.events {
 		if err := stream.Send(evt); err != nil {
 			return err
 		}
+	}
+	return s.endStream(stream)
+}
+
+// SetEndStatus scripts how Stream ends after replaying its events — a
+// non-OK code, message, and/or trailers — for testing the transport's
+// synthetic grpc_status frame against a real stream ending abnormally,
+// not a hand-constructed status.Status in isolation. The zero value
+// (codes.OK, no trailers) is a clean end, same as before this existed.
+func (s *Server) SetEndStatus(code codes.Code, message string, trailers metadata.MD) {
+	s.endCode = code
+	s.endMessage = message
+	s.endTrailers = trailers
+}
+
+func (s *Server) endStream(stream grpc.ServerStream) error {
+	if len(s.endTrailers) > 0 {
+		stream.SetTrailer(s.endTrailers)
+	}
+	if s.endCode != codes.OK {
+		return status.Error(s.endCode, s.endMessage)
 	}
 	return nil
 }
