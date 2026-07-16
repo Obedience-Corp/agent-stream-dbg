@@ -3,159 +3,137 @@ package client
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"net/url"
-	"time"
+	"slices"
+	"sync"
 
+	"github.com/lancekrogers/stream-debugger/internal/bridge"
 	"github.com/lancekrogers/stream-debugger/internal/config"
 	"github.com/lancekrogers/stream-debugger/internal/events"
-	"github.com/r3labs/sse/v2"
+	"github.com/lancekrogers/stream-debugger/internal/mapping"
+	"github.com/lancekrogers/stream-debugger/internal/transport/sse"
 )
 
-// SSEClient handles Server-Sent Events connection to the backend
+// SSEClient streams parsed events from the backend over the stdlib SSE
+// transport, applying the dialect (via internal/bridge) to every frame.
 type SSEClient struct {
-	config  *config.Config
-	client  *sse.Client
-	parser  *events.Parser
+	config *config.EnhancedConfig
+	parser *bridge.Parser
+
 	eventCh chan *events.Event
 	errCh   chan error
+
+	mu        sync.Mutex
+	transport *sse.Transport
+
+	// wg tracks every readLoop goroutine ever started, across reconnects
+	// (Connect may be called more than once on the same client — see
+	// visualizer.Model.reconnect). Close waits on it before closing the
+	// channels, so a send can never race a close by construction.
+	wg sync.WaitGroup
 }
 
-// NewSSEClient creates a new SSE client
-func NewSSEClient(cfg *config.Config) *SSEClient {
-	client := sse.NewClient(cfg.StreamEndpoint())
-
-	// Set up authentication header
-	client.Headers = map[string]string{
-		"Authorization": fmt.Sprintf("Bearer %s", cfg.APIKey),
-		"Accept":        "text/event-stream",
-	}
-
+// NewSSEClient creates a new SSE client.
+func NewSSEClient(cfg *config.EnhancedConfig) *SSEClient {
 	return &SSEClient{
 		config:  cfg,
-		client:  client,
-		parser:  events.NewParser(),
+		parser:  bridge.NewParser(),
 		eventCh: make(chan *events.Event, 100),
 		errCh:   make(chan error, 10),
 	}
 }
 
-// Connect establishes SSE connection and starts streaming events
+// Connect renders the dialect's send: template and starts streaming
+// events from the result. Safe to call again on the same client (e.g. to
+// reconnect with a new debug level) — the previous transport, if any, is
+// closed first, but Events()/Errors() keep delivering across the switch.
 func (c *SSEClient) Connect(ctx context.Context, message string) error {
-	// Add message as query parameter
-	endpoint := c.config.StreamEndpoint()
-	u, err := url.Parse(endpoint)
+	vars := mapping.InterpolationVars{
+		BaseURL:   c.config.Transport.BaseURL,
+		SessionID: c.config.Session.ID,
+		Message:   message,
+	}
+	method, renderedURL, body, err := bridge.RenderSend(vars)
 	if err != nil {
-		return fmt.Errorf("invalid endpoint URL: %w", err)
+		return fmt.Errorf("failed to render send request: %w", err)
+	}
+	if method != "GET" || body != nil {
+		return fmt.Errorf("stream mode can only execute a GET-style send (no body) today; dialect declared %s with a body — needs a POST-capable transport", method)
 	}
 
-	q := u.Query()
-	q.Set("message", message)
-	if c.config.DebugLevel != "" {
-		q.Set("debug", c.config.DebugLevel)
-	}
-	u.RawQuery = q.Encode()
-
-	// Update client URL
-	c.client = sse.NewClient(u.String())
-	c.client.Headers = map[string]string{
-		"Authorization": fmt.Sprintf("Bearer %s", c.config.APIKey),
-		"Accept":        "text/event-stream",
+	if c.config.Debug.Level != "" {
+		u, err := url.Parse(renderedURL)
+		if err != nil {
+			return fmt.Errorf("invalid endpoint URL: %w", err)
+		}
+		q := u.Query()
+		q.Set("debug", c.config.Debug.Level)
+		u.RawQuery = q.Encode()
+		renderedURL = u.String()
 	}
 
-	// Subscribe to all event types
-	eventTypes := []string{
-		"session_start",
-		"session_complete",
-		"agent_stream_start",
-		"agent_content",
-		"agent_stream_complete",
-		"wizard_stream_start",
-		"wizard_content",
-		"wizard_stream_complete",
-		"error",
-		"flow_step_start",
-		"flow_step_end",
-		"flow_step_detail",
+	headers := c.config.Transport.ResolvedHeaders()
+	headers["Accept"] = "text/event-stream"
+
+	tr := sse.New(method, renderedURL, nil, headers)
+	if err := tr.Connect(ctx); err != nil {
+		return fmt.Errorf("failed to connect: %w", err)
 	}
 
-	for _, eventType := range eventTypes {
-		c.subscribeToEvent(ctx, eventType)
+	c.mu.Lock()
+	previous := c.transport
+	c.transport = tr
+	c.mu.Unlock()
+	if previous != nil {
+		_ = previous.Close()
 	}
 
+	c.wg.Add(1)
+	go c.readLoop(tr)
 	return nil
 }
 
-// subscribeToEvent subscribes to a specific SSE event type
-func (c *SSEClient) subscribeToEvent(ctx context.Context, eventType string) {
-	go func() {
-		err := c.client.SubscribeWithContext(ctx, eventType, func(msg *sse.Event) {
-			// Parse the event
-			event, parseErr := c.parser.Parse(string(msg.Event), msg.Data)
-			if parseErr != nil {
-				c.errCh <- fmt.Errorf("failed to parse event %s: %w", eventType, parseErr)
-				return
-			}
+// readLoop forwards frames from one transport connection to Events()/
+// Errors() until that transport's stream ends. It never closes the
+// channels itself — Close does, once every readLoop has exited.
+func (c *SSEClient) readLoop(tr *sse.Transport) {
+	defer c.wg.Done()
 
-			// Send to event channel
-			select {
-			case c.eventCh <- event:
-			case <-ctx.Done():
-				return
-			}
-		})
-
-		if err != nil && ctx.Err() == nil {
-			c.errCh <- fmt.Errorf("subscription error for %s: %w", eventType, err)
+	allowed := c.config.Events.Types
+	for frame := range tr.Frames() {
+		if frame.Err != nil {
+			c.errCh <- fmt.Errorf("malformed frame (name=%q, raw=%q): %w", frame.Name, frame.Raw, frame.Err)
+			continue
 		}
-	}()
+		if len(allowed) > 0 && !slices.Contains(allowed, frame.Name) {
+			continue
+		}
+		event, _ := c.parser.Parse(frame.Name, frame.Data)
+		c.eventCh <- event
+	}
 }
 
-// Events returns the channel for receiving parsed events
+// Events returns the channel for receiving parsed events.
 func (c *SSEClient) Events() <-chan *events.Event {
 	return c.eventCh
 }
 
-// Errors returns the channel for receiving errors
+// Errors returns the channel for receiving errors.
 func (c *SSEClient) Errors() <-chan error {
 	return c.errCh
 }
 
-// Close closes the SSE connection
+// Close shuts down the current transport and waits for every readLoop
+// goroutine started by this client to exit before closing Events()/
+// Errors() — so a send can never race the close.
 func (c *SSEClient) Close() {
+	c.mu.Lock()
+	tr := c.transport
+	c.mu.Unlock()
+	if tr != nil {
+		_ = tr.Close()
+	}
+	c.wg.Wait()
 	close(c.eventCh)
 	close(c.errCh)
-}
-
-// SendMessage sends a message to the backend (for testing)
-func (c *SSEClient) SendMessage(ctx context.Context, message string) error {
-	endpoint := fmt.Sprintf("%s/api/v3/sessions/%s/stream", c.config.BackendURL, c.config.SessionID)
-
-	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	q := req.URL.Query()
-	q.Set("message", message)
-	req.URL.RawQuery = q.Encode()
-
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.config.APIKey))
-	req.Header.Set("Accept", "text/event-stream")
-
-	client := &http.Client{
-		Timeout: 120 * time.Second,
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	return nil
 }

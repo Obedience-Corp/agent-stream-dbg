@@ -14,7 +14,7 @@ import (
 
 // StructuredLogger handles multi-dimensional logging
 type StructuredLogger struct {
-	config *config.Config
+	config *config.EnhancedConfig
 
 	// Log files organized by different dimensions
 	eventTypeFiles map[string]*os.File
@@ -32,7 +32,7 @@ type StructuredLogger struct {
 }
 
 // NewStructuredLogger creates a new multi-dimensional logger
-func NewStructuredLogger(cfg *config.Config) (*StructuredLogger, error) {
+func NewStructuredLogger(cfg *config.EnhancedConfig) (*StructuredLogger, error) {
 	sl := &StructuredLogger{
 		config:           cfg,
 		eventTypeFiles:   make(map[string]*os.File),
@@ -59,7 +59,7 @@ func NewStructuredLogger(cfg *config.Config) (*StructuredLogger, error) {
 	sessionLogPath := filepath.Join(
 		cfg.LogDir,
 		"by-session",
-		fmt.Sprintf("session_%s_%s.jsonl", cfg.SessionID, time.Now().Format("20060102_150405")),
+		fmt.Sprintf("session_%s_%s.jsonl", cfg.Session.ID, time.Now().Format("20060102_150405")),
 	)
 	sessionFile, err := os.OpenFile(sessionLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
@@ -90,30 +90,30 @@ func (sl *StructuredLogger) LogEvent(event *events.Event) error {
 	sl.mu.Lock()
 	defer sl.mu.Unlock()
 
-	// 1. Log to event type dimension
-	if err := sl.logToEventType(event); err != nil {
-		return fmt.Errorf("failed to log to event type: %w", err)
-	}
+	dims := sl.config.Logging.Dimensions
 
-	// 2. Log to agent dimension (if agent-related)
-	if agentID := event.GetAgentID(); agentID != "" {
-		if err := sl.logToAgent(event, agentID); err != nil {
-			return fmt.Errorf("failed to log to agent: %w", err)
+	// 1. Log to event type dimension
+	if dims.ByEventType {
+		if err := sl.logToEventType(event); err != nil {
+			return fmt.Errorf("failed to log to event type: %w", err)
 		}
 	}
 
-	// Special case for wizard events
-	if event.Type == events.WizardStreamStart ||
-		event.Type == events.WizardContent ||
-		event.Type == events.WizardStreamComplete {
-		if err := sl.logToAgent(event, "wizard"); err != nil {
-			return fmt.Errorf("failed to log to wizard: %w", err)
+	// 2. Log to agent dimension (if agent-related) — keyed by whatever
+	// SourceID the event decoded to, no per-lane special case needed.
+	if dims.ByAgent {
+		if agentID := event.SourceID; agentID != "" {
+			if err := sl.logToAgent(event, agentID); err != nil {
+				return fmt.Errorf("failed to log to agent: %w", err)
+			}
 		}
 	}
 
 	// 3. Log to session timeline
-	if err := sl.logToSession(event); err != nil {
-		return fmt.Errorf("failed to log to session: %w", err)
+	if dims.BySession {
+		if err := sl.logToSession(event); err != nil {
+			return fmt.Errorf("failed to log to session: %w", err)
+		}
 	}
 
 	return nil
@@ -121,7 +121,7 @@ func (sl *StructuredLogger) LogEvent(event *events.Event) error {
 
 // logToEventType logs to event-type-specific file
 func (sl *StructuredLogger) logToEventType(event *events.Event) error {
-	eventType := string(event.Type)
+	eventType := event.Name
 
 	// Get or create logger for this event type
 	logger, exists := sl.eventTypeLoggers[eventType]
@@ -157,7 +157,7 @@ func (sl *StructuredLogger) logToAgent(event *events.Event, agentID string) erro
 
 	logger.Info().
 		Str("agent_id", agentID).
-		Str("event_type", string(event.Type)).
+		Str("event_type", event.Name).
 		RawJSON("event", event.Raw).
 		Msg("agent_event")
 	return nil
@@ -166,8 +166,8 @@ func (sl *StructuredLogger) logToAgent(event *events.Event, agentID string) erro
 // logToSession logs to session timeline
 func (sl *StructuredLogger) logToSession(event *events.Event) error {
 	sl.sessionLogger.Info().
-		Str("event_type", string(event.Type)).
-		Str("agent_id", event.GetAgentID()).
+		Str("event_type", event.Name).
+		Str("agent_id", event.SourceID).
 		RawJSON("event", event.Raw).
 		Msg("session_event")
 	return nil
@@ -177,6 +177,10 @@ func (sl *StructuredLogger) logToSession(event *events.Event) error {
 func (sl *StructuredLogger) LogAPICall(method, url string, statusCode int, duration time.Duration, err error) {
 	sl.mu.Lock()
 	defer sl.mu.Unlock()
+
+	if !sl.config.Logging.Dimensions.APICalls {
+		return
+	}
 
 	logEvent := sl.apiLogger.Info().
 		Str("method", method).
@@ -191,9 +195,14 @@ func (sl *StructuredLogger) LogAPICall(method, url string, statusCode int, durat
 	logEvent.Msg("api_call")
 }
 
-// WizardTurnMetrics contains computed metrics for a wizard turn
-type WizardTurnMetrics struct {
+// AgentTurnMetrics contains computed metrics for a completed agent turn
+// (any lane, identified by AgentID — not exclusive to an aggregator).
+// AgentID must be non-empty — it becomes the by-agent/<agent_id>.jsonl
+// file name, the same precondition logToAgent's own callers already
+// hold themselves to.
+type AgentTurnMetrics struct {
 	SessionID    string  `json:"session_id"`
+	AgentID      string  `json:"agent_id"`
 	TurnID       int     `json:"turn_id"`
 	TokenCount   int     `json:"token_count"`
 	FirstTokenMs int64   `json:"first_token_ms"`
@@ -202,26 +211,28 @@ type WizardTurnMetrics struct {
 	PlanID       string  `json:"plan_id,omitempty"`
 }
 
-// LogWizardTurnMetrics logs computed wizard metrics for a turn
-func (sl *StructuredLogger) LogWizardTurnMetrics(metrics WizardTurnMetrics) error {
+// LogAgentTurnMetrics logs computed turn metrics for metrics.AgentID —
+// each agent's metrics land in its own by-agent/<agent_id>.jsonl file,
+// the same get-or-create-logger convention logToAgent already uses.
+func (sl *StructuredLogger) LogAgentTurnMetrics(metrics AgentTurnMetrics) error {
 	sl.mu.Lock()
 	defer sl.mu.Unlock()
 
-	// Get or create wizard logger
-	logger, exists := sl.agentLoggers["wizard"]
+	logger, exists := sl.agentLoggers[metrics.AgentID]
 	if !exists {
-		logPath := filepath.Join(sl.config.LogDir, "by-agent", "wizard.jsonl")
+		logPath := filepath.Join(sl.config.LogDir, "by-agent", fmt.Sprintf("%s.jsonl", metrics.AgentID))
 		file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
-			return fmt.Errorf("failed to create wizard log file: %w", err)
+			return fmt.Errorf("failed to create agent log file: %w", err)
 		}
-		sl.agentFiles["wizard"] = file
+		sl.agentFiles[metrics.AgentID] = file
 		logger = zerolog.New(file).With().Timestamp().Logger()
-		sl.agentLoggers["wizard"] = logger
+		sl.agentLoggers[metrics.AgentID] = logger
 	}
 
 	logEvent := logger.Info().
 		Str("session_id", metrics.SessionID).
+		Str("agent_id", metrics.AgentID).
 		Int("turn_id", metrics.TurnID).
 		Int("token_count", metrics.TokenCount).
 		Int64("first_token_ms", metrics.FirstTokenMs).
@@ -234,7 +245,7 @@ func (sl *StructuredLogger) LogWizardTurnMetrics(metrics WizardTurnMetrics) erro
 		logEvent = logEvent.Str("plan_id", metrics.PlanID)
 	}
 
-	logEvent.Msg("wizard_turn_metrics")
+	logEvent.Msg("agent_turn_metrics")
 	return nil
 }
 

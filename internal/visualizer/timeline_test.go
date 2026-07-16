@@ -24,14 +24,10 @@ func TestAddEvent(t *testing.T) {
 	now := time.Now()
 
 	event := &events.Event{
-		Type: events.AgentStreamStart,
-		AgentStreamStart: &events.AgentStreamStartEvent{
-			BaseEvent: events.BaseEvent{
-				Type:      events.AgentStreamStart,
-				Timestamp: now,
-			},
-			AgentID: "sam_harris",
-		},
+		Name:      "agent_stream_start",
+		Kind:      events.KindStreamStart,
+		Timestamp: now,
+		SourceID:  "agent_a",
 	}
 
 	tv.AddEvent(event)
@@ -41,8 +37,8 @@ func TestAddEvent(t *testing.T) {
 	}
 
 	entry := tv.entries[0]
-	if entry.AgentID != "sam_harris" {
-		t.Errorf("Expected agent_id 'sam_harris', got '%s'", entry.AgentID)
+	if entry.AgentID != "agent_a" {
+		t.Errorf("Expected agent_id 'agent_a', got '%s'", entry.AgentID)
 	}
 
 	if entry.Type != "agent_stream_start" {
@@ -58,31 +54,13 @@ func TestAddEvent_UpdatesTimeBounds(t *testing.T) {
 	earlier := now.Add(-3 * time.Second)
 
 	// Add events out of order
-	events := []*events.Event{
-		{
-			Type: events.AgentStreamStart,
-			AgentStreamStart: &events.AgentStreamStartEvent{
-				BaseEvent: events.BaseEvent{Timestamp: now},
-				AgentID:   "agent1",
-			},
-		},
-		{
-			Type: events.AgentStreamStart,
-			AgentStreamStart: &events.AgentStreamStartEvent{
-				BaseEvent: events.BaseEvent{Timestamp: later},
-				AgentID:   "agent2",
-			},
-		},
-		{
-			Type: events.AgentStreamStart,
-			AgentStreamStart: &events.AgentStreamStartEvent{
-				BaseEvent: events.BaseEvent{Timestamp: earlier},
-				AgentID:   "agent3",
-			},
-		},
+	evts := []*events.Event{
+		{Name: "agent_stream_start", Timestamp: now, SourceID: "agent1"},
+		{Name: "agent_stream_start", Timestamp: later, SourceID: "agent2"},
+		{Name: "agent_stream_start", Timestamp: earlier, SourceID: "agent3"},
 	}
 
-	for _, event := range events {
+	for _, event := range evts {
 		tv.AddEvent(event)
 	}
 
@@ -112,28 +90,25 @@ func TestRenderTimeline_WithEvents(t *testing.T) {
 
 	// Add agent stream
 	tv.AddEvent(&events.Event{
-		Type: events.AgentStreamStart,
-		AgentStreamStart: &events.AgentStreamStartEvent{
-			BaseEvent: events.BaseEvent{Timestamp: now},
-			AgentID:   "sam_harris",
-		},
+		Name:      "agent_stream_start",
+		Kind:      events.KindStreamStart,
+		Timestamp: now,
+		SourceID:  "agent_a",
 	})
 
 	tv.AddEvent(&events.Event{
-		Type: events.AgentContent,
-		AgentContent: &events.AgentContentEvent{
-			BaseEvent: events.BaseEvent{Timestamp: now.Add(100 * time.Millisecond)},
-			AgentID:   "sam_harris",
-			Content:   "test",
-		},
+		Name:      "agent_content",
+		Kind:      events.KindContent,
+		Timestamp: now.Add(100 * time.Millisecond),
+		SourceID:  "agent_a",
+		Content:   "test",
 	})
 
 	tv.AddEvent(&events.Event{
-		Type: events.AgentStreamComplete,
-		AgentStreamComplete: &events.AgentStreamCompleteEvent{
-			BaseEvent: events.BaseEvent{Timestamp: now.Add(200 * time.Millisecond)},
-			AgentID:   "sam_harris",
-		},
+		Name:      "agent_stream_complete",
+		Kind:      events.KindStreamEnd,
+		Timestamp: now.Add(200 * time.Millisecond),
+		SourceID:  "agent_a",
 	})
 
 	output := tv.RenderTimeline(100)
@@ -143,7 +118,7 @@ func TestRenderTimeline_WithEvents(t *testing.T) {
 		t.Error("Expected timeline header")
 	}
 
-	if !strings.Contains(output, "sam_harris") {
+	if !strings.Contains(output, "agent_a") {
 		t.Error("Expected agent name in output")
 	}
 
@@ -170,12 +145,11 @@ func TestRenderDetailedLog_WithEvents(t *testing.T) {
 	now := time.Now()
 
 	tv.AddEvent(&events.Event{
-		Type: events.AgentContent,
-		AgentContent: &events.AgentContentEvent{
-			BaseEvent: events.BaseEvent{Timestamp: now},
-			AgentID:   "sam_harris",
-			Content:   "Hello world",
-		},
+		Name:      "agent_content",
+		Kind:      events.KindContent,
+		Timestamp: now,
+		SourceID:  "agent_a",
+		Content:   "Hello world",
 	})
 
 	output := tv.RenderDetailedLog()
@@ -185,7 +159,7 @@ func TestRenderDetailedLog_WithEvents(t *testing.T) {
 		t.Error("Expected detailed log header")
 	}
 
-	if !strings.Contains(output, "sam_harris") {
+	if !strings.Contains(output, "agent_a") {
 		t.Error("Expected agent name")
 	}
 
@@ -203,38 +177,12 @@ func TestRenderParallelSummary_Sequential(t *testing.T) {
 	now := time.Now()
 
 	// Agent 1 runs then completes
-	tv.AddEvent(&events.Event{
-		Type: events.AgentStreamStart,
-		AgentStreamStart: &events.AgentStreamStartEvent{
-			BaseEvent: events.BaseEvent{Timestamp: now},
-			AgentID:   "agent1",
-		},
-	})
-
-	tv.AddEvent(&events.Event{
-		Type: events.AgentStreamComplete,
-		AgentStreamComplete: &events.AgentStreamCompleteEvent{
-			BaseEvent: events.BaseEvent{Timestamp: now.Add(1 * time.Second)},
-			AgentID:   "agent1",
-		},
-	})
+	tv.AddEvent(&events.Event{Name: "agent_stream_start", Kind: events.KindStreamStart, Timestamp: now, SourceID: "agent1"})
+	tv.AddEvent(&events.Event{Name: "agent_stream_complete", Kind: events.KindStreamEnd, Timestamp: now.Add(1 * time.Second), SourceID: "agent1"})
 
 	// Agent 2 starts after agent 1 completes
-	tv.AddEvent(&events.Event{
-		Type: events.AgentStreamStart,
-		AgentStreamStart: &events.AgentStreamStartEvent{
-			BaseEvent: events.BaseEvent{Timestamp: now.Add(2 * time.Second)},
-			AgentID:   "agent2",
-		},
-	})
-
-	tv.AddEvent(&events.Event{
-		Type: events.AgentStreamComplete,
-		AgentStreamComplete: &events.AgentStreamCompleteEvent{
-			BaseEvent: events.BaseEvent{Timestamp: now.Add(3 * time.Second)},
-			AgentID:   "agent2",
-		},
-	})
+	tv.AddEvent(&events.Event{Name: "agent_stream_start", Kind: events.KindStreamStart, Timestamp: now.Add(2 * time.Second), SourceID: "agent2"})
+	tv.AddEvent(&events.Event{Name: "agent_stream_complete", Kind: events.KindStreamEnd, Timestamp: now.Add(3 * time.Second), SourceID: "agent2"})
 
 	output := tv.RenderParallelSummary()
 
@@ -249,39 +197,14 @@ func TestRenderParallelSummary_Parallel(t *testing.T) {
 	now := time.Now()
 
 	// Agent 1 starts
-	tv.AddEvent(&events.Event{
-		Type: events.AgentStreamStart,
-		AgentStreamStart: &events.AgentStreamStartEvent{
-			BaseEvent: events.BaseEvent{Timestamp: now},
-			AgentID:   "agent1",
-		},
-	})
+	tv.AddEvent(&events.Event{Name: "agent_stream_start", Kind: events.KindStreamStart, Timestamp: now, SourceID: "agent1"})
 
 	// Agent 2 starts while agent 1 is running
-	tv.AddEvent(&events.Event{
-		Type: events.AgentStreamStart,
-		AgentStreamStart: &events.AgentStreamStartEvent{
-			BaseEvent: events.BaseEvent{Timestamp: now.Add(500 * time.Millisecond)},
-			AgentID:   "agent2",
-		},
-	})
+	tv.AddEvent(&events.Event{Name: "agent_stream_start", Kind: events.KindStreamStart, Timestamp: now.Add(500 * time.Millisecond), SourceID: "agent2"})
 
 	// Both complete
-	tv.AddEvent(&events.Event{
-		Type: events.AgentStreamComplete,
-		AgentStreamComplete: &events.AgentStreamCompleteEvent{
-			BaseEvent: events.BaseEvent{Timestamp: now.Add(2 * time.Second)},
-			AgentID:   "agent1",
-		},
-	})
-
-	tv.AddEvent(&events.Event{
-		Type: events.AgentStreamComplete,
-		AgentStreamComplete: &events.AgentStreamCompleteEvent{
-			BaseEvent: events.BaseEvent{Timestamp: now.Add(2500 * time.Millisecond)},
-			AgentID:   "agent2",
-		},
-	})
+	tv.AddEvent(&events.Event{Name: "agent_stream_complete", Kind: events.KindStreamEnd, Timestamp: now.Add(2 * time.Second), SourceID: "agent1"})
+	tv.AddEvent(&events.Event{Name: "agent_stream_complete", Kind: events.KindStreamEnd, Timestamp: now.Add(2500 * time.Millisecond), SourceID: "agent2"})
 
 	output := tv.RenderParallelSummary()
 
@@ -295,24 +218,69 @@ func TestRenderParallelSummary_Parallel(t *testing.T) {
 	}
 }
 
+// TestGetAgentColor checks the generic contract getAgentColor must hold
+// for ANY dialect's agent IDs — determinism and a sane empty-ID default
+// — rather than pinning specific persona-name-to-color assignments.
 func TestGetAgentColor(t *testing.T) {
-	tests := []struct {
-		agentID string
-		want    string
-	}{
-		{"sam_harris", "13"},
-		{"tony_robbins", "9"},
-		{"wizard", "11"},
-		{"unknown_agent", "7"}, // Default
+	if got := getAgentColor("", nil); got != "7" {
+		t.Errorf("expected default gray %q for empty agent ID, got %q", "7", got)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.agentID, func(t *testing.T) {
-			color := getAgentColor(tt.agentID)
-			if color != tt.want {
-				t.Errorf("Expected color %s for %s, got %s", tt.want, tt.agentID, color)
+	for _, id := range []string{"agent_a", "some-agent-from-a-strangers-dialect", "assistant"} {
+		first := getAgentColor(id, nil)
+		if first == "" {
+			t.Errorf("expected a non-empty color for agent %q", id)
+		}
+		for i := 0; i < 5; i++ {
+			if got := getAgentColor(id, nil); got != first {
+				t.Errorf("expected stable color for repeated calls with %q, got %q then %q", id, first, got)
 			}
-		})
+		}
+	}
+}
+
+// TestGetAgentColor_AgentColorsOverride proves an agent_colors entry
+// wins over the hash-based default, while an agent absent from the
+// override map still gets a hash-derived color, not flat gray — the two
+// halves architecture.md describes as one function's job (this task
+// unified them; previously only interactive.go's copy had the override
+// half, and only tui.go's had the hash half).
+func TestGetAgentColor_AgentColorsOverride(t *testing.T) {
+	overrides := map[string]string{"agent_a": "42"}
+
+	if got := getAgentColor("agent_a", overrides); got != "42" {
+		t.Errorf("expected the configured override %q for agent_a, got %q", "42", got)
+	}
+
+	// An agent absent from the override map must still get a
+	// hash-derived color — not the override map's absence collapsing it
+	// to flat gray (interactive.go's pre-unification bug).
+	unconfigured := getAgentColor("agent_b", overrides)
+	hashOnly := getAgentColor("agent_b", nil)
+	if unconfigured != hashOnly {
+		t.Errorf("expected agent_b (absent from overrides) to get the same hash-derived color as with no overrides at all: got %q, want %q", unconfigured, hashOnly)
+	}
+	if unconfigured == "7" {
+		t.Error("expected agent_b to get a hash-spread color, not flat gray, despite an (unrelated) agent_colors map being present")
+	}
+}
+
+// TestGetAgentColor_EmptyAgentIDCanStillBeOverridden is a review-flagged
+// regression test: an override check must run BEFORE the empty-agentID
+// short-circuit, not after — interactive.go's pre-unification
+// getAgentColor had no empty-ID special case at all, so a config
+// declaring agent_colors: {"": "..."} could override it there; checking
+// the empty-ID short-circuit first would silently drop that capability
+// for the unified function.
+func TestGetAgentColor_EmptyAgentIDCanStillBeOverridden(t *testing.T) {
+	if got := getAgentColor("", map[string]string{"": "99"}); got != "99" {
+		t.Errorf("expected an explicit override for the empty agent ID to win, got %q", got)
+	}
+	if got := getAgentColor("", nil); got != "7" {
+		t.Errorf("expected default gray %q for empty agent ID with no override configured, got %q", "7", got)
+	}
+	if got := getAgentColor("", map[string]string{"agent_a": "42"}); got != "7" {
+		t.Errorf("expected default gray %q for empty agent ID when overrides exist but don't cover it, got %q", "7", got)
 	}
 }
 
@@ -327,34 +295,15 @@ func TestTimelineEntry_ExtractTimestamps(t *testing.T) {
 	}{
 		{
 			"AgentContent",
-			&events.Event{
-				Type: events.AgentContent,
-				AgentContent: &events.AgentContentEvent{
-					BaseEvent: events.BaseEvent{Timestamp: now},
-					AgentID:   "test",
-					Content:   "data",
-				},
-			},
+			&events.Event{Name: "agent_content", Timestamp: now, SourceID: "test", Content: "data"},
 		},
 		{
-			"WizardContent",
-			&events.Event{
-				Type: events.WizardContent,
-				WizardContent: &events.WizardContentEvent{
-					BaseEvent: events.BaseEvent{Timestamp: now},
-					Content:   "synthesis",
-				},
-			},
+			"AggregatorContent",
+			&events.Event{Name: "synth_content", Kind: events.KindContent, Timestamp: now, SourceID: "aggregator", Content: "synthesis"},
 		},
 		{
 			"Error",
-			&events.Event{
-				Type: events.Error,
-				Error: &events.ErrorEvent{
-					BaseEvent: events.BaseEvent{Timestamp: now},
-					ErrorType: events.RateLimitError,
-				},
-			},
+			&events.Event{Name: "error", Timestamp: now, Fields: map[string]any{"error_type": "rate_limit_error"}},
 		},
 	}
 

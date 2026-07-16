@@ -1,0 +1,8 @@
+{"task": {"id": "task-a2a-001", "contextId": "ctx-a2a-001", "status": {"state": "TASK_STATE_SUBMITTED"}}}
+{"statusUpdate": {"taskId": "task-a2a-001", "contextId": "ctx-a2a-001", "status": {"state": "TASK_STATE_WORKING"}}}
+{"statusUpdate": {"taskId": "task-a2a-001", "contextId": "ctx-a2a-001", "status": {"state": "TASK_STATE_INPUT_REQUIRED", "message": {"messageId": "msg-agent-001", "role": "ROLE_AGENT", "parts": [{"text": "Which city's weather do you want?"}]}}}}
+{"message": {"messageId": "msg-user-001", "contextId": "ctx-a2a-001", "taskId": "task-a2a-001", "role": "ROLE_USER", "parts": [{"text": "Denver"}]}}
+{"artifactUpdate": {"taskId": "task-a2a-001", "contextId": "ctx-a2a-001", "artifact": {"artifactId": "art-001", "name": "weather-report", "parts": [{"text": "The weather in Denver is sunny and 72F."}]}, "append": false, "lastChunk": true}}
+{"statusUpdate": {"taskId": "task-a2a-001", "contextId": "ctx-a2a-001", "status": {"state": "TASK_STATE_COMPLETED"}}}
+{"name": "Weather Agent", "description": "Provides current weather conditions for a given city.", "version": "1.0.0", "capabilities": {"streaming": true}, "defaultInputModes": ["text/plain"], "defaultOutputModes": ["text/plain"], "skills": [{"id": "get-weather", "name": "Get Weather", "description": "Returns current weather for a city.", "tags": ["weather"]}]}
+{"tasks": [{"id": "task-a2a-999", "status": {"state": "TASK_STATE_WORKING"}}], "nextPageToken": ""}

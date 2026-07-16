@@ -1,0 +1,30 @@
+frame 1  event=
+  ✗ no rule matched → kind=unknown (rendered raw)
+      hint: add a `- match: {exists: <a field unique to this frame's shape>}` rule
+frame 2  event=
+  ✓ rules[1] matched {exists: choices.0.delta.content}
+      source  ← const: assistant          = "assistant"
+      content ← choices.0.delta.content   = "The"
+frame 3  event=
+  ✓ rules[1] matched {exists: choices.0.delta.content}
+      source  ← const: assistant          = "assistant"
+      content ← choices.0.delta.content   = " answer is 42."
+frame 4  event=
+  ✓ rules[2] matched {exists: choices.0.delta.tool_calls}
+      source    ← const: assistant                                  = "assistant"
+      args      ← choices.0.delta.tool_calls.0.function.arguments   = ""        ⚠ empty — path may be wrong
+      tool_name ← choices.0.delta.tool_calls.0.function.name        = "get_weather"
+frame 5  event=
+  ✓ rules[2] matched {exists: choices.0.delta.tool_calls}
+      source    ← const: assistant                                  = "assistant"
+      args      ← choices.0.delta.tool_calls.0.function.arguments   = "{\"location\":\"Denver\"}"
+      tool_name ← choices.0.delta.tool_calls.0.function.name        (not found)
+frame 6  event=
+  ✗ no rule matched → kind=unknown (rendered raw)
+      hint: add a `- match: {exists: <a field unique to this frame's shape>}` rule
+frame 7  event=
+  ✓ rules[3] matched {exists: usage.total_tokens}
+      model  ← model                = "gpt-4o-mini"
+      tokens ← usage.total_tokens   = "27"
+frame 8  event=
+  ✓ rules[0] matched {raw: "[DONE]"}

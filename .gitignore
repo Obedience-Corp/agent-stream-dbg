@@ -9,6 +9,7 @@ bin/
 logs/
 *.log
 *.jsonl
+!testdata/**/*.jsonl
 
 # Go
 vendor/

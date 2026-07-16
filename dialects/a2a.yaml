@@ -1,0 +1,177 @@
+# A2A (Agent2Agent) protocol dialect — v1.0. Field names and enum strings
+# verified fresh against the normative sources (2026-07-15), not memory and
+# not the design doc's original illustrative v0.3-era example (which this
+# verification found materially wrong — see below):
+#   https://github.com/a2aproject/A2A/blob/main/docs/specification.md
+#   https://github.com/a2aproject/A2A/blob/main/specification/a2a.proto
+# (the proto is the *normative* data model — the spec: "All protocol
+# bindings MUST provide functionally equivalent representations of these
+# data structures.") Every path/enum string below cites the exact
+# a2a.proto line(s) it came from.
+#
+# Three corrections vs. the design doc's old illustrative example:
+#   1. No `kind` discriminator field. v0.3 had one; v1.0 removed it.
+#      StreamResponse (a2a.proto:790-802) is a plain proto3
+#      `oneof payload { Task task=1; Message message=2;
+#      TaskStatusUpdateEvent status_update=3;
+#      TaskArtifactUpdateEvent artifact_update=4; }` — discriminated by
+#      which JSON member key is present, not a string field.
+#   2. TaskState values (a2a.proto:187-208) are full ProtoJSON
+#      SCREAMING_SNAKE_CASE names ("TASK_STATE_COMPLETED"), per spec §5.5's
+#      enum serialization rule — not "completed"/"working"/"input-required".
+#   3. All JSON field names are camelCase (spec §5.5: "MUST use camelCase
+#      naming for field names, not the snake_case convention used in
+#      Protocol Buffer definitions"). taskId, contextId, lastChunk, etc.
+#
+# discriminator: auto — deliberate, not a default left in place. Neither
+# protocol binding that streams via SSE puts a name anywhere `discriminator:
+# event` (used by brainyard.yaml) could read: no `event:` line appears in
+# any of the spec's SSE examples. And correction #1 above means
+# `discriminator: {path: ...}` (used by anthropic.yaml) has no `kind`/`type`
+# field to point at either — v0.3 had one, v1.0 doesn't. Matching is purely
+# structural on which oneof member key each frame carries.
+#
+# Framing target: the REST/HTTP+JSON binding (spec §6.2's worked example:
+# `POST /message:stream`), not the JSON-RPC binding — both stream via bare
+# `data:` SSE lines (confirmed, no `event:` field in either), but their
+# payload shapes differ. JSON-RPC (§9.4.2) wraps each line in a full
+# envelope (`{"jsonrpc":"2.0","id":1,"result":{...}}`), nesting the real
+# payload two levels deep. REST's `data:` line is the bare StreamResponse
+# JSON directly — one level of nesting (the oneof member key), no envelope.
+# REST's flatter shape is what the gRPC transport's existing
+# `discriminator: none` mode already reproduces unmodified (see sequence
+# 03) without a transport-specific branch; JSON-RPC's envelope would need
+# one (or a new engine primitive) to unwrap `result`, failing the "one
+# dialect, zero branches" gate. Picked deliberately, recorded here rather
+# than left implicit.
+#
+# No setup:/send: block for v1. A2A's SendStreamingMessage stream starts
+# directly — no session-creation handshake like Brainyard's
+# `POST /api/v3/debug/session`, so no setup: is needed. A send: block is
+# structurally plausible (A2A does support sending a typed message), but
+# SendMessageRequest.message (a2a.proto:653, REQUIRED) is a Message whose
+# own message_id (a2a.proto:262, REQUIRED) has no generation primitive in
+# this engine — internal/mapping/interpolate.go's InterpolationVars only
+# offers base_url/session_id/message/agents/declared vars:, nothing that
+# mints a fresh ID per send. Hardcoding a constant messageId would silently
+# break correctness on any second turn. Watch-only is a legitimate,
+# precedented scope here (openai.yaml and anthropic.yaml both ship without
+# send: too) — not an oversight.
+version: 1
+name: a2a
+description: A2A (Agent2Agent) protocol v1.0 — structural StreamResponse oneof matching, no wire discriminator.
+discriminator: auto
+
+rules:
+  # Task (a2a.proto:167-184): the initial full-task frame a stream can open
+  # with. id (a2a.proto:170, REQUIRED) is the strongest per-frame identity
+  # (see the flow: source: choice below). status (175, REQUIRED) is a
+  # TaskStatus (211-219) whose state (213, REQUIRED) is the TaskState enum
+  # (187-208) — a real "TASK_STATE_*" string, not the design doc's old
+  # lowercase-hyphenated guess.
+  - match: {exists: task}
+    kind: session_start
+    source: task.id
+    fields:
+      context_id: task.contextId
+      state: task.status.state
+
+  # TaskStatusUpdateEvent (a2a.proto:296-305), StreamResponse oneof member
+  # #3 ("statusUpdate" on the wire per §5.5 camelCase). task_id/context_id
+  # are both REQUIRED (298, 300); status (302, REQUIRED) is again a
+  # TaskStatus -> TaskState. This is the phase's headline scenario: the
+  # TASK_STATE_WORKING -> TASK_STATE_INPUT_REQUIRED -> TASK_STATE_COMPLETED
+  # sequence. Note there is no `final` boolean on this event in the current
+  # proto (v0.3 apparently had one) — terminality is inferred by a reader
+  # from status.state alone (COMPLETED|FAILED|CANCELED|REJECTED); this
+  # dialect doesn't invent a field the wire doesn't send.
+  - match: {exists: statusUpdate}
+    kind: status_change
+    source: statusUpdate.taskId
+    fields:
+      context_id: statusUpdate.contextId
+      state: statusUpdate.status.state
+
+  # TaskArtifactUpdateEvent (a2a.proto:308-322), oneof member #4
+  # ("artifactUpdate"). artifact (314, REQUIRED) is an Artifact
+  # (280-293) whose parts (288, REQUIRED) is a repeated Part (224-242);
+  # Part is itself a `oneof content { text=1; raw=2; url=3; data=4; }` —
+  # parts.0.text covers the text case, the variant this phase's fixture and
+  # scope exercise (the other Part oneof members aren't wired for v1, same
+  # posture as openai.yaml not wiring every possible delta shape). append
+  # (317) and last_chunk (319, camelCase: lastChunk) are both plain bools.
+  - match: {exists: artifactUpdate}
+    kind: content
+    source: artifactUpdate.taskId
+    content: artifactUpdate.artifact.parts.0.text
+    fields:
+      append: artifactUpdate.append
+      last_chunk: artifactUpdate.lastChunk
+
+  # Message (a2a.proto:260-277), oneof member #2 ("message"). Open call:
+  # what Kind does a bare Message variant map to? Per spec §3.7, Message
+  # plays several roles (clarification requests, status text, task
+  # interaction) but explicitly "SHOULD NOT be used to deliver task
+  # outputs" — that's artifactUpdate's job (above), not this rule's.
+  # Mapped to kind: detail — a structured, non-lifecycle payload, the same
+  # role brainyard.yaml's prompt_info/filter_detail/etc. rules play — rather
+  # than kind: content, to avoid conflating agent clarification/status text
+  # with the actual output channel. The text is still surfaced (via
+  # fields.text, not the dedicated content: extractor, to keep that
+  # separation clean) so it's visible for debugging. message_id (262,
+  # REQUIRED) and role (268, REQUIRED; Role enum 245-252:
+  # ROLE_UNSPECIFIED|ROLE_USER|ROLE_AGENT) are both useful debug context.
+  - match: {exists: message}
+    kind: detail
+    source: message.taskId
+    fields:
+      message_id: message.messageId
+      role: message.role
+      text: message.parts.0.text
+
+  # AgentCard (a2a.proto:361-398) — NOT a StreamResponse variant; it never
+  # arrives inline in a message:stream/tasks:subscribe response. It's
+  # fetched separately, either via the well-known URI
+  # GET /.well-known/agent-card.json (spec §8.2) or the
+  # GetExtendedAgentCard RPC (§9.4.8/§10.4.11) for the authenticated
+  # variant. Matched structurally on skills (393, REQUIRED) — the one field
+  # unique to AgentCard among every shape this dialect decodes; no
+  # Task/Message/TaskStatusUpdateEvent/TaskArtifactUpdateEvent has a
+  # `skills` key. Scope is decode-correctness only: this proves an
+  # AgentCard-shaped frame reaches Kind: topology through the exact same
+  # generic path brainyard.yaml's flow_config rule exercises
+  # (FlowDeriver.Observe's stages_order lookup no-ops gracefully when
+  # absent, as it will be here — internal/mapping/flow.go) — it is
+  # deliberately NOT a live "auto-fetch the AgentCard at connect time"
+  # feature, which would be new tool-level work outside this phase's scope.
+  - match: {exists: skills}
+    kind: topology
+    fields:
+      name: name
+      skills: skills
+      capabilities: capabilities
+
+# No rule matches any other top-level shape (e.g. a ListTasksResponse) —
+# those correctly fall through to Kind: unknown, never dropped
+# (dialect-spec.md constraint 4: "Unknown is a first-class outcome").
+
+# flow: source: taskId. Brainyard has agent_id on almost every event, a
+# clean per-agent source: value; A2A has no equivalent on any of
+# Task/Message/TaskStatusUpdateEvent/TaskArtifactUpdateEvent — it's
+# fundamentally a (usually 1:1) client<->agent protocol, and multi-agent
+# orchestration on top of it is an application pattern, not a wire field.
+# taskId (present on every rule above) is the one strong per-event identity
+# A2A actually exposes: it distinguishes concurrent tasks/conversations,
+# the debugging-relevant unit here. Limitation, recorded rather than
+# silently accepted: it does NOT distinguish "which agent" in a
+# multi-agent-orchestrator-fronting-multiple-A2A-servers scenario — there's
+# no wire field for that today. No lanes: declared: the design doc's
+# original illustrative `lanes: - match: {source: "orchestrator*"} role:
+# supervisor` was speculative (no such convention exists in the spec), and
+# nothing in the real spec justifies a lane-role split, so it wasn't
+# carried forward — dropped rather than kept on unverified grounds.
+# default_role: worker is set explicitly (redundant with the engine's own
+# default) purely so this reasoning has a concrete anchor in the file, the
+# same posture the corrected design doc example (dialect-spec.md §4) takes.
+flow:
+  default_role: worker

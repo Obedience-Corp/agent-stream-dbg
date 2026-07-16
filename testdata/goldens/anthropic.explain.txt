@@ -1,0 +1,31 @@
+frame 1  event=message_start
+  ✓ rules[0] matched {event: message_start}
+      model ← message.model   = "claude-opus-4-6-20260115"
+frame 2  event=content_block_start
+  ✗ no rule matched → kind=unknown (rendered raw)
+      hint: add `- match: {event: content_block_start}`   # dispatched via payload field "type"
+frame 3  event=content_block_delta
+  ✓ rules[2] matched {event: content_block_delta, exists: delta.thinking}
+      source  ← const: assistant   = "assistant"
+      content ← delta.thinking     = "Let me consider this."
+frame 4  event=content_block_delta
+  ✗ no rule matched → kind=unknown (rendered raw)
+      hint: add `- match: {event: content_block_delta}`   # dispatched via payload field "type"
+frame 5  event=content_block_stop
+  ✗ no rule matched → kind=unknown (rendered raw)
+      hint: add `- match: {event: content_block_stop}`   # dispatched via payload field "type"
+frame 6  event=content_block_start
+  ✗ no rule matched → kind=unknown (rendered raw)
+      hint: add `- match: {event: content_block_start}`   # dispatched via payload field "type"
+frame 7  event=content_block_delta
+  ✓ rules[1] matched {event: content_block_delta, exists: delta.text}
+      source  ← const: assistant   = "assistant"
+      content ← delta.text         = "The answer is 42."
+frame 8  event=content_block_stop
+  ✗ no rule matched → kind=unknown (rendered raw)
+      hint: add `- match: {event: content_block_stop}`   # dispatched via payload field "type"
+frame 9  event=message_delta
+  ✓ rules[3] matched {event: message_delta, exists: usage.output_tokens}
+      tokens ← usage.output_tokens   = "24"
+frame 10  event=message_stop
+  ✓ rules[4] matched {event: message_stop}

@@ -1,0 +1,84 @@
+// Test service for the gRPC transport's mock server — the gRPC equivalent
+// of testdata/fixtures/brainyard-session.jsonl for SSE. Deliberately
+// small: enough oneof case variety to prove discriminator inference,
+// nothing resembling a second real dialect.
+syntax = "proto3";
+
+package agentstream.v1;
+
+import "google/protobuf/any.proto";
+
+option go_package = "github.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc/agentstreampb";
+
+// AgentStream is a minimal multi-agent streaming service: one
+// server-streaming RPC that replays a scripted sequence of StreamEvents,
+// one bidi RPC for interactive-input tests, and one server-streaming RPC
+// of TypedEnvelope for the discriminator: field:type test case, which
+// needs a plain string tag paired with a google.protobuf.Any payload —
+// StreamEvent's oneof can't exercise that shape.
+// StreamMultiOneof exists solely to regression-test discriminator: oneof
+// against a message declaring more than one top-level oneof — resolving
+// must find whichever oneof is actually populated, not just the first
+// one declared.
+service AgentStream {
+  rpc Stream(StreamRequest) returns (stream StreamEvent);
+  rpc Chat(stream ChatMessage) returns (stream StreamEvent);
+  rpc StreamTyped(StreamRequest) returns (stream TypedEnvelope);
+  rpc StreamMultiOneof(StreamRequest) returns (stream MultiOneofEvent);
+}
+
+message StreamRequest {
+  string session_id = 1;
+  string message = 2;
+}
+
+message ChatMessage {
+  string text = 1;
+}
+
+// StreamEvent mirrors architecture.md's example shape: the oneof case
+// name is what a discriminator: oneof config lifts into Frame.Name,
+// exactly like an SSE event: line.
+message StreamEvent {
+  oneof payload {
+    SessionStart session_start = 1;
+    AgentContent agent_content = 2;
+    ToolCall tool_call = 3;
+  }
+}
+
+message SessionStart {
+  string session_id = 1;
+}
+
+message AgentContent {
+  string agent_id = 1;
+  string content = 2;
+  int32 sequence = 3;
+}
+
+message ToolCall {
+  string agent_id = 1;
+  string tool_name = 2;
+  string arguments = 3;
+}
+
+// TypedEnvelope pairs a plain string type tag with a self-describing
+// Any payload — the shape discriminator: field:type exists for
+// (architecture.md: "field:type (a type string + google.protobuf.Any)").
+message TypedEnvelope {
+  string type = 1;
+  google.protobuf.Any payload = 2;
+}
+
+// MultiOneofEvent has two independent top-level oneofs — test-only,
+// proving discriminator: oneof resolves whichever one a given message
+// actually populated, not just the first declared.
+message MultiOneofEvent {
+  oneof first {
+    SessionStart first_start = 1;
+  }
+  oneof second {
+    AgentContent second_content = 2;
+  }
+}

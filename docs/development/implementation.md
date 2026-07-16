@@ -133,7 +133,7 @@ stream-debugger/
 
 1. **Setup**:
    ```bash
-   cd /Users/lancerogers/Dev/AI/Brainyard/stream-debugger
+   cd /path/to/stream-debugger
    cp .env.example .env
    # Edit .env with your API key
    ```
@@ -312,15 +312,15 @@ github.com/joho/godotenv v1.5.1             // .env loading
 
 ### Immediate Use
 
-1. **Start BrainyardV3 backend**:
+1. **Start your backend**:
    ```bash
-   cd /Users/lancerogers/Dev/AI/Brainyard/BrainyardV3
+   cd /path/to/your/backend
    just up
    ```
 
 2. **Run stream debugger**:
    ```bash
-   cd /Users/lancerogers/Dev/AI/Brainyard/stream-debugger
+   cd /path/to/stream-debugger
    just stream "What is consciousness from multiple perspectives?"
    ```
 

@@ -24,6 +24,10 @@ type TimelineVisualizer struct {
 	entries   []TimelineEntry
 	startTime time.Time
 	endTime   time.Time
+	// AgentColors overrides getAgentColor's hash-based default per agent
+	// ID (config's display.agent_colors) — nil for the offline replay/
+	// timeline CLI paths, which have no config to source it from today.
+	AgentColors map[string]string
 }
 
 // NewTimelineVisualizer creates a new timeline visualizer
@@ -36,48 +40,39 @@ func NewTimelineVisualizer() *TimelineVisualizer {
 // AddEvent adds an event to the timeline
 func (tv *TimelineVisualizer) AddEvent(event *events.Event) {
 	entry := TimelineEntry{
-		Event: event,
-		Type:  string(event.Type),
+		Event:     event,
+		Type:      event.Name,
+		Timestamp: event.Timestamp,
+		AgentID:   event.SourceID,
+		Content:   event.Content,
 	}
 
-	// Extract timestamp based on event type
-	switch event.Type {
-	case events.SessionStart:
-		entry.Timestamp = event.SessionStart.Timestamp
-	case events.SessionComplete:
-		entry.Timestamp = event.SessionComplete.Timestamp
-	case events.AgentStreamStart:
-		entry.Timestamp = event.AgentStreamStart.Timestamp
-		entry.AgentID = event.AgentStreamStart.AgentID
-	case events.AgentContent:
-		entry.Timestamp = event.AgentContent.Timestamp
-		entry.AgentID = event.AgentContent.AgentID
-		entry.Content = event.AgentContent.Content
-	case events.AgentStreamComplete:
-		entry.Timestamp = event.AgentStreamComplete.Timestamp
-		entry.AgentID = event.AgentStreamComplete.AgentID
-	case events.WizardStreamStart:
-		entry.Timestamp = event.WizardStreamStart.Timestamp
-		entry.AgentID = "wizard"
-	case events.WizardContent:
-		entry.Timestamp = event.WizardContent.Timestamp
-		entry.AgentID = "wizard"
-		entry.Content = event.WizardContent.Content
-	case events.WizardStreamComplete:
-		entry.Timestamp = event.WizardStreamComplete.Timestamp
-		entry.AgentID = "wizard"
-	case events.Error:
-		entry.Timestamp = event.Error.Timestamp
-		entry.AgentID = event.Error.AgentID
-	case events.FlowStepDetail:
-		entry.Timestamp = event.FlowStepDetail.Timestamp
+	// Tool events get a distinct content summary regardless of dialect —
+	// Kind-based, not folded into the Name-based switch below, since
+	// openai.yaml's discriminator: auto means event.Name is always empty
+	// for its tool_call events (no case in a Name-based switch could ever
+	// match them).
+	switch event.Kind {
+	case events.KindToolCall, events.KindToolResult:
+		entry.Content = renderToolEventSummary(event)
+	}
+
+	// Build a richer content summary for event types with no incremental Content.
+	switch event.Name {
+	case "flow_step_start":
+		entry.AgentID = "system"
+		entry.Content = fmt.Sprintf("flow: %s start", event.StringField("step"))
+	case "flow_step_end":
+		entry.AgentID = "system"
+		entry.Content = fmt.Sprintf("flow: %s end", event.StringField("step"))
+	case "flow_step_detail":
 		entry.AgentID = "system"
 		// Build a concise content line based on step
-		step := event.FlowStepDetail.Step
+		step := event.StringField("step")
 		switch step {
 		case "synthesis":
-			plan := event.FlowStepDetail.PlanID
-			prev := event.FlowStepDetail.SynthesisPreview
+			plan := event.StringField("plan_id")
+			prev := event.StringField("synthesis_preview")
 			if len(prev) > 80 {
 				prev = prev[:77] + "..."
 			}
@@ -87,13 +82,15 @@ func (tv *TimelineVisualizer) AddEvent(event *events.Event) {
 				entry.Content = fmt.Sprintf("synthesis: %q", prev)
 			}
 		case "filter":
-			changed := len(event.FlowStepDetail.FilteredAgents)
+			changed := len(event.StringSliceField("filtered_agents"))
 			entry.Content = fmt.Sprintf("filter changed=%d", changed)
 		case "agent_exec":
-			if event.FlowStepDetail.AgentID != "" && event.FlowStepDetail.ProviderThreadID != "" {
-				entry.Content = fmt.Sprintf("agent=%s thread=%s provider=%s", event.FlowStepDetail.AgentID, event.FlowStepDetail.ProviderThreadID, event.FlowStepDetail.Provider)
+			agentID := event.StringField("agent_id")
+			threadID := event.StringField("provider_thread_id")
+			if agentID != "" && threadID != "" {
+				entry.Content = fmt.Sprintf("agent=%s thread=%s provider=%s", agentID, threadID, event.StringField("provider"))
 			} else {
-				entry.Content = fmt.Sprintf("agents=%v", event.FlowStepDetail.Agents)
+				entry.Content = fmt.Sprintf("agents=%v", event.StringSliceField("agents"))
 			}
 		default:
 			entry.Content = step
@@ -155,7 +152,7 @@ func (tv *TimelineVisualizer) RenderTimeline(width int) string {
 	sb.WriteString("  ")
 
 	for _, agent := range agents {
-		color := getAgentColor(agent)
+		color := getAgentColor(agent, tv.AgentColors)
 		agentStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Width(15)
 		sb.WriteString(agentStyle.Render(agent))
 		sb.WriteString("  ")
@@ -205,27 +202,34 @@ func (tv *TimelineVisualizer) RenderTimeline(width int) string {
 
 		// Agent columns
 		for _, agent := range agents {
-			color := getAgentColor(agent)
+			color := getAgentColor(agent, tv.AgentColors)
 			cellStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Width(15)
 
 			entries := bucket.events[agent]
 			if len(entries) == 0 {
 				sb.WriteString(cellStyle.Render("│"))
 			} else {
-				// Render event indicator
+				// Render event indicator, dispatching on the normalized
+				// Kind rather than the wire event name, so any dialect's
+				// stream lifecycle renders the same way regardless of
+				// what its per-source event names happen to be.
 				indicator := ""
 				for _, entry := range entries {
-					switch entry.Type {
-					case "agent_stream_start", "wizard_stream_start":
+					switch entry.Event.Kind {
+					case events.KindStreamStart:
 						indicator = "▶ START"
-					case "agent_content", "wizard_content":
+					case events.KindContent:
 						if indicator == "" {
 							indicator = "█" // Token
 						}
-					case "agent_stream_complete", "wizard_stream_complete":
+					case events.KindStreamEnd:
 						indicator = "■ DONE"
-					case "error":
+					case events.KindError:
 						indicator = "✗ ERROR"
+					case events.KindToolCall:
+						indicator = "🔧 TOOL"
+					case events.KindToolResult:
+						indicator = "✓ RESULT"
 					}
 				}
 				sb.WriteString(cellStyle.Render(indicator))
@@ -239,7 +243,7 @@ func (tv *TimelineVisualizer) RenderTimeline(width int) string {
 	sb.WriteString("\n")
 
 	// Legend
-	sb.WriteString("\nLegend: ▶ START  █ Streaming  ■ DONE  ✗ ERROR  │ Idle\n")
+	sb.WriteString("\nLegend: ▶ START  █ Streaming  ■ DONE  ✗ ERROR  🔧 TOOL  ✓ RESULT  │ Idle\n")
 
 	return sb.String()
 }
@@ -269,10 +273,10 @@ func (tv *TimelineVisualizer) RenderDetailedLog() string {
 		elapsed := entry.Timestamp.Sub(tv.startTime)
 
 		// Agent color
-		color := getAgentColor(entry.AgentID)
+		color := getAgentColor(entry.AgentID, tv.AgentColors)
 		agentStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
 
-		// Format: [+1.234s] sam_harris | agent_content | "hello"
+		// Format: [+1.234s] agent_a | agent_content | "hello"
 		line := fmt.Sprintf("[%s] ",
 			timeStyle.Render(fmt.Sprintf("+%7.3fs", elapsed.Seconds())))
 
@@ -332,11 +336,11 @@ func (tv *TimelineVisualizer) RenderParallelSummary() string {
 			continue
 		}
 
-		switch entry.Type {
-		case string(events.AgentStreamStart), string(events.WizardStreamStart):
+		switch entry.Event.Kind {
+		case events.KindStreamStart:
 			activeAgents[entry.AgentID] = entry.Timestamp
 
-		case string(events.AgentStreamComplete), string(events.WizardStreamComplete):
+		case events.KindStreamEnd:
 			if start, ok := activeAgents[entry.AgentID]; ok {
 				periods = append(periods, ActivePeriod{
 					agent: entry.AgentID,
@@ -373,7 +377,7 @@ func (tv *TimelineVisualizer) RenderParallelSummary() string {
 
 	// Report
 	for agent, others := range overlaps {
-		color := getAgentColor(agent)
+		color := getAgentColor(agent, tv.AgentColors)
 		agentStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
 
 		// Deduplicate

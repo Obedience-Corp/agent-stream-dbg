@@ -1,19 +1,28 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
+	"net/http"
+	neturl "net/url"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/lancekrogers/stream-debugger/internal/bridge"
 	"github.com/lancekrogers/stream-debugger/internal/client"
 	"github.com/lancekrogers/stream-debugger/internal/config"
+	"github.com/lancekrogers/stream-debugger/internal/dialectinit"
 	"github.com/lancekrogers/stream-debugger/internal/events"
+	"github.com/lancekrogers/stream-debugger/internal/explain"
 	"github.com/lancekrogers/stream-debugger/internal/help"
 	"github.com/lancekrogers/stream-debugger/internal/logger"
+	"github.com/lancekrogers/stream-debugger/internal/mapping"
+	"github.com/lancekrogers/stream-debugger/internal/transport"
+	"github.com/lancekrogers/stream-debugger/internal/transport/replay"
+	"github.com/lancekrogers/stream-debugger/internal/transport/sse"
 	"github.com/lancekrogers/stream-debugger/internal/visualizer"
 	"github.com/urfave/cli/v2"
 )
@@ -84,6 +93,45 @@ func main() {
      $ stream-debugger timeline logs/by-session/session_*.jsonl`,
 				Action: timelineAction,
 			},
+			{
+				Name:  "init",
+				Usage: "Infer a commented draft dialect from a live stream or recording",
+				Description: `Observes frames — live over SSE or from a recorded JSONL fixture — and
+   writes a commented, editable draft dialect YAML to stdout. A draft is a
+   starting point, not a finished dialect: review every UNCLASSIFIED rule
+   and guessed field before using it.
+
+   Examples:
+     $ stream-debugger init --url http://localhost:8080/stream --send "hi" > my.yaml
+     $ stream-debugger init --from logs/by-session/session.jsonl > my.yaml`,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "url", Usage: "SSE endpoint to sample live (mutually exclusive with --from)"},
+					&cli.StringFlag{Name: "send", Usage: "Message to send when sampling --url (sent as a ?message= query param)"},
+					&cli.StringFlag{Name: "from", Usage: "JSONL fixture to sample from (mutually exclusive with --url)"},
+				},
+				Action: initAction,
+			},
+			{
+				Name:  "explain",
+				Usage: "Trace every frame through a dialect: which rule matched, what was extracted, why not",
+				Description: `Debug your own config: for every frame, shows which rule matched (or a
+   hint for why none did) and, per matched rule, each extracted field's
+   declared path and resolved value — flagging empty extractions, which
+   usually mean the path is wrong.
+
+   Exit code reflects health: 0 if every frame matched with no empty
+   extractions, 1 otherwise — usable as a CI check for a shipped dialect.
+
+   Example:
+     $ stream-debugger explain --dialect dialects/brainyard.yaml --from testdata/fixtures/brainyard-session.jsonl`,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "dialect", Required: true, Usage: "Path to the dialect YAML file"},
+					&cli.StringFlag{Name: "from", Usage: "JSONL fixture to trace (mutually exclusive with --url)"},
+					&cli.StringFlag{Name: "url", Usage: "SSE endpoint to trace live (mutually exclusive with --from)"},
+					&cli.StringFlag{Name: "send", Usage: "Message to send when tracing --url"},
+				},
+				Action: explainAction,
+			},
 		},
 		Action: defaultAction, // Interactive mode when no command
 	}
@@ -110,7 +158,7 @@ func streamAction(c *cli.Context) error {
 	}
 	message := c.Args().Get(0)
 	configPath := c.String("config")
-	return runLegacyStream(configPath, message)
+	return runStream(configPath, message)
 }
 
 // replayAction handles the replay command
@@ -131,6 +179,60 @@ func timelineAction(c *cli.Context) error {
 	return runTimeline(sessionFile)
 }
 
+// initAction handles the init command
+func initAction(c *cli.Context) error {
+	url := c.String("url")
+	from := c.String("from")
+	send := c.String("send")
+
+	if url == "" && from == "" {
+		return fmt.Errorf("one of --url or --from is required")
+	}
+	if url != "" && from != "" {
+		return fmt.Errorf("--url and --from are mutually exclusive")
+	}
+
+	if from != "" {
+		return runInit(from, from)
+	}
+
+	target := url
+	if send != "" {
+		target = url + "?message=" + neturl.QueryEscape(send)
+	}
+	return runInitLive(target, url)
+}
+
+// explainAction handles the explain command
+func explainAction(c *cli.Context) error {
+	dialectPath := c.String("dialect")
+	url := c.String("url")
+	from := c.String("from")
+	send := c.String("send")
+
+	if url == "" && from == "" {
+		return fmt.Errorf("one of --url or --from is required")
+	}
+	if url != "" && from != "" {
+		return fmt.Errorf("--url and --from are mutually exclusive")
+	}
+
+	engine, err := mapping.LoadFile(dialectPath)
+	if err != nil {
+		return fmt.Errorf("failed to load dialect: %w", err)
+	}
+
+	if from != "" {
+		return runExplain(engine, from)
+	}
+
+	target := url
+	if send != "" {
+		target = url + "?message=" + neturl.QueryEscape(send)
+	}
+	return runExplainLive(engine, target)
+}
+
 func runInteractive(configPath string) error {
 	fmt.Printf("🚀 Stream Debugger - Interactive Mode\n\n")
 
@@ -141,7 +243,7 @@ func runInteractive(configPath string) error {
 	}
 
 	fmt.Printf("🔧 Configuration loaded from: %s\n", configPath)
-	fmt.Printf("   Backend: %s\n", cfg.Backend.BaseURL)
+	fmt.Printf("   Backend: %s\n", cfg.Transport.BaseURL)
 	fmt.Printf("   Session: %s\n", cfg.Session.ID)
 	fmt.Printf("   Log Dir: %s\n\n", cfg.LogDir)
 
@@ -149,27 +251,26 @@ func runInteractive(configPath string) error {
 	if cfg.Session.AutoSetup {
 		fmt.Printf("🔄 Auto-setting up session...\n")
 
-		setupClient := client.NewSessionSetupClient(cfg, cfg.APIKey)
-		sessionResp, err := setupClient.CreateOrGetSession()
+		vars := mapping.InterpolationVars{
+			BaseURL:   cfg.Transport.BaseURL,
+			SessionID: cfg.Session.ID,
+			Agents:    cfg.Session.DefaultAgents,
+		}
+		sessionID, err := bridge.RunSetup(context.Background(), vars, cfg.Transport.ResolvedHeaders(), nil)
 		if err != nil {
 			return fmt.Errorf("failed to setup session: %w", err)
 		}
 
 		// Update config with actual session ID
-		cfg.Session.ID = sessionResp.SessionID
+		cfg.Session.ID = sessionID
 
-		if sessionResp.Created {
-			fmt.Printf("✅ Session created: %s\n", sessionResp.SessionID)
-		} else {
-			fmt.Printf("✅ Using existing session: %s\n", sessionResp.SessionID)
-		}
-		fmt.Printf("   Active agents: %v\n\n", sessionResp.ActiveAgents)
+		fmt.Printf("✅ Session ready: %s\n\n", sessionID)
 	}
 
 	fmt.Printf("✅ Starting interactive TUI...\n\n")
 
 	// Create interactive TUI model
-	model := visualizer.NewInteractiveModel(cfg, cfg.APIKey)
+	model := visualizer.NewInteractiveModel(cfg)
 
 	// Start bubbletea program
 	p := tea.NewProgram(model, tea.WithAltScreen())
@@ -185,7 +286,7 @@ func runInteractive(configPath string) error {
 	return nil
 }
 
-func runLegacyStream(configPath string, message string) error {
+func runStream(configPath string, message string) error {
 	// Load YAML configuration
 	cfg, err := config.LoadConfigFile(configPath)
 	if err != nil {
@@ -193,7 +294,7 @@ func runLegacyStream(configPath string, message string) error {
 	}
 
 	fmt.Printf("🔧 Configuration loaded\n")
-	fmt.Printf("   Backend: %s\n", cfg.Backend.BaseURL)
+	fmt.Printf("   Backend: %s\n", cfg.Transport.BaseURL)
 	fmt.Printf("   Session: %s\n", cfg.Session.ID)
 	fmt.Printf("   Log Dir: %s\n\n", cfg.LogDir)
 
@@ -201,34 +302,23 @@ func runLegacyStream(configPath string, message string) error {
 	if cfg.Session.AutoSetup {
 		fmt.Printf("🔄 Auto-setting up session...\n")
 
-		setupClient := client.NewSessionSetupClient(cfg, cfg.APIKey)
-		sessionResp, err := setupClient.CreateOrGetSession()
+		vars := mapping.InterpolationVars{
+			BaseURL:   cfg.Transport.BaseURL,
+			SessionID: cfg.Session.ID,
+			Agents:    cfg.Session.DefaultAgents,
+		}
+		sessionID, err := bridge.RunSetup(context.Background(), vars, cfg.Transport.ResolvedHeaders(), nil)
 		if err != nil {
 			return fmt.Errorf("failed to setup session: %w", err)
 		}
 
 		// Update config with actual session ID
-		cfg.Session.ID = sessionResp.SessionID
+		cfg.Session.ID = sessionID
 
-		if sessionResp.Created {
-			fmt.Printf("✅ Session created: %s\n", sessionResp.SessionID)
-		} else {
-			fmt.Printf("✅ Using existing session: %s\n", sessionResp.SessionID)
-		}
-		fmt.Printf("   Active agents: %v\n\n", sessionResp.ActiveAgents)
+		fmt.Printf("✅ Session ready: %s\n\n", sessionID)
 	}
 
-	// Create structured logger (using old config format for compatibility)
-	oldCfg := &config.Config{
-		BackendURL:       cfg.Backend.BaseURL,
-		APIKey:           cfg.APIKey,
-		SessionID:        cfg.Session.ID,
-		LogDir:           cfg.LogDir,
-		EnableColors:     cfg.EnableColors,
-		MaxAgentsVisible: cfg.MaxAgentsVisible,
-	}
-
-	structuredLogger, err := logger.NewStructuredLogger(oldCfg)
+	structuredLogger, err := logger.NewStructuredLogger(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to create logger: %w", err)
 	}
@@ -241,7 +331,7 @@ func runLegacyStream(configPath string, message string) error {
 	fmt.Printf("   API calls:   %s/api-calls/\n\n", cfg.LogDir)
 
 	// Create SSE client
-	sseClient := client.NewSSEClient(oldCfg)
+	sseClient := client.NewSSEClient(cfg)
 
 	fmt.Printf("🌐 Connecting to backend...\n")
 	fmt.Printf("   Endpoint: %s\n", cfg.StreamEndpointURL())
@@ -267,7 +357,7 @@ func runLegacyStream(configPath string, message string) error {
 	fmt.Printf("✅ Connected! Starting TUI...\n\n")
 
 	// Create TUI model
-	model := visualizer.NewModel(oldCfg, sseClient, structuredLogger, message)
+	model := visualizer.NewModel(cfg, sseClient, structuredLogger, message)
 
 	// Start bubbletea program
 	p := tea.NewProgram(model, tea.WithAltScreen())
@@ -341,45 +431,148 @@ func runTimeline(sessionFile string) error {
 	return nil
 }
 
-// loadEventsFromFile reads a JSONL session log file and parses events
+// loadEventsFromFile reads a JSONL session log file through the replay
+// transport — the same Transport → Frame → dialect-engine path a live SSE
+// stream goes through, so timeline/replay decode events identically to a
+// real session rather than through a special-cased file reader.
 func loadEventsFromFile(filePath string) ([]*events.Event, error) {
-	file, err := os.Open(filePath)
+	tr, err := replay.New(filePath, 0)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open file: %w", err)
+		return nil, err
 	}
-	defer func() { _ = file.Close() }()
 
-	parser := events.NewParser()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := tr.Connect(ctx); err != nil {
+		return nil, fmt.Errorf("failed to start replay: %w", err)
+	}
+	defer func() { _ = tr.Close() }()
+
+	parser := bridge.NewParser()
 	var result []*events.Event
-
-	// Read file line by line (JSONL format)
-	scanner := bufio.NewScanner(file)
-	// Increase buffer size for long lines
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
-
-	lineNum := 0
-	for scanner.Scan() {
-		lineNum++
-		line := scanner.Bytes()
-		if len(line) == 0 {
+	for frame := range tr.Frames() {
+		if frame.Err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: malformed frame: %v\n", frame.Err)
 			continue
 		}
-
-		// Parse the event using ParseRaw (extracts type from JSON)
-		evt, err := parser.ParseRaw(line)
-		if err != nil {
-			// Log warning but continue - some lines might be metadata
-			fmt.Fprintf(os.Stderr, "Warning: skipping line %d: %v\n", lineNum, err)
-			continue
-		}
-
+		evt, _ := parser.Parse(frame.Name, frame.Data)
 		result = append(result, evt)
 	}
 
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error reading file: %w", err)
-	}
-
 	return result, nil
+}
+
+// runInit infers a draft dialect from a recorded JSONL fixture and writes
+// it to stdout.
+func runInit(fixturePath, sourceLabel string) error {
+	tr, err := replay.New(fixturePath, 0)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := tr.Connect(ctx); err != nil {
+		return fmt.Errorf("failed to start replay: %w", err)
+	}
+	defer func() { _ = tr.Close() }()
+
+	samples := collectSamples(tr.Frames())
+	if len(samples) == 0 {
+		return fmt.Errorf("no frames observed in %s", fixturePath)
+	}
+	fmt.Print(dialectinit.Infer(samples, sourceLabel).Render())
+	return nil
+}
+
+// runInitLive infers a draft dialect by sampling a live SSE endpoint for
+// up to 10 seconds, then writes it to stdout.
+func runInitLive(requestURL, sourceLabel string) error {
+	tr := sse.New(http.MethodGet, requestURL, nil, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := tr.Connect(ctx); err != nil {
+		return fmt.Errorf("failed to connect: %w", err)
+	}
+	defer func() { _ = tr.Close() }()
+
+	samples := collectSamples(tr.Frames())
+	if len(samples) == 0 {
+		return fmt.Errorf("no frames observed from %s", requestURL)
+	}
+	fmt.Print(dialectinit.Infer(samples, sourceLabel).Render())
+	return nil
+}
+
+// collectSamples drains a Frames channel into dialectinit.Samples,
+// skipping malformed frames (a draft can't reason about a frame it
+// couldn't even parse).
+func collectSamples(frames <-chan transport.Frame) []dialectinit.Sample {
+	var samples []dialectinit.Sample
+	for f := range frames {
+		if f.Err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: malformed frame skipped: %v\n", f.Err)
+			continue
+		}
+		samples = append(samples, dialectinit.Sample{Name: f.Name, Data: f.Data})
+	}
+	return samples
+}
+
+// runExplain traces every frame in a recorded JSONL fixture through
+// engine and prints the result.
+func runExplain(engine *mapping.Engine, fixturePath string) error {
+	tr, err := replay.New(fixturePath, 0)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := tr.Connect(ctx); err != nil {
+		return fmt.Errorf("failed to start replay: %w", err)
+	}
+	defer func() { _ = tr.Close() }()
+
+	return renderExplainTraces(engine, tr.Frames())
+}
+
+// runExplainLive traces every frame from a live SSE endpoint (sampled for
+// up to 10 seconds) through engine and prints the result.
+func runExplainLive(engine *mapping.Engine, requestURL string) error {
+	tr := sse.New(http.MethodGet, requestURL, nil, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := tr.Connect(ctx); err != nil {
+		return fmt.Errorf("failed to connect: %w", err)
+	}
+	defer func() { _ = tr.Close() }()
+
+	return renderExplainTraces(engine, tr.Frames())
+}
+
+// renderExplainTraces prints a trace per frame and exits nonzero if any
+// frame is unhealthy (unmatched, or an empty extraction) — the "explain
+// doubles as the CI harness" property.
+func renderExplainTraces(engine *mapping.Engine, frames <-chan transport.Frame) error {
+	index := 0
+	unhealthy := false
+	for f := range frames {
+		index++
+		if f.Err != nil {
+			fmt.Printf("frame %d  ✗ malformed frame: %v\n", index, f.Err)
+			unhealthy = true
+			continue
+		}
+		trace := explain.Trace(engine, f.Name, f.Data, index)
+		fmt.Print(trace.Render())
+		if trace.Unhealthy() {
+			unhealthy = true
+		}
+	}
+	if index == 0 {
+		return fmt.Errorf("no frames observed")
+	}
+	if unhealthy {
+		os.Exit(1)
+	}
+	return nil
 }

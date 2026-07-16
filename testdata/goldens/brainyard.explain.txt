@@ -1,0 +1,88 @@
+frame 1  event=session_start
+  ✓ rules[0] matched {event: session_start}
+      flow_id    ← flow_id      = "default"
+      session_id ← session_id   = "demo-9f2a1c"
+frame 2  event=flow_step_start
+  ✓ rules[8] matched {event: flow_step_start}
+      step ← step   = "routing"
+frame 3  event=flow_step_end
+  ✓ rules[9] matched {event: flow_step_end}
+      route_agents ← route_agents   = "[sam_harris eckhart_tolle]"
+      route_reason ← route_reason   (not found)
+      route_taken  ← route_taken    = "all"
+      step         ← step           = "routing"
+frame 4  event=agent_stream_start
+  ✓ rules[2] matched {event: agent_stream_start}
+      source ← agent_id   = "sam_harris"
+frame 5  event=agent_stream_start
+  ✓ rules[2] matched {event: agent_stream_start}
+      source ← agent_id   = "eckhart_tolle"
+frame 6  event=agent_content
+  ✓ rules[3] matched {event: agent_content}
+      source  ← agent_id   = "sam_harris"
+      content ← content    = "Let's think about this together."
+      seq     ← sequence   = "1"
+frame 7  event=agent_content
+  ✓ rules[3] matched {event: agent_content}
+      source  ← agent_id   = "eckhart_tolle"
+      content ← content    = "Here's another angle worth considering."
+      seq     ← sequence   = "1"
+frame 8  event=agent_content
+  ✓ rules[3] matched {event: agent_content}
+      source  ← agent_id   = "sam_harris"
+      content ← content    = " There are a few threads worth pulling on."
+      seq     ← sequence   = "2"
+frame 9  event=agent_content
+  ✓ rules[3] matched {event: agent_content}
+      source  ← agent_id   = "eckhart_tolle"
+      content ← content    = " It helps to slow down and notice what's present."
+      seq     ← sequence   = "2"
+frame 10  event=error
+  ✓ rules[13] matched {event: error}
+      message ← message   = "upstream rate limit hit, retrying"
+frame 11  event=agent_content
+  ✓ rules[3] matched {event: agent_content}
+      source  ← agent_id   = "eckhart_tolle"
+      content ← content    = " Continuing from where we left off, the same idea still holds."
+      seq     ← sequence   = "3"
+frame 12  event=agent_content
+  ✓ rules[3] matched {event: agent_content}
+      source  ← agent_id   = "sam_harris"
+      content ← content    = " Taken together, this points toward a clear next step."
+      seq     ← sequence   = "3"
+frame 13  event=agent_stream_complete
+  ✓ rules[4] matched {event: agent_stream_complete}
+      source ← agent_id   = "sam_harris"
+frame 14  event=agent_stream_complete
+  ✓ rules[4] matched {event: agent_stream_complete}
+      source ← agent_id   = "eckhart_tolle"
+frame 15  event=flow_step_start
+  ✓ rules[8] matched {event: flow_step_start}
+      step ← step   = "synthesis"
+frame 16  event=flow_step_detail
+  ✓ rules[12] matched {event: [prompt_info prompt_full filter_detail perspective_detail synthesis_detail flow_step_detail]}
+frame 17  event=wizard_stream_start
+  ✓ rules[5] matched {event: wizard_stream_start}
+      source ← const: wizard   = "wizard"
+frame 18  event=wizard_content
+  ✓ rules[6] matched {event: wizard_content}
+      source  ← const: wizard   = "wizard"
+      content ← content         = "Bringing both viewpoints together,"
+      seq     ← sequence        = "1"
+frame 19  event=wizard_content
+  ✓ rules[6] matched {event: wizard_content}
+      source  ← const: wizard   = "wizard"
+      content ← content         = " the synthesis suggests a balanced, grounded next step."
+      seq     ← sequence        = "2"
+frame 20  event=wizard_stream_complete
+  ✓ rules[7] matched {event: wizard_stream_complete}
+      source ← const: wizard   = "wizard"
+frame 21  event=flow_step_end
+  ✓ rules[9] matched {event: flow_step_end}
+      route_agents ← route_agents   (not found)
+      route_reason ← route_reason   (not found)
+      route_taken  ← route_taken    (not found)
+      step         ← step           = "synthesis"
+frame 22  event=session_complete
+  ✓ rules[1] matched {event: session_complete}
+      session_id ← session_id   = "demo-9f2a1c"

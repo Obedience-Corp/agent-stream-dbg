@@ -1,0 +1,40 @@
+# OpenAI Chat Completions dialect — no event names at all. Wire: a bare SSE
+# `data:` payload per chunk, no `event:` line — every rule matches on JSON
+# structure alone (discriminator: auto), proving the engine needs no
+# framework-provided name to work.
+#
+# Field names verified against the OpenAI API reference (chat completion
+# chunk object + streaming-events docs), not memory:
+#   https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events
+version: 1
+name: openai-chat
+description: OpenAI Chat Completions streaming dialect — structural matching, no event names.
+discriminator: auto
+
+rules:
+  # The stream's terminal sentinel is the bare literal "[DONE]", not JSON.
+  - match: {raw: "[DONE]"}
+    kind: session_end
+
+  - match: {exists: choices.0.delta.content}
+    kind: content
+    source: {const: assistant}
+    content: choices.0.delta.content
+
+  - match: {exists: choices.0.delta.tool_calls}
+    kind: tool_call
+    source: {const: assistant}
+    fields:
+      tool_name: choices.0.delta.tool_calls.0.function.name
+      args: choices.0.delta.tool_calls.0.function.arguments
+
+  # usage is present on every chunk once stream_options.include_usage is
+  # set, but null except on one extra trailer chunk before [DONE] — the
+  # nested total_tokens exists-check only succeeds on that trailer.
+  - match: {exists: usage.total_tokens}
+    kind: usage
+    fields: {tokens: usage.total_tokens, model: model}
+
+  # No rule maps the role-only first chunk (delta:{"role":"assistant"}, no
+  # content key) or the finish_reason-only trailer (delta:{}); both
+  # correctly fall through to Kind=Unknown — deliberate, not a gap.

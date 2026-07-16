@@ -8,6 +8,37 @@ default:
 deps:
     go mod download
 
+# Regenerate Go stubs for the gRPC test service (server-side only — the
+# transport client is reflection/descriptor-driven and never imports these).
+# Requires: protoc, protoc-gen-go, protoc-gen-go-grpc on PATH.
+proto-gen:
+    protoc --go_out=. --go_opt=module=github.com/lancekrogers/stream-debugger \
+        --go-grpc_out=. --go-grpc_opt=module=github.com/lancekrogers/stream-debugger \
+        --proto_path=testdata/proto testdata/proto/agentstream.proto
+
+# Regenerate Go stubs for the A2A-shaped mock service used by
+# dialects/cross_transport_test.go's TestA2ADialect_CrossTransportParity
+# — a separate recipe from proto-gen since it's a distinct .proto with its
+# own go_package (internal/testutil/mockgrpc/a2apb), not a Brainyard/
+# agentstream concern. Requires: protoc, protoc-gen-go, protoc-gen-go-grpc
+# on PATH.
+proto-gen-a2a:
+    protoc --go_out=. --go_opt=module=github.com/lancekrogers/stream-debugger \
+        --go-grpc_out=. --go-grpc_opt=module=github.com/lancekrogers/stream-debugger \
+        --proto_path=testdata/proto testdata/proto/a2a.proto
+
+# Regenerate the compiled FileDescriptorSet used to test the gRPC
+# transport's descriptor-set fallback tier (reflection-disabled servers).
+# --include_imports is required: agentstream.proto imports
+# google/protobuf/any.proto, and protodesc.NewFiles needs that dependency
+# present in the set to resolve it, not just agentstream.proto itself.
+testdata-descriptorset:
+    mkdir -p testdata/descriptorsets
+    protoc --proto_path=testdata/proto \
+        --descriptor_set_out=testdata/descriptorsets/agentstream.binpb \
+        --include_imports \
+        testdata/proto/agentstream.proto
+
 # Build the binary
 build:
     mkdir -p bin
@@ -19,6 +50,12 @@ install:
     go install ./cmd/stream-debugger
     @echo "✅ Installed successfully to $(go env GOPATH)/bin/stream-debugger"
     @echo "💡 Make sure $(go env GOPATH)/bin is in your PATH"
+
+# Run the timeline demo against a bundled fixture - no backend, key, or network needed
+demo:
+    @mkdir -p bin
+    @test -f bin/stream-debugger || just build
+    ./bin/stream-debugger timeline testdata/fixtures/brainyard-session.jsonl
 
 # Run the debugger with a test message
 stream message="What is consciousness?" config="configs/brainyard-v3.yaml":
@@ -41,6 +78,10 @@ timeline session_file:
 # Run tests
 test:
     go test -v ./...
+
+# Regenerate testdata/goldens/*.explain.txt — review the diff before committing, an unreviewed one is a silent regression
+goldens:
+    go test ./dialects/... -run TestExplainGoldens -update-goldens -v
 
 # Format code
 fmt:
@@ -66,8 +107,12 @@ clean:
     rm -rf bin/
     rm -rf logs/*
 
-# Run with race detector
-race message="Test message":
+# Run the test suite under the race detector (offline, no backend needed)
+race:
+    go test -race ./...
+
+# Run the compiled binary under the race detector against a live backend
+race-live message="Test message":
     mkdir -p bin
     go run -race ./cmd/stream-debugger stream "{{message}}"
 
@@ -83,10 +128,10 @@ build-signed:
     just build
     just sign-macos
 
-# Show current configuration
+# Show current configuration (variable names only, never values)
 config:
     @echo "=== Stream Debugger Configuration ==="
-    @cat .env 2>/dev/null || echo "No .env file found. Copy .env.example to .env"
+    @test -f .env && grep -o '^[A-Z_]*=' .env || echo "No .env file found. Copy .env.example to .env"
 
 # Initialize project (first time setup)
 init:
@@ -98,9 +143,6 @@ init:
 # ============================================================================
 # Cross-Platform Distribution
 # ============================================================================
-
-# Target directory for BrainyardV3 distribution
-BRAINYARD_TOOLS := parent_directory(justfile_directory()) + "/BrainyardV3/tools/stream-debugger"
 
 # Build binaries for all target platforms
 build-all-platforms:
@@ -119,42 +161,3 @@ build-all-platforms:
 
     echo "✅ All platforms built:"
     ls -la bin/stream-debugger-*
-
-# Build multi-arch binaries and copy to BrainyardV3
-release-to-brainyard: build-all-platforms
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    DEST="{{BRAINYARD_TOOLS}}/bin"
-    echo "📦 Distributing binaries to BrainyardV3..."
-
-    # Create destination directories
-    mkdir -p "$DEST/darwin-arm64"
-    mkdir -p "$DEST/darwin-amd64"
-    mkdir -p "$DEST/linux-amd64"
-
-    # Copy binaries
-    cp bin/stream-debugger-darwin-arm64 "$DEST/darwin-arm64/stream-debugger"
-    cp bin/stream-debugger-darwin-amd64 "$DEST/darwin-amd64/stream-debugger"
-    cp bin/stream-debugger-linux-amd64 "$DEST/linux-amd64/stream-debugger"
-
-    # Sign macOS binaries (ad-hoc for local use)
-    echo "🔏 Signing macOS binaries..."
-    codesign --sign - --force --deep "$DEST/darwin-arm64/stream-debugger" 2>/dev/null || true
-    codesign --sign - --force --deep "$DEST/darwin-amd64/stream-debugger" 2>/dev/null || true
-
-    # Copy .env.example if source exists
-    if [ -f ".env.example" ]; then
-        cp .env.example "{{BRAINYARD_TOOLS}}/.env.example"
-        echo "📄 Copied .env.example"
-    fi
-
-    echo ""
-    echo "✅ Release complete!"
-    echo ""
-    echo "Binaries distributed to:"
-    ls -la "$DEST"/*/stream-debugger 2>/dev/null || ls -la "$DEST"
-    echo ""
-    echo "💡 Non-Go developers can now use stream-debugger from BrainyardV3:"
-    echo "   cd BrainyardV3"
-    echo "   just sdebug stream \"Hello\""

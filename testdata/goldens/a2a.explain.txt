@@ -1,0 +1,40 @@
+frame 1  event=
+  ✓ rules[0] matched {exists: task}
+      source     ← task.id             = "task-a2a-001"
+      context_id ← task.contextId      = "ctx-a2a-001"
+      state      ← task.status.state   = "TASK_STATE_SUBMITTED"
+frame 2  event=
+  ✓ rules[1] matched {exists: statusUpdate}
+      source     ← statusUpdate.taskId         = "task-a2a-001"
+      context_id ← statusUpdate.contextId      = "ctx-a2a-001"
+      state      ← statusUpdate.status.state   = "TASK_STATE_WORKING"
+frame 3  event=
+  ✓ rules[1] matched {exists: statusUpdate}
+      source     ← statusUpdate.taskId         = "task-a2a-001"
+      context_id ← statusUpdate.contextId      = "ctx-a2a-001"
+      state      ← statusUpdate.status.state   = "TASK_STATE_INPUT_REQUIRED"
+frame 4  event=
+  ✓ rules[3] matched {exists: message}
+      source     ← message.taskId         = "task-a2a-001"
+      message_id ← message.messageId      = "msg-user-001"
+      role       ← message.role           = "ROLE_USER"
+      text       ← message.parts.0.text   = "Denver"
+frame 5  event=
+  ✓ rules[2] matched {exists: artifactUpdate}
+      source     ← artifactUpdate.taskId                  = "task-a2a-001"
+      content    ← artifactUpdate.artifact.parts.0.text   = "The weather in Denver is sunny and 72F."
+      append     ← artifactUpdate.append                  = "false"
+      last_chunk ← artifactUpdate.lastChunk               = "true"
+frame 6  event=
+  ✓ rules[1] matched {exists: statusUpdate}
+      source     ← statusUpdate.taskId         = "task-a2a-001"
+      context_id ← statusUpdate.contextId      = "ctx-a2a-001"
+      state      ← statusUpdate.status.state   = "TASK_STATE_COMPLETED"
+frame 7  event=
+  ✓ rules[4] matched {exists: skills}
+      capabilities ← capabilities   = "map[streaming:true]"
+      name         ← name           = "Weather Agent"
+      skills       ← skills         = "[map[description:Returns current weather for a city. id:get-weather name:Get Weather tags:[weather]]]"
+frame 8  event=
+  ✗ no rule matched → kind=unknown (rendered raw)
+      hint: add a `- match: {exists: <a field unique to this frame's shape>}` rule

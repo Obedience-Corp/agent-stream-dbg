@@ -1,7 +1,12 @@
 # Stream Debugger Configuration
+#
+# This is a RUN config: it says how to connect (transport) and, once the
+# dialect engine lands, what the bytes mean (dialect). It never encodes
+# any one system's defaults — every value below must be set explicitly.
 
-# Backend API Configuration
-backend:
+# Transport: how bytes arrive. Only "sse" is supported today.
+transport:
+  type: "sse"
   base_url: "http://localhost:5003"
 
   # How to initiate streaming
@@ -12,13 +17,6 @@ backend:
     # HTTP method for initiating stream
     method: "GET"  # or "POST"
 
-    # How to pass the message
-    message_format:
-      type: "query_param"  # Options: query_param, json_body, form_data
-      param_name: "message"  # For query_param or form_data
-      # For json_body, use:
-      # body_template: '{"message": "{message}", "stream": true}'
-
     # Additional headers
     headers:
       Accept: "text/event-stream"
@@ -27,12 +25,21 @@ backend:
     # Authentication
     auth:
       type: "bearer"  # Options: bearer, api_key, basic, none
-      token_env: "API_KEY"  # Read token from this env var
-      # For api_key type:
+      token_env: "API_KEY"  # Read token from this env var (bearer, api_key)
+      # For api_key type, optionally set a custom header name:
       # header_name: "X-API-Key"
       # For basic type:
       # username_env: "API_USERNAME"
       # password_env: "API_PASSWORD"
+
+# Dialect: what the bytes mean. Not yet loaded (the mapping engine lands in
+# phase 004) — declared now so run configs don't need a second migration.
+# dialect:
+#   file: "dialects/generic.yaml"
+
+# Vars: user-defined values available for interpolation in a dialect's
+# setup:/send: templates (phase 004).
+# vars: {}
 
 # Session Configuration
 session:
@@ -54,32 +61,16 @@ events:
     - "wizard_stream_complete"
     - "error"
 
-  # Event field mappings (for non-standard APIs)
-  # Maps standard fields to API-specific fields
-  field_mappings:
-    type: "type"           # Event type field name
-    agent_id: "agent_id"   # Agent identifier field
-    content: "content"     # Content/token field
-    sequence: "sequence"   # Sequence number field
-    message_id: "message_id"
-    timestamp: "timestamp"
-
 # Logging Configuration
 logging:
   dir: "./logs"
 
-  # Which dimensions to log
+  # Which dimensions to log. If none are set, all four default on.
   dimensions:
     by_event_type: true
     by_agent: true
     by_session: true
     api_calls: true
-
-  # Log format
-  format: "jsonl"  # Options: jsonl, json, text
-
-  # Log level
-  level: "info"  # Options: debug, info, warn, error
 
 # Display Configuration
 display:
@@ -88,13 +79,6 @@ display:
 
   # Max agents to show simultaneously
   max_agents_visible: 5
-
-  # Content preview length (characters)
-  agent_preview_length: 200
-  wizard_preview_length: 400
-
-  # Update rate (milliseconds)
-  update_interval_ms: 100
 
   # Agent colors (map agent_id to color code)
   agent_colors:
@@ -110,29 +94,3 @@ display:
     rumi: "11"            # Yellow
     wizard: "11"          # Gold
     default: "7"          # Gray
-
-# Sequence Tracking
-sequence_tracking:
-  enabled: true
-
-  # Show buffer state in UI
-  show_buffer_state: true
-
-  # Buffer timeout (seconds)
-  buffer_timeout: 5
-
-  # Warn on sequence gaps
-  warn_on_gaps: true
-
-# Performance Monitoring
-performance:
-  enabled: true
-
-  # Track metrics
-  track_token_rate: true
-  track_latency: true
-  track_memory: false
-
-  # Alert thresholds
-  slow_token_rate_threshold: 10  # tokens/sec
-  high_latency_threshold: 1000   # milliseconds

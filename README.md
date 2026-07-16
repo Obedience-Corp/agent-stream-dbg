@@ -13,9 +13,9 @@ Real-time TUI for watching streams + timeline analysis for understanding paralle
 
 🎬 **Real-Time TUI** - Watch SSE streams live in your terminal
 📊 **Timeline Visualization** - Analyze parallel execution from logs
-⚙️ **Configuration-Driven** - Works with any SSE API via YAML config
+⚙️ **Configuration-Driven** - Built for brainyard-shaped SSE APIs today via YAML config (generic dialect support is in progress)
 📝 **Multi-Dimensional Logging** - Events logged by type, agent, session, and API calls
-🎯 **9 Event Types** - Full SSE lifecycle support
+🎯 **19 Event Types** - Full SSE lifecycle support
 🚀 **Performance Tracking** - Tokens/sec, latency, sequence numbers
 
 ---
@@ -51,11 +51,21 @@ Download the latest release from [GitHub Releases](https://github.com/lancekroge
 
 ## Quick Start
 
-### 1. Configure
+### 1. Try It (No Setup Required)
+
+```bash
+git clone https://github.com/lancekrogers/stream-debugger.git
+cd stream-debugger
+just demo
+```
+
+This renders a timeline from a bundled fixture — no backend, API key, or network required.
+
+### 2. Connect to Your Backend
 
 ```bash
 # Copy example config
-cp configs/brainyard-v3.yaml my-config.yaml
+cp configs/generic-sse.yaml my-config.yaml
 
 # Edit config and set your API key in .env
 cat > .env << EOF
@@ -64,7 +74,7 @@ SESSION_ID=debug-session
 EOF
 ```
 
-### 2. Interactive Mode (Multi-Turn Chat)
+### 3. Interactive Mode (Multi-Turn Chat)
 
 ```bash
 stream-debugger --config my-config.yaml
@@ -76,15 +86,15 @@ This opens an **interactive chat interface** where you can:
 - Use arrow keys to scroll
 - Press **Ctrl+C** to exit
 
-### 3. Stream Mode (Single Message)
+### 4. Stream Mode (Single Message)
 
 ```bash
-stream-debugger stream "What is consciousness?" --config my-config.yaml
+stream-debugger stream --config my-config.yaml "What is consciousness?"
 ```
 
 This sends a single message and exits when complete. Useful for CI/CD and scripting.
 
-### 4. Analyze (Timeline from Logs)
+### 5. Analyze (Timeline from Logs)
 
 ```bash
 stream-debugger timeline logs/by-session/session_*.jsonl
@@ -102,13 +112,13 @@ This prints a visual timeline showing which agents ran in parallel.
 # Interactive mode (multi-turn chat)
 stream-debugger --config my-config.yaml
 
-# Stream mode (single message) - ⚠️ message MUST come before --config
-stream-debugger stream "your message" --config my-config.yaml
+# Stream mode (single message) - ⚠️ flags MUST come before the message
+stream-debugger stream --config my-config.yaml "your message"
 
 # Timeline visualization from logs
 stream-debugger timeline logs/by-session/session_*.jsonl
 
-# Detailed event log (coming soon)
+# Detailed event log
 stream-debugger replay logs/by-session/session_*.jsonl
 
 # Help
@@ -151,10 +161,15 @@ Integrating both perspectives, consciousness can be understood...
 ```
 
 **Keyboard Controls:**
-- **Type & Enter** - Send message
-- **Ctrl+T** - Toggle RAW ↔ PARSED views
-- **↑ ↓ PgUp PgDn Home End** - Scroll through responses
-- **Ctrl+C** - Quit and save logs
+
+| Key | Action |
+|-----|--------|
+| **Type & Enter** | Send message |
+| **Ctrl+T** | Toggle RAW (SSE) ↔ PARSED (agent responses) |
+| **↑ ↓** | Scroll line by line |
+| **PgUp / PgDn** | Scroll page by page |
+| **Home / End** | Jump to top/bottom |
+| **Ctrl+C** | Quit and save logs |
 
 ---
 
@@ -281,7 +296,6 @@ cat logs/by-event-type/error.jsonl | jq
 
 - **User Guides**
   - [Quick Start](docs/user-guide/quickstart.md)
-  - [Getting Started with BrainyardV3](docs/user-guide/getting-started-brainyard.md)
   - [TUI vs Timeline Mode](docs/user-guide/tui-vs-timeline.md)
 
 - **Development**
@@ -376,7 +390,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Credits
 
-Built for debugging complex SSE streaming systems. Originally created for [BrainyardV3](https://github.com/lancekrogers/BrainyardV3) but designed to be generic and reusable.
+Built for debugging complex SSE streaming systems. Originally created for a private multi-agent backend but designed to be generic and reusable.
 
 **Technologies:**
 - [Bubbletea](https://github.com/charmbracelet/bubbletea) - Terminal UI framework

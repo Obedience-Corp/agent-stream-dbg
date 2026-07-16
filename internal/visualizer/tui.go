@@ -3,6 +3,7 @@ package visualizer
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
 	"strings"
 	"time"
 
@@ -16,7 +17,7 @@ import (
 
 // Model represents the TUI application state
 type Model struct {
-	config  *config.Config
+	config  *config.EnhancedConfig
 	client  *client.SSEClient
 	logger  *logger.StructuredLogger
 	ctx     context.Context
@@ -24,10 +25,10 @@ type Model struct {
 	message string
 
 	// State
-	agents        map[string]*AgentState
-	wizardState   *WizardState
-	sessionActive bool
-	errorCount    int
+	agents          map[string]*AgentState
+	aggregatorState *AggregatorState
+	sessionActive   bool
+	errorCount      int
 
 	// UI State
 	width  int
@@ -53,6 +54,11 @@ type Model struct {
 	// Prompt/Flow debug info (debug mode only)
 	promptInfo map[string]*PromptInfoState // agent_id -> prompt info
 	flowConfig *FlowConfigState
+
+	// dialectFlow resolves stage order (and, later, lane roles) from the
+	// loaded dialect's flow: spec, or derives them live from observed
+	// events when it declared none.
+	dialectFlow flowState
 }
 
 // AgentState tracks the state of a single agent
@@ -68,8 +74,8 @@ type AgentState struct {
 	LastUpdate     time.Time
 }
 
-// WizardState tracks the wizard synthesis state
-type WizardState struct {
+// AggregatorState tracks the aggregator-role lane's synthesis state
+type AggregatorState struct {
 	Active         bool
 	Content        strings.Builder
 	TokenCount     int
@@ -104,13 +110,13 @@ type PromptInfoState struct {
 
 // FlowConfigState tracks flow configuration (debug mode)
 type FlowConfigState struct {
-	FlowID         string
-	FlowFile       string
-	StagesOrder    []string
-	StagesEnabled  map[string]bool
-	RoutingMode    string
-	AgentCount     int
-	NonWizardCount int
+	FlowID             string
+	FlowFile           string
+	StagesOrder        []string
+	StagesEnabled      map[string]bool
+	RoutingMode        string
+	AgentCount         int
+	NonAggregatorCount int
 }
 
 // eventMsg wraps an SSE event for bubbletea
@@ -127,22 +133,23 @@ type errorMsg struct {
 type tickMsg time.Time
 
 // NewModel creates a new TUI model
-func NewModel(cfg *config.Config, sseClient *client.SSEClient, structuredLogger *logger.StructuredLogger, message string) *Model {
+func NewModel(cfg *config.EnhancedConfig, sseClient *client.SSEClient, structuredLogger *logger.StructuredLogger, message string) *Model {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Model{
-		config:        cfg,
-		client:        sseClient,
-		logger:        structuredLogger,
-		ctx:           ctx,
-		cancel:        cancel,
-		message:       message,
-		agents:        make(map[string]*AgentState),
-		wizardState:   &WizardState{BufferedTokens: make(map[int]string)},
-		sessionActive: false,
-		startTime:     time.Now(),
-		flow:          make(map[string]*FlowStepStatus),
-		promptInfo:    make(map[string]*PromptInfoState),
+		config:          cfg,
+		client:          sseClient,
+		logger:          structuredLogger,
+		ctx:             ctx,
+		cancel:          cancel,
+		message:         message,
+		agents:          make(map[string]*AgentState),
+		aggregatorState: &AggregatorState{BufferedTokens: make(map[int]string)},
+		sessionActive:   false,
+		startTime:       time.Now(),
+		flow:            make(map[string]*FlowStepStatus),
+		promptInfo:      make(map[string]*PromptInfoState),
+		dialectFlow:     newFlowState(),
 	}
 }
 
@@ -200,7 +207,7 @@ func (m *Model) View() string {
 		Padding(1).
 		Width(m.width/2 - 4)
 
-	wizardStyle := lipgloss.NewStyle().
+	aggregatorStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("11")).
 		Padding(1).
@@ -211,7 +218,7 @@ func (m *Model) View() string {
 		Padding(0, 1)
 
 	// Build header
-	headerText := fmt.Sprintf("Stream Debugger - Session: %s", m.config.SessionID)
+	headerText := fmt.Sprintf("Stream Debugger - Session: %s", m.config.Session.ID)
 	if m.FlowID != "" {
 		headerText = fmt.Sprintf("%s (flow: %s)", headerText, m.FlowID)
 	}
@@ -242,10 +249,10 @@ func (m *Model) View() string {
 		}
 	}
 
-	// Build wizard view
-	wizardView := ""
-	if m.wizardState.Active || m.wizardState.TokenCount > 0 {
-		wizardView = wizardStyle.Render(m.renderWizard())
+	// Build aggregator view
+	aggregatorView := ""
+	if m.aggregatorState.Active || m.aggregatorState.TokenCount > 0 {
+		aggregatorView = aggregatorStyle.Render(m.renderAggregator())
 	}
 
 	// Build stats
@@ -257,7 +264,7 @@ func (m *Model) View() string {
 	))
 
 	// Build controls
-	dbg := m.config.DebugLevel
+	dbg := m.config.Debug.Level
 	if dbg == "" {
 		dbg = "off"
 	}
@@ -291,9 +298,9 @@ func (m *Model) View() string {
 		}
 	}
 
-	// Add wizard view
-	if wizardView != "" {
-		sections = append(sections, wizardView)
+	// Add aggregator view
+	if aggregatorView != "" {
+		sections = append(sections, aggregatorView)
 	}
 
 	// Add stats and controls
@@ -314,7 +321,7 @@ func (m *Model) renderAgent(agent *AgentState) string {
 	status := lipgloss.NewStyle().Foreground(lipgloss.Color(statusColor)).Render(statusIcon)
 
 	// Get color for agent
-	color := getAgentColor(agent.ID)
+	color := getAgentColor(agent.ID, m.agentColorOverrides())
 	agentName := lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(agent.ID)
 
 	header := fmt.Sprintf("%s %s", status, agentName)
@@ -334,30 +341,30 @@ func (m *Model) renderAgent(agent *AgentState) string {
 	return fmt.Sprintf("%s\n%s\n\n%s", header, tokenInfo, content)
 }
 
-// renderWizard renders the wizard synthesis view
-func (m *Model) renderWizard() string {
+// renderAggregator renders the aggregator-role lane's synthesis view
+func (m *Model) renderAggregator() string {
 	statusIcon := "●"
 	statusColor := "8"
-	if m.wizardState.Active {
+	if m.aggregatorState.Active {
 		statusIcon = "◉"
 		statusColor = "11"
 	}
 
 	status := lipgloss.NewStyle().Foreground(lipgloss.Color(statusColor)).Render(statusIcon)
-	wizardName := lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Bold(true).Render("Wizard (Synthesis)")
+	aggregatorName := lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Bold(true).Render("Aggregator (Synthesis)")
 
-	header := fmt.Sprintf("%s %s", status, wizardName)
+	header := fmt.Sprintf("%s %s", status, aggregatorName)
 
 	// Content preview
-	content := m.wizardState.Content.String()
+	content := m.aggregatorState.Content.String()
 	if len(content) > 400 {
 		content = "..." + content[len(content)-400:]
 	}
 
 	// Token info
-	tokenInfo := fmt.Sprintf("Tokens: %d | Seq: %d", m.wizardState.TokenCount, m.wizardState.Sequence)
-	if len(m.wizardState.BufferedTokens) > 0 {
-		tokenInfo += fmt.Sprintf(" | Buffered: %d", len(m.wizardState.BufferedTokens))
+	tokenInfo := fmt.Sprintf("Tokens: %d | Seq: %d", m.aggregatorState.TokenCount, m.aggregatorState.Sequence)
+	if len(m.aggregatorState.BufferedTokens) > 0 {
+		tokenInfo += fmt.Sprintf(" | Buffered: %d", len(m.aggregatorState.BufferedTokens))
 	}
 
 	return fmt.Sprintf("%s\n%s\n\n%s", header, tokenInfo, content)
@@ -388,17 +395,17 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "F1":
 		// Verbose debug mode
-		m.config.DebugLevel = "verbose"
+		m.config.Debug.Level = "verbose"
 		return m, m.reconnect()
 
 	case "F2":
 		// Full debug mode
-		m.config.DebugLevel = "full"
+		m.config.Debug.Level = "full"
 		return m, m.reconnect()
 
 	case "F3":
 		// Turn off debug mode
-		m.config.DebugLevel = ""
+		m.config.Debug.Level = ""
 		return m, m.reconnect()
 	}
 
@@ -416,7 +423,7 @@ func (m *Model) reconnect() tea.Cmd {
 		m.ctx, m.cancel = context.WithCancel(context.Background())
 		// Reset UI state so new stream doesn't append to previous content
 		m.agents = make(map[string]*AgentState)
-		m.wizardState = &WizardState{BufferedTokens: make(map[int]string)}
+		m.aggregatorState = &AggregatorState{BufferedTokens: make(map[int]string)}
 		m.totalTokens = 0
 		m.totalEvents = 0
 		m.errorCount = 0
@@ -444,22 +451,28 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 	}
 
 	m.totalEvents++
+	m.dialectFlow.observe(event)
 
 	// Log event to structured logger (errors are silently ignored)
 	_ = m.logger.LogEvent(event)
 
-	switch event.Type {
-	case events.SessionStart:
-		m.sessionActive = true
-		if event.SessionStart.FlowID != "" {
-			m.FlowID = event.SessionStart.FlowID
+	// Stream lifecycle (start/content/end) dispatches on Kind + role, not
+	// the dialect's own wire event names — a dialect's agent-lane and
+	// aggregator-lane rules already decode to the same Kind, with
+	// SourceID/role distinguishing the aggregator lane (aggregatorState)
+	// from every other lane (agents map). Kind-based is the generic
+	// equivalent with identical behavior for any dialect that declares
+	// one aggregator lane this way.
+	isAggregator := m.dialectFlow.role(event) == "aggregator"
+
+	switch event.Kind {
+	case events.KindStreamStart:
+		if isAggregator {
+			m.aggregatorState.Active = true
+			m.aggregatorState.StartTime = time.Now()
+			break
 		}
-
-	case events.SessionComplete:
-		m.sessionActive = false
-
-	case events.AgentStreamStart:
-		agentID := event.AgentStreamStart.AgentID
+		agentID := event.SourceID
 		m.agents[agentID] = &AgentState{
 			ID:             agentID,
 			Active:         true,
@@ -468,121 +481,123 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 			LastUpdate:     time.Now(),
 		}
 
-	case events.AgentContent:
-		agentID := event.AgentContent.AgentID
+	case events.KindContent:
+		if isAggregator {
+			m.aggregatorState.Content.WriteString(event.Content)
+			m.aggregatorState.TokenCount++
+			m.aggregatorState.Sequence = event.Seq
+			m.totalTokens++
+			break
+		}
+		agentID := event.SourceID
 		if agent, ok := m.agents[agentID]; ok {
-			agent.Content.WriteString(event.AgentContent.Content)
+			agent.Content.WriteString(event.Content)
 			agent.TokenCount++
-			agent.Sequence = event.AgentContent.Sequence
+			agent.Sequence = event.Seq
 			agent.LastUpdate = time.Now()
 			m.totalTokens++
 		}
 
-	case events.AgentStreamComplete:
-		agentID := event.AgentStreamComplete.AgentID
+	case events.KindStreamEnd:
+		if isAggregator {
+			m.aggregatorState.Active = false
+			m.aggregatorState.EndTime = time.Now()
+			break
+		}
+		agentID := event.SourceID
 		if agent, ok := m.agents[agentID]; ok {
 			agent.Active = false
 			agent.EndTime = time.Now()
 		}
+	}
 
-	case events.WizardStreamStart:
-		m.wizardState.Active = true
-		m.wizardState.StartTime = time.Now()
+	switch event.Name {
+	case "session_start":
+		m.sessionActive = true
+		if flowID := event.StringField("flow_id"); flowID != "" {
+			m.FlowID = flowID
+		}
 
-	case events.WizardContent:
-		m.wizardState.Content.WriteString(event.WizardContent.Content)
-		m.wizardState.TokenCount++
-		m.wizardState.Sequence = event.WizardContent.Sequence
-		m.totalTokens++
+	case "session_complete":
+		m.sessionActive = false
 
-	case events.WizardStreamComplete:
-		m.wizardState.Active = false
-		m.wizardState.EndTime = time.Now()
-
-	case events.Error:
+	case "error":
 		m.errorCount++
 
-	case events.FlowStepStart:
-		if s := event.FlowStepStart; s != nil {
-			step := s.Step
-			st := m.flow[step]
-			if st == nil {
-				st = &FlowStepStatus{Step: step}
-				m.flow[step] = st
-			}
-			st.Enabled = s.Enabled
-			st.Started = true
-			st.Ended = false
-			if step == "agent_exec" {
-				st.AgentCount = s.NonWizardCount
-			}
+	case "flow_step_start":
+		step := event.StringField("step")
+		st := m.flow[step]
+		if st == nil {
+			st = &FlowStepStatus{Step: step}
+			m.flow[step] = st
+		}
+		st.Enabled = event.BoolField("enabled")
+		st.Started = true
+		st.Ended = false
+		if step == "agent_exec" {
+			st.AgentCount = event.IntField(nonAggregatorCountFieldKey)
 		}
 
-	case events.FlowStepEnd:
-		if s := event.FlowStepEnd; s != nil {
-			step := s.Step
-			st := m.flow[step]
-			if st == nil {
-				st = &FlowStepStatus{Step: step}
-				m.flow[step] = st
-			}
-			st.Enabled = s.Enabled
-			st.Ended = true
-			if s.AgentCount > 0 {
-				st.AgentCount = s.AgentCount
-			}
-			if step == "routing" {
-				st.RoutingMode = s.RoutingMode
-				st.RouteTaken = s.RouteTaken
-				st.RouteReason = s.RouteReason
-				st.RouteAgents = s.RouteAgents
-			}
-			if s.DurationMs > 0 {
-				st.DurationMs = s.DurationMs
-			}
-			if s.PromptRef != nil {
-				m.lastPromptRef = s.PromptRef
-				m.lastPromptStep = s.Step
-			}
+	case "flow_step_end":
+		step := event.StringField("step")
+		st := m.flow[step]
+		if st == nil {
+			st = &FlowStepStatus{Step: step}
+			m.flow[step] = st
+		}
+		st.Enabled = event.BoolField("enabled")
+		st.Ended = true
+		if agentCount := event.IntField("agent_count"); agentCount > 0 {
+			st.AgentCount = agentCount
+		}
+		if step == "routing" {
+			st.RoutingMode = event.StringField("routing_mode")
+			st.RouteTaken = event.StringField("route_taken")
+			st.RouteReason = event.StringField("route_reason")
+			st.RouteAgents = event.StringSliceField("route_agents")
+		}
+		if durationMs := event.IntField("duration_ms"); durationMs > 0 {
+			st.DurationMs = durationMs
+		}
+		if promptRef := event.MapField("prompt_ref"); promptRef != nil {
+			m.lastPromptRef = promptRef
+			m.lastPromptStep = step
 		}
 
-	case events.PromptInfo:
-		if pi := event.PromptInfo; pi != nil {
-			state := m.promptInfo[pi.AgentID]
-			if state == nil {
-				state = &PromptInfoState{AgentID: pi.AgentID}
-				m.promptInfo[pi.AgentID] = state
-			}
-			state.PromptFile = pi.PromptFile
-			state.PromptSnippet = pi.PromptSnippet
-			state.PromptLength = pi.PromptLength
+	case "prompt_info":
+		agentID := event.StringField("agent_id")
+		state := m.promptInfo[agentID]
+		if state == nil {
+			state = &PromptInfoState{AgentID: agentID}
+			m.promptInfo[agentID] = state
 		}
+		state.PromptFile = event.StringField("prompt_file")
+		state.PromptSnippet = event.StringField("prompt_snippet")
+		state.PromptLength = event.IntField("prompt_length")
 
-	case events.PromptFull:
-		if pf := event.PromptFull; pf != nil {
-			state := m.promptInfo[pf.AgentID]
-			if state == nil {
-				state = &PromptInfoState{AgentID: pf.AgentID}
-				m.promptInfo[pf.AgentID] = state
-			}
-			state.SystemPrompt = pf.SystemPrompt
+	case "prompt_full":
+		agentID := event.StringField("agent_id")
+		state := m.promptInfo[agentID]
+		if state == nil {
+			state = &PromptInfoState{AgentID: agentID}
+			m.promptInfo[agentID] = state
 		}
+		state.SystemPrompt = event.StringField("system_prompt")
 
-	case events.FlowConfig:
-		if fc := event.FlowConfig; fc != nil {
-			m.flowConfig = &FlowConfigState{
-				FlowID:         fc.FlowID,
-				FlowFile:       fc.FlowFile,
-				StagesOrder:    fc.StagesOrder,
-				StagesEnabled:  fc.StagesEnabled,
-				RoutingMode:    fc.RoutingMode,
-				AgentCount:     fc.AgentCount,
-				NonWizardCount: fc.NonWizardCount,
-			}
-			// Also set FlowID if not already set
-			if m.FlowID == "" && fc.FlowID != "" {
-				m.FlowID = fc.FlowID
-			}
+	case "flow_config":
+		flowID := event.StringField("flow_id")
+		m.flowConfig = &FlowConfigState{
+			FlowID:             flowID,
+			FlowFile:           event.StringField("flow_file"),
+			StagesOrder:        event.StringSliceField("stages_order"),
+			StagesEnabled:      event.BoolMapField("stages_enabled"),
+			RoutingMode:        event.StringField("routing_mode"),
+			AgentCount:         event.IntField("agent_count"),
+			NonAggregatorCount: event.IntField(nonAggregatorCountFieldKey),
+		}
+		// Also set FlowID if not already set
+		if m.FlowID == "" && flowID != "" {
+			m.FlowID = flowID
 		}
 	}
 
@@ -595,8 +610,10 @@ func (m *Model) renderFlowStatus() string {
 		return ""
 	}
 
-	// Order of steps to show
-	steps := []string{"routing", "discovery", "agent_exec", "synthesis", "wizard"}
+	// Order of steps to show — from the dialect's flow: spec (declared
+	// or derived), not a hardcoded literal that can drift out of sync
+	// with interactive.go's own copy.
+	steps := m.dialectFlow.stages()
 	var parts []string
 
 	for _, step := range steps {
@@ -705,7 +722,7 @@ func (m *Model) renderPromptPanel() string {
 		if m.flowConfig.RoutingMode != "" {
 			lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("Routing:"), valueStyle.Render(m.flowConfig.RoutingMode)))
 		}
-		lines = append(lines, fmt.Sprintf("  %s %d agents (%d non-wizard)", labelStyle.Render("Agents:"), m.flowConfig.AgentCount, m.flowConfig.NonWizardCount))
+		lines = append(lines, fmt.Sprintf("  %s %d agents (%d non-aggregator)", labelStyle.Render("Agents:"), m.flowConfig.AgentCount, m.flowConfig.NonAggregatorCount))
 		if len(m.flowConfig.StagesOrder) > 0 {
 			lines = append(lines, fmt.Sprintf("  %s %s", labelStyle.Render("Stages:"), valueStyle.Render(strings.Join(m.flowConfig.StagesOrder, " → "))))
 		}
@@ -716,7 +733,7 @@ func (m *Model) renderPromptPanel() string {
 	if len(m.promptInfo) > 0 {
 		lines = append(lines, headerStyle.Render("Agent Prompts"))
 		for agentID, info := range m.promptInfo {
-			color := getAgentColor(agentID)
+			color := getAgentColor(agentID, m.agentColorOverrides())
 			agentName := lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(agentID)
 
 			line := fmt.Sprintf("  %s", agentName)
@@ -785,24 +802,39 @@ func (m *Model) tickCmd() tea.Cmd {
 	})
 }
 
-// getAgentColor returns a color for an agent based on their ID
-func getAgentColor(agentID string) string {
-	colors := map[string]string{
-		"sam_harris":      "13", // Magenta
-		"tony_robbins":    "9",  // Red
-		"david_goggins":   "1",  // Dark red
-		"eckhart_tolle":   "10", // Green
-		"marcus_aurelius": "12", // Blue
-		"bruce_lee":       "14", // Cyan
-		"alan_watts":      "5",  // Purple
-		"carl_jung":       "3",  // Yellow
-		"viktor_frankl":   "6",  // Cyan
-		"rumi":            "11", // Yellow
-		"wizard":          "11", // Yellow/Gold
+// agentColorOverrides returns the config-declared agent_colors map, or
+// nil if none is configured — safe to pass straight to getAgentColor.
+func (m *Model) agentColorOverrides() map[string]string {
+	if m.config == nil || m.config.Display == nil {
+		return nil
 	}
+	return m.config.Display.AgentColors
+}
 
-	if color, ok := colors[agentID]; ok {
+// agentColorPalette is a fixed set of visually distinct ANSI colors,
+// assigned by hashing the agent ID rather than a hardcoded persona table
+// — so a stranger's dialect renders with stable, distinct colors without
+// this package knowing any agent's name in advance.
+var agentColorPalette = []string{"13", "9", "10", "12", "14", "5", "3", "6", "11", "1", "2", "4"}
+
+// getAgentColor maps an agent ID to a color: an explicit override in
+// agentColors (config's display.agent_colors) wins — checked first, even
+// for an empty agentID, since interactive.go's pre-unification
+// implementation allowed overriding the empty-ID case and this preserves
+// that — otherwise the same ID always hashes to the same palette entry,
+// spread deterministically across different IDs, with plain gray as the
+// final fallback for an empty, unconfigured agentID. agentColors may be
+// nil (reading a nil map is a safe, ok=false lookup) — every caller
+// without color config gets the hash-only behavior this function always
+// had.
+func getAgentColor(agentID string, agentColors map[string]string) string {
+	if color, ok := agentColors[agentID]; ok {
 		return color
 	}
-	return "7" // Default gray
+	if agentID == "" {
+		return "7" // Default gray
+	}
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(agentID))
+	return agentColorPalette[h.Sum32()%uint32(len(agentColorPalette))]
 }

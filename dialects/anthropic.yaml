@@ -1,0 +1,43 @@
+# Anthropic Messages API dialect — the frame name lives in the payload's
+# "type" field (discriminator: {path: type}), read directly from the body
+# rather than a transport-supplied name — proving path-mode discrimination
+# (Anthropic's wire also emits a matching `event:` line, but this dialect
+# deliberately ignores it).
+#
+# Field names verified against the Anthropic TypeScript SDK's streaming
+# event types (RawMessageStreamEvent, RawContentBlockDelta variants), not
+# memory: https://github.com/anthropics/anthropic-sdk-typescript
+version: 1
+name: anthropic-messages
+description: Anthropic Messages API streaming dialect — name-in-payload discrimination.
+discriminator: {path: type}
+
+rules:
+  - match: {event: message_start}
+    kind: session_start
+    fields: {model: message.model}
+
+  - match: {event: content_block_delta, exists: delta.text}
+    kind: content
+    source: {const: assistant}
+    content: delta.text
+
+  # Extended thinking rendered apart from content — a kind Brainyard has no
+  # concept of.
+  - match: {event: content_block_delta, exists: delta.thinking}
+    kind: reasoning
+    source: {const: assistant}
+    content: delta.thinking
+
+  # Usage is emitted only on message_delta, not message_start or message_stop.
+  - match: {event: message_delta, exists: usage.output_tokens}
+    kind: usage
+    fields: {tokens: usage.output_tokens}
+
+  - match: {event: message_stop}
+    kind: session_end
+
+  # content_block_start/stop (block boundaries) and signature_delta (the
+  # thinking block's signature) have no rule and correctly fall through to
+  # Kind=Unknown — deliberate, not a gap: this dialect only maps the frames
+  # that carry session lifecycle, visible content, or usage.
