@@ -4,11 +4,54 @@ import (
 	"bufio"
 	"encoding/json"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/lancekrogers/stream-debugger/dialects"
 	"github.com/lancekrogers/stream-debugger/internal/events"
 	"github.com/lancekrogers/stream-debugger/internal/testutil"
 )
+
+func TestLoadDialect_EmbeddedByName(t *testing.T) {
+	engine, err := LoadDialect("openai")
+	if err != nil {
+		t.Fatalf("LoadDialect(openai): %v", err)
+	}
+	if engine.Name != "openai-chat" {
+		t.Errorf("expected embedded OpenAI dialect, got %q", engine.Name)
+	}
+}
+
+func TestLoadDialect_ExplicitPath(t *testing.T) {
+	source, err := os.ReadFile(filepath.Join("..", "..", "dialects", "openai.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "custom.yaml")
+	if err := os.WriteFile(path, source, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	engine, err := LoadDialect(path)
+	if err != nil {
+		t.Fatalf("LoadDialect(%s): %v", path, err)
+	}
+	if engine.Name != "openai-chat" {
+		t.Errorf("expected path-loaded OpenAI dialect, got %q", engine.Name)
+	}
+}
+
+func TestLoadDialect_MissingEmbeddedNameListsAvailable(t *testing.T) {
+	_, err := LoadDialect("not-a-shipped-dialect")
+	if err == nil {
+		t.Fatal("expected missing embedded dialect error")
+	}
+	for _, name := range append([]string{"a2a", "anthropic", "openai"}, dialects.DefaultName) {
+		if !strings.Contains(err.Error(), name) {
+			t.Errorf("missing dialect error does not list %q: %v", name, err)
+		}
+	}
+}
 
 func referenceFixturePath(t *testing.T) string {
 	t.Helper()

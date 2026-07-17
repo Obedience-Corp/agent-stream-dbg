@@ -7,6 +7,7 @@ import (
 	neturl "net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -48,6 +49,10 @@ func main() {
 				Aliases: []string{"c"},
 				Usage:   "Path to YAML configuration file",
 			},
+			&cli.StringFlag{
+				Name:  "dialect",
+				Usage: "Embedded dialect name or path to a dialect YAML file (overrides config)",
+			},
 		},
 		Commands: []*cli.Command{
 			{
@@ -69,6 +74,10 @@ func main() {
 						Usage:    "Path to YAML configuration file",
 						Required: true,
 					},
+					&cli.StringFlag{
+						Name:  "dialect",
+						Usage: "Embedded dialect name or path to a dialect YAML file (overrides config)",
+					},
 				},
 				Action: streamAction,
 			},
@@ -80,6 +89,9 @@ func main() {
 
    Example:
      $ stream-debugger replay logs/by-session/session_*.jsonl`,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "dialect", Usage: "Embedded dialect name or path to a dialect YAML file"},
+				},
 				Action: replayAction,
 			},
 			{
@@ -91,6 +103,9 @@ func main() {
 
    Example:
      $ stream-debugger timeline logs/by-session/session_*.jsonl`,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "dialect", Usage: "Embedded dialect name or path to a dialect YAML file"},
+				},
 				Action: timelineAction,
 			},
 			{
@@ -148,7 +163,7 @@ func defaultAction(c *cli.Context) error {
 	if configPath == "" {
 		return fmt.Errorf("--config flag is required for interactive mode")
 	}
-	return runInteractive(configPath)
+	return runInteractive(configPath, c.String("dialect"))
 }
 
 // streamAction handles the stream command
@@ -158,7 +173,7 @@ func streamAction(c *cli.Context) error {
 	}
 	message := c.Args().Get(0)
 	configPath := c.String("config")
-	return runStream(configPath, message)
+	return runStream(configPath, message, c.String("dialect"))
 }
 
 // replayAction handles the replay command
@@ -167,7 +182,7 @@ func replayAction(c *cli.Context) error {
 		return fmt.Errorf("session file argument is required")
 	}
 	sessionFile := c.Args().Get(0)
-	return runReplay(sessionFile)
+	return runReplay(sessionFile, c.String("dialect"))
 }
 
 // timelineAction handles the timeline command
@@ -176,7 +191,7 @@ func timelineAction(c *cli.Context) error {
 		return fmt.Errorf("session file argument is required")
 	}
 	sessionFile := c.Args().Get(0)
-	return runTimeline(sessionFile)
+	return runTimeline(sessionFile, c.String("dialect"))
 }
 
 // initAction handles the init command
@@ -233,13 +248,18 @@ func explainAction(c *cli.Context) error {
 	return runExplainLive(engine, target)
 }
 
-func runInteractive(configPath string) error {
+func runInteractive(configPath, dialectOverride string) error {
 	fmt.Printf("🚀 Stream Debugger - Interactive Mode\n\n")
 
 	// Load YAML configuration
 	cfg, err := config.LoadConfigFile(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+	applyDialectOverride(cfg, dialectOverride)
+	parser, err := bridge.NewParserFor(cfg.Dialect.File)
+	if err != nil {
+		return fmt.Errorf("failed to load dialect: %w", err)
 	}
 
 	fmt.Printf("🔧 Configuration loaded from: %s\n", configPath)
@@ -256,7 +276,7 @@ func runInteractive(configPath string) error {
 			SessionID: cfg.Session.ID,
 			Agents:    cfg.Session.DefaultAgents,
 		}
-		sessionID, err := bridge.RunSetup(context.Background(), vars, cfg.Transport.ResolvedHeaders(), nil)
+		sessionID, err := parser.RunSetup(context.Background(), vars, cfg.Transport.ResolvedHeaders(), nil)
 		if err != nil {
 			return fmt.Errorf("failed to setup session: %w", err)
 		}
@@ -286,11 +306,16 @@ func runInteractive(configPath string) error {
 	return nil
 }
 
-func runStream(configPath string, message string) error {
+func runStream(configPath string, message string, dialectOverride string) error {
 	// Load YAML configuration
 	cfg, err := config.LoadConfigFile(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+	applyDialectOverride(cfg, dialectOverride)
+	parser, err := bridge.NewParserFor(cfg.Dialect.File)
+	if err != nil {
+		return fmt.Errorf("failed to load dialect: %w", err)
 	}
 
 	fmt.Printf("🔧 Configuration loaded\n")
@@ -307,7 +332,7 @@ func runStream(configPath string, message string) error {
 			SessionID: cfg.Session.ID,
 			Agents:    cfg.Session.DefaultAgents,
 		}
-		sessionID, err := bridge.RunSetup(context.Background(), vars, cfg.Transport.ResolvedHeaders(), nil)
+		sessionID, err := parser.RunSetup(context.Background(), vars, cfg.Transport.ResolvedHeaders(), nil)
 		if err != nil {
 			return fmt.Errorf("failed to setup session: %w", err)
 		}
@@ -373,11 +398,11 @@ func runStream(configPath string, message string) error {
 	return nil
 }
 
-func runReplay(sessionFile string) error {
+func runReplay(sessionFile, dialectSource string) error {
 	fmt.Printf("🔄 Replaying session from: %s\n\n", sessionFile)
 
 	// Load events from log file
-	evts, err := loadEventsFromFile(sessionFile)
+	evts, err := loadEventsFromFile(sessionFile, dialectSource)
 	if err != nil {
 		return fmt.Errorf("failed to load events: %w", err)
 	}
@@ -402,11 +427,11 @@ func runReplay(sessionFile string) error {
 	return nil
 }
 
-func runTimeline(sessionFile string) error {
+func runTimeline(sessionFile, dialectSource string) error {
 	fmt.Printf("📊 Generating timeline from: %s\n\n", sessionFile)
 
 	// Load events from log file
-	evts, err := loadEventsFromFile(sessionFile)
+	evts, err := loadEventsFromFile(sessionFile, dialectSource)
 	if err != nil {
 		return fmt.Errorf("failed to load events: %w", err)
 	}
@@ -435,7 +460,7 @@ func runTimeline(sessionFile string) error {
 // transport — the same Transport → Frame → dialect-engine path a live SSE
 // stream goes through, so timeline/replay decode events identically to a
 // real session rather than through a special-cased file reader.
-func loadEventsFromFile(filePath string) ([]*events.Event, error) {
+func loadEventsFromFile(filePath, dialectSource string) ([]*events.Event, error) {
 	tr, err := replay.New(filePath, 0)
 	if err != nil {
 		return nil, err
@@ -448,7 +473,10 @@ func loadEventsFromFile(filePath string) ([]*events.Event, error) {
 	}
 	defer func() { _ = tr.Close() }()
 
-	parser := bridge.NewParser()
+	parser, err := bridge.NewParserFor(dialectSource)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load dialect: %w", err)
+	}
 	var result []*events.Event
 	for frame := range tr.Frames() {
 		if frame.Err != nil {
@@ -460,6 +488,12 @@ func loadEventsFromFile(filePath string) ([]*events.Event, error) {
 	}
 
 	return result, nil
+}
+
+func applyDialectOverride(cfg *config.EnhancedConfig, override string) {
+	if strings.TrimSpace(override) != "" {
+		cfg.Dialect.File = override
+	}
 }
 
 // runInit infers a draft dialect from a recorded JSONL fixture and writes

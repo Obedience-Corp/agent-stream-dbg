@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/lancekrogers/stream-debugger/internal/bridge"
 	"github.com/lancekrogers/stream-debugger/internal/client"
 	"github.com/lancekrogers/stream-debugger/internal/config"
 	"github.com/lancekrogers/stream-debugger/internal/events"
@@ -59,6 +60,7 @@ type Model struct {
 	// loaded dialect's flow: spec, or derives them live from observed
 	// events when it declared none.
 	dialectFlow flowState
+	parser      *bridge.Parser
 }
 
 // AgentState tracks the state of a single agent
@@ -138,6 +140,7 @@ type tickMsg time.Time
 // NewModel creates a new TUI model
 func NewModel(cfg *config.EnhancedConfig, sseClient *client.SSEClient, structuredLogger *logger.StructuredLogger, message string) *Model {
 	ctx, cancel := context.WithCancel(context.Background())
+	parser := bridge.NewParser(cfg.Dialect.File)
 
 	return &Model{
 		config:          cfg,
@@ -152,7 +155,8 @@ func NewModel(cfg *config.EnhancedConfig, sseClient *client.SSEClient, structure
 		startTime:       time.Now(),
 		flow:            make(map[string]*FlowStepStatus),
 		promptInfo:      make(map[string]*PromptInfoState),
-		dialectFlow:     newFlowState(),
+		dialectFlow:     newFlowStateWithParser(parser),
+		parser:          parser,
 	}
 }
 

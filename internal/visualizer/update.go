@@ -92,7 +92,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Build parsed events once at end to fill Events if needed
 			if m.streamIndex < len(m.messages) {
 				raw := m.messages[m.streamIndex].RawSSE
-				parsed, _ := parseSSEStream(raw)
+				parsed, _ := parseSSEStreamWithParser(raw, m.parser)
 				m.messages[m.streamIndex].Events = parsed
 				// Ensure AgentResponses is fully built at end as well
 				if len(m.messages[m.streamIndex].AgentResponses) == 0 {
@@ -170,7 +170,10 @@ func (m InteractiveModel) currentPaneName() string {
 
 // parseSSEStream parses raw SSE stream into events
 func parseSSEStream(rawSSE string) ([]*events.Event, error) {
-	parser := bridge.NewParser()
+	return parseSSEStreamWithParser(rawSSE, bridge.NewParser())
+}
+
+func parseSSEStreamWithParser(rawSSE string, parser *bridge.Parser) ([]*events.Event, error) {
 	var parsedEvents []*events.Event
 
 	lines := strings.Split(rawSSE, "\n")
@@ -238,7 +241,7 @@ func (m *InteractiveModel) incrementalParseSSE(chunk []byte) {
 		carry = lines[len(lines)-1]
 		lines = lines[:len(lines)-1]
 	}
-	parser := bridge.NewParser()
+	parser := m.parser
 	for _, line := range lines {
 		s := strings.TrimRight(line, "\r")
 		if strings.HasPrefix(s, "event:") {

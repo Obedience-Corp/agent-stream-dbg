@@ -37,7 +37,7 @@ type SSEClient struct {
 func NewSSEClient(cfg *config.EnhancedConfig) *SSEClient {
 	return &SSEClient{
 		config:  cfg,
-		parser:  bridge.NewParser(),
+		parser:  bridge.NewParser(cfg.Dialect.File),
 		eventCh: make(chan *events.Event, 100),
 		errCh:   make(chan error, 10),
 	}
@@ -53,7 +53,7 @@ func (c *SSEClient) Connect(ctx context.Context, message string) error {
 		SessionID: c.config.Session.ID,
 		Message:   message,
 	}
-	method, renderedURL, body, err := bridge.RenderSend(vars)
+	method, renderedURL, body, err := c.parser.RenderSend(vars)
 	if err != nil {
 		return fmt.Errorf("failed to render send request: %w", err)
 	}

@@ -17,9 +17,8 @@ import (
 // TestOpenAIDialect_ExactDecode is the openai.yaml wire shape's acid test:
 // no event names at all (discriminator: auto), matched purely by JSON
 // structure. Every line of the hand-authored fixture is checked against its
-// exact expected Kind/SourceID/Content/Fields, including two deliberately
-// unmapped frames (role-only chunk, finish_reason-only trailer) that must
-// decode as Kind=Unknown rather than error or vanish.
+// exact expected Kind/SourceID/Content/Fields, including the lifecycle
+// chunks that have no event name of their own.
 func TestOpenAIDialect_ExactDecode(t *testing.T) {
 	engine, err := mapping.LoadFile("openai.yaml")
 	if err != nil {
@@ -33,12 +32,12 @@ func TestOpenAIDialect_ExactDecode(t *testing.T) {
 		fields  map[string]any
 	}
 	expected := []want{
-		{events.KindUnknown, "", "", nil},                                                              // 1: role-only chunk, deliberately unmapped
+		{events.KindStreamStart, "assistant", "", nil},                                                // 1: role-only chunk
 		{events.KindContent, "assistant", "The", nil},                                                  // 2: content delta
 		{events.KindContent, "assistant", " answer is 42.", nil},                                       // 3: content delta
 		{events.KindToolCall, "assistant", "", map[string]any{"tool_name": "get_weather", "args": ""}}, // 4: tool_calls delta (first, with name)
 		{events.KindToolCall, "assistant", "", map[string]any{"args": `{"location":"Denver"}`}},        // 5: tool_calls delta (fragment, no name)
-		{events.KindUnknown, "", "", nil},                                                              // 6: finish_reason-only trailer, deliberately unmapped
+		{events.KindStreamEnd, "assistant", "", nil},                                                  // 6: finish_reason-only trailer
 		{events.KindUsage, "", "", map[string]any{"tokens": float64(27), "model": "gpt-4o-mini"}},      // 7: usage trailer
 		{events.KindSessionEnd, "", "", nil},                                                           // 8: [DONE] sentinel
 	}

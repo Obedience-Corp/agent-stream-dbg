@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/lancekrogers/stream-debugger/internal/bridge"
 	"github.com/lancekrogers/stream-debugger/internal/config"
 	"github.com/lancekrogers/stream-debugger/internal/events"
 	dblogger "github.com/lancekrogers/stream-debugger/internal/logger"
@@ -151,9 +152,6 @@ type InteractiveModel struct {
 	eventExpanded    map[int]bool // event index -> expanded state
 	selectedEventIdx int          // cursor position in events list
 
-	// Synthesis content for App pane attribution
-	synthesisContent string
-
 	// Save status message
 	saveStatus string
 
@@ -161,6 +159,7 @@ type InteractiveModel struct {
 	// loaded dialect's flow: spec, or derives them live from observed
 	// events when it declared none.
 	dialectFlow flowState
+	parser      *bridge.Parser
 }
 
 type Message struct {
@@ -180,6 +179,7 @@ type Message struct {
 
 // NewInteractiveModel creates a new interactive TUI model
 func NewInteractiveModel(cfg *config.EnhancedConfig) InteractiveModel {
+	parser := bridge.NewParser(cfg.Dialect.File)
 	ta := textarea.New()
 	ta.Placeholder = "Type your message and press Enter to send (Ctrl+C to quit)..."
 	ta.Focus()
@@ -223,7 +223,8 @@ func NewInteractiveModel(cfg *config.EnhancedConfig) InteractiveModel {
 		// Events pane expandable nodes
 		eventExpanded:    make(map[int]bool),
 		selectedEventIdx: 0,
-		dialectFlow:      newFlowState(),
+		dialectFlow:      newFlowStateWithParser(parser),
+		parser:           parser,
 	}
 	// Set an initial placeholder so the viewport isn't blank before first refresh
 	m.viewport.SetContent(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(

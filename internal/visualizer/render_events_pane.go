@@ -32,10 +32,10 @@ func (m InteractiveModel) renderEventsPane() string {
 	}
 
 	b.WriteString(headerStyle.Render("Events"))
-	b.WriteString(fmt.Sprintf(" (View: %s)", viewLabel))
+	_, _ = fmt.Fprintf(&b, " (View: %s)", viewLabel)
 	if m.viewMode == ViewModeParsed {
-		b.WriteString(fmt.Sprintf(" (Tokens: %s)", tokensLabel))
-		b.WriteString(fmt.Sprintf(" (Aggregator: %s)", aggregatorOnlyLabel))
+		_, _ = fmt.Fprintf(&b, " (Tokens: %s)", tokensLabel)
+		_, _ = fmt.Fprintf(&b, " (Aggregator: %s)", aggregatorOnlyLabel)
 	}
 	b.WriteString("\n")
 	b.WriteString(dimStyle.Render("─────────────────────────────────────────"))
@@ -54,13 +54,13 @@ func (m InteractiveModel) renderEventsPane() string {
 		if msg.AgentResponses != nil {
 			if aggResp := m.aggregatorResponse(msg); aggResp != nil {
 				var metricsLine strings.Builder
-				metricsLine.WriteString(fmt.Sprintf("🧙 Aggregator: %d tokens", aggResp.TokenCount))
+				_, _ = fmt.Fprintf(&metricsLine, "🧙 Aggregator: %d tokens", aggResp.TokenCount)
 				if aggResp.DurationMs > 0 && aggResp.TokenCount > 0 {
 					tokensPerSec := float64(aggResp.TokenCount) * 1000.0 / float64(aggResp.DurationMs)
-					metricsLine.WriteString(fmt.Sprintf(" | %.1f tok/s", tokensPerSec))
+					_, _ = fmt.Fprintf(&metricsLine, " | %.1f tok/s", tokensPerSec)
 				}
 				if aggResp.FirstTokenMs > 0 {
-					metricsLine.WriteString(fmt.Sprintf(" | first: %dms", aggResp.FirstTokenMs))
+					_, _ = fmt.Fprintf(&metricsLine, " | first: %dms", aggResp.FirstTokenMs)
 				}
 				if !aggResp.Completed {
 					metricsLine.WriteString(" ⏳")
@@ -241,7 +241,7 @@ func (m InteractiveModel) renderEventsPane() string {
 					expandedContent.WriteString("\n")
 					if agg.TokenCount > 0 {
 						expandedContent.WriteString(labelStyle.Render("Tokens:"))
-						expandedContent.WriteString(fmt.Sprintf(" %d\n", agg.TokenCount))
+						_, _ = fmt.Fprintf(&expandedContent, " %d\n", agg.TokenCount)
 					}
 				}
 			} else {
@@ -279,11 +279,11 @@ func (m InteractiveModel) renderEventsPane() string {
 					expandedContent.WriteString(labelStyle.Render("Model:"))
 					expandedContent.WriteString(" " + evt.StringField("model") + "\n")
 					expandedContent.WriteString(labelStyle.Render("Total Tokens:"))
-					expandedContent.WriteString(fmt.Sprintf(" %d\n", evt.IntField("total_tokens")))
+					_, _ = fmt.Fprintf(&expandedContent, " %d\n", evt.IntField("total_tokens"))
 					expandedContent.WriteString(labelStyle.Render("Response Length:"))
-					expandedContent.WriteString(fmt.Sprintf(" %d chars\n", evt.IntField("response_length")))
+					_, _ = fmt.Fprintf(&expandedContent, " %d chars\n", evt.IntField("response_length"))
 					expandedContent.WriteString(labelStyle.Render("Latency:"))
-					expandedContent.WriteString(fmt.Sprintf(" %dms\n", evt.IntField("latency_ms")))
+					_, _ = fmt.Fprintf(&expandedContent, " %dms\n", evt.IntField("latency_ms"))
 				case "prompt_info":
 					expandedContent.WriteString(labelStyle.Render("Prompt File:"))
 					expandedContent.WriteString(" " + evt.StringField("prompt_file") + "\n")
@@ -302,7 +302,7 @@ func (m InteractiveModel) renderEventsPane() string {
 					expandedContent.WriteString(labelStyle.Render("Routing Mode:"))
 					expandedContent.WriteString(" " + evt.StringField("routing_mode") + "\n")
 					expandedContent.WriteString(labelStyle.Render("Agent Count:"))
-					expandedContent.WriteString(fmt.Sprintf(" %d\n", evt.IntField("agent_count")))
+					_, _ = fmt.Fprintf(&expandedContent, " %d\n", evt.IntField("agent_count"))
 				case "flow_step_detail":
 					if preview := evt.StringField("synthesis_preview"); preview != "" {
 						expandedContent.WriteString(labelStyle.Render("Synthesis Preview:"))

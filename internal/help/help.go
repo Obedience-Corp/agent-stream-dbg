@@ -99,7 +99,7 @@ func styleAppHelp(app *cli.App) string {
 		for _, cmd := range app.VisibleCommands() {
 			cmdName := commandStyle.Render(fmt.Sprintf("  %-12s", cmd.Name))
 			cmdDesc := descriptionStyle.Render(cmd.Usage)
-			b.WriteString(fmt.Sprintf("%s  %s\n", cmdName, cmdDesc))
+			_, _ = fmt.Fprintf(&b, "%s  %s\n", cmdName, cmdDesc)
 		}
 		b.WriteString("\n")
 	}

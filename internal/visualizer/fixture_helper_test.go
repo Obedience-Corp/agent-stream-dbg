@@ -111,7 +111,7 @@ func newFixtureModel(t *testing.T) *InteractiveModel {
 		m.applyParsedEvent(evt)
 
 		typ := evt.Name
-		rawSSE.WriteString(fmt.Sprintf("event: %s\ndata: %s\n\n", typ, line))
+		_, _ = fmt.Fprintf(&rawSSE, "event: %s\ndata: %s\n\n", typ, line)
 	}
 	m.messages[0].RawSSE = rawSSE.String()
 	m.messages[0].Streaming = false

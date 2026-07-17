@@ -59,11 +59,11 @@ func (m InteractiveModel) renderTimelinePane() string {
 
 		bar := strings.Repeat("█", barWidth)
 
-		b.WriteString(fmt.Sprintf("%-12s %s %dms\n", stage, bar, n.DurationMs))
+		_, _ = fmt.Fprintf(&b, "%-12s %s %dms\n", stage, bar, n.DurationMs)
 	}
 
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("Total: %dms\n", totalDuration))
+	_, _ = fmt.Fprintf(&b, "Total: %dms\n", totalDuration)
 
 	// Show agent timeline bars
 	if len(msg.AgentResponses) > 0 {
@@ -106,7 +106,7 @@ func (m InteractiveModel) renderTimelinePane() string {
 			agentColor := m.getAgentColor(agentID)
 			barStyled := lipgloss.NewStyle().Foreground(agentColor).Render(bar)
 
-			b.WriteString(fmt.Sprintf("%s %-15s %s %d tokens\n", status, agentID, barStyled, resp.TokenCount))
+			_, _ = fmt.Fprintf(&b, "%s %-15s %s %d tokens\n", status, agentID, barStyled, resp.TokenCount)
 		}
 	}
 

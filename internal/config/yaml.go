@@ -57,9 +57,8 @@ type YAMLConfig struct {
 		Auth               authYAML `yaml:"auth"`
 	} `yaml:"transport"`
 
-	// Dialect declares which mapping file interprets this system's frames.
-	// Not yet loaded — the mapping engine lands in phase 004. Declared now so
-	// run configs don't need a second migration when it does.
+	// Dialect declares which mapping file or embedded dialect name interprets
+	// this system's frames.
 	Dialect struct {
 		File string `yaml:"file"`
 	} `yaml:"dialect"`
@@ -341,8 +340,8 @@ func (t TransportConfig) ResolvedHeaders() map[string]string {
 	return h
 }
 
-// DialectConfig declares which mapping file interprets this system's
-// frames. Not yet loaded by this phase — see YAMLConfig.Dialect.
+// DialectConfig declares which mapping file or embedded dialect name
+// interprets this system's frames.
 type DialectConfig struct {
 	File string
 }

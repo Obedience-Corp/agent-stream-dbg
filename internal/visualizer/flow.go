@@ -20,7 +20,11 @@ type flowState struct {
 // facade. When the dialect has no flow: block, the model starts empty and is
 // filled from the observed event stream by FlowDeriver.
 func newFlowState() flowState {
-	spec := bridge.Flow()
+	return newFlowStateWithParser(bridge.NewParser())
+}
+
+func newFlowStateWithParser(parser *bridge.Parser) flowState {
+	spec := parser.Flow()
 	fs := flowState{spec: spec}
 	if spec == nil {
 		fs.deriver = mapping.NewFlowDeriver()

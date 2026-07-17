@@ -32,10 +32,10 @@ transport:
       # username_env: "API_USERNAME"
       # password_env: "API_PASSWORD"
 
-# Dialect: what the bytes mean. Not yet loaded (the mapping engine lands in
-# phase 004) — declared now so run configs don't need a second migration.
-# dialect:
-#   file: "dialects/generic.yaml"
+# Dialect: what the bytes mean. Use the embedded default by name, or provide
+# an explicit YAML path. The CLI --dialect flag overrides this value.
+dialect:
+  file: "brainyard"
 
 # Vars: user-defined values available for interpolation in a dialect's
 # setup:/send: templates (phase 004).

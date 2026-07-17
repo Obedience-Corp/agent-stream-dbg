@@ -51,14 +51,14 @@ func (m InteractiveModel) handleKeyMsg(msg tea.KeyMsg) (InteractiveModel, tea.Cm
 
 			var output strings.Builder
 			output.WriteString("# Stream Debugger Event Export\n")
-			output.WriteString(fmt.Sprintf("# Timestamp: %s\n", time.Now().Format(time.RFC3339)))
-			output.WriteString(fmt.Sprintf("# Session: %s\n", m.cfg.Session.ID))
-			output.WriteString(fmt.Sprintf("# Event Count: %d\n\n", len(lastMsg.Events)))
+			_, _ = fmt.Fprintf(&output, "# Timestamp: %s\n", time.Now().Format(time.RFC3339))
+			_, _ = fmt.Fprintf(&output, "# Session: %s\n", m.cfg.Session.ID)
+			_, _ = fmt.Fprintf(&output, "# Event Count: %d\n\n", len(lastMsg.Events))
 			output.WriteString(strings.Repeat("=", 80) + "\n\n")
 
 			for i, evt := range lastMsg.Events {
 				// Event header
-				output.WriteString(fmt.Sprintf("## Event %d: %s\n", i+1, evt.Name))
+				_, _ = fmt.Fprintf(&output, "## Event %d: %s\n", i+1, evt.Name)
 				output.WriteString(strings.Repeat("-", 40) + "\n")
 
 				// Expanded content (same as TUI shows when expanded)
@@ -198,13 +198,14 @@ func (m InteractiveModel) handleKeyMsg(msg tea.KeyMsg) (InteractiveModel, tea.Cm
 		switch msg.String() {
 		case "j":
 			// Flow pane: move selection down; Events pane: navigate events; others: scroll viewport
-			if m.activePane == PaneFlow {
+			switch m.activePane {
+			case PaneFlow:
 				if m.selectedStepIndex < 5 { // 6 steps: 0-5
 					m.selectedStepIndex++
 					m.contentDirty = true
 					m.refreshViewportContent()
 				}
-			} else if m.activePane == PaneEvents {
+			case PaneEvents:
 				// Navigate down in visible events list
 				visibleCount := m.countVisibleEvents()
 				if m.selectedEventIdx < visibleCount-1 {
@@ -214,20 +215,21 @@ func (m InteractiveModel) handleKeyMsg(msg tea.KeyMsg) (InteractiveModel, tea.Cm
 					// Scroll viewport down to keep selection visible
 					m.viewport.ScrollDown(3)
 				}
-			} else {
+			default:
 				m.viewport.ScrollDown(1)
 				m.follow = false
 			}
 			return m, nil, true
 		case "k":
 			// Flow pane: move selection up; Events pane: navigate events; others: scroll viewport
-			if m.activePane == PaneFlow {
+			switch m.activePane {
+			case PaneFlow:
 				if m.selectedStepIndex > 0 {
 					m.selectedStepIndex--
 					m.contentDirty = true
 					m.refreshViewportContent()
 				}
-			} else if m.activePane == PaneEvents {
+			case PaneEvents:
 				// Navigate up in visible events list
 				if m.selectedEventIdx > 0 {
 					m.selectedEventIdx--
@@ -236,14 +238,15 @@ func (m InteractiveModel) handleKeyMsg(msg tea.KeyMsg) (InteractiveModel, tea.Cm
 					// Scroll viewport up to keep selection visible
 					m.viewport.ScrollUp(3)
 				}
-			} else {
+			default:
 				m.viewport.ScrollUp(1)
 				m.follow = false
 			}
 			return m, nil, true
 		case "[":
 			// Flow pane: previous turn
-			if m.activePane == PaneFlow {
+			switch m.activePane {
+			case PaneFlow:
 				if m.flowTurnIndex > 0 {
 					m.flowTurnIndex--
 					m.contentDirty = true
@@ -263,7 +266,8 @@ func (m InteractiveModel) handleKeyMsg(msg tea.KeyMsg) (InteractiveModel, tea.Cm
 			return m, nil, true
 		case "enter":
 			// Flow pane: toggle expand/collapse
-			if m.activePane == PaneFlow {
+			switch m.activePane {
+			case PaneFlow:
 				steps := m.dialectFlow.stages()
 				if m.selectedStepIndex < len(steps) {
 					step := steps[m.selectedStepIndex]
@@ -271,7 +275,7 @@ func (m InteractiveModel) handleKeyMsg(msg tea.KeyMsg) (InteractiveModel, tea.Cm
 					m.contentDirty = true
 					m.refreshViewportContent()
 				}
-			} else if m.activePane == PaneEvents {
+			case PaneEvents:
 				// Events pane: toggle expand/collapse for selected event
 				m.eventExpanded[m.selectedEventIdx] = !m.eventExpanded[m.selectedEventIdx]
 				m.contentDirty = true

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/lancekrogers/stream-debugger/internal/bridge"
 	"github.com/lancekrogers/stream-debugger/internal/events"
 	dblogger "github.com/lancekrogers/stream-debugger/internal/logger"
 	"github.com/lancekrogers/stream-debugger/internal/mapping"
@@ -27,7 +26,7 @@ func (m InteractiveModel) startStreamingCmd(message string, index int) tea.Cmd {
 			SessionID: m.cfg.Session.ID,
 			Message:   message,
 		}
-		method, sendURL, sendBody, err := bridge.RenderSend(vars)
+		method, sendURL, sendBody, err := m.parser.RenderSend(vars)
 		if err != nil {
 			return streamErrorMsg{err: fmt.Errorf("failed to render send request: %w", err)}
 		}
@@ -140,7 +139,7 @@ func (m InteractiveModel) newSessionCmd() tea.Cmd {
 			SessionID: m.cfg.Session.ID,
 			Agents:    m.cfg.Session.DefaultAgents,
 		}
-		if sessionID, err := bridge.RunSetup(context.Background(), vars, m.cfg.Transport.ResolvedHeaders(), nil); err == nil {
+		if sessionID, err := m.parser.RunSetup(context.Background(), vars, m.cfg.Transport.ResolvedHeaders(), nil); err == nil {
 			// Ensure we track the actual backend session id
 			m.cfg.Session.ID = sessionID
 		}
