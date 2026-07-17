@@ -32,6 +32,7 @@ transport:
   stream_endpoint:
     url: "/api/stream"
     auth:
+      type: "bearer"
       token_env: "API_KEY"
 sesion:
   id_env: "SESSION_ID"
@@ -46,6 +47,7 @@ transport:
   stream_endpoint:
     url: "/api/stream"
     auth:
+      type: "bearer"
       typ: "bearer"
       token_env: "API_KEY"
 `,
@@ -150,6 +152,31 @@ session:
 	}
 }
 
+func TestLoadConfigFile_SSETransport_DefaultsToNoAuth(t *testing.T) {
+	t.Setenv("API_KEY", "")
+	path := writeYAMLConfig(t, `
+transport:
+  type: sse
+  base_url: "http://localhost:8080"
+  stream_endpoint:
+    url: "/api/stream"
+`)
+
+	cfg, err := LoadConfigFile(path)
+	if err != nil {
+		t.Fatalf("unexpected error loading minimal config: %v", err)
+	}
+	if cfg.Transport.Auth.Type != "none" {
+		t.Fatalf("expected auth type none, got %q", cfg.Transport.Auth.Type)
+	}
+	if name, value, ok := cfg.Transport.Auth.Header(); ok {
+		t.Fatalf("expected no auth header, got %s=%s", name, value)
+	}
+	if cfg.APIKey != "" {
+		t.Fatalf("expected no ambient API_KEY resolution, got %q", cfg.APIKey)
+	}
+}
+
 func TestLoadConfigFile_DialectFileReference(t *testing.T) {
 	_ = os.Setenv("API_KEY", "test-key")
 	defer func() { _ = os.Unsetenv("API_KEY") }()
@@ -160,16 +187,17 @@ transport:
   stream_endpoint:
     url: "/api/stream"
     auth:
+      type: "bearer"
       token_env: "API_KEY"
 dialect:
-  file: "dialects/brainyard.yaml"
+  file: "dialects/reference.yaml"
 `)
 
 	cfg, err := LoadConfigFile(path)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.Dialect.File != "dialects/brainyard.yaml" {
+	if cfg.Dialect.File != "dialects/reference.yaml" {
 		t.Errorf("expected dialect.file to be stored, got %q", cfg.Dialect.File)
 	}
 }
@@ -184,6 +212,7 @@ transport:
   stream_endpoint:
     url: "/api/stream"
     auth:
+      type: "bearer"
       token_env: "API_KEY"
 vars:
   region: "us-west"
@@ -208,7 +237,8 @@ transport:
   type: grpc
   target: "localhost:50051"
   method: "/agent.v1.AgentService/StreamSession"
-  discriminator: oneof
+  discriminator: field:type
+  discriminator_field: type
   plaintext: true
   descriptor_set: "testdata/agent.binpb"
   proto_file: "testdata/agent.proto"
@@ -232,8 +262,11 @@ transport:
 	if cfg.Transport.GRPCMethod != "/agent.v1.AgentService/StreamSession" {
 		t.Errorf("expected method to be stored, got %q", cfg.Transport.GRPCMethod)
 	}
-	if cfg.Transport.Discriminator != "oneof" {
-		t.Errorf("expected discriminator 'oneof', got %q", cfg.Transport.Discriminator)
+	if cfg.Transport.Discriminator != "field:type" {
+		t.Errorf("expected discriminator 'field:type', got %q", cfg.Transport.Discriminator)
+	}
+	if cfg.Transport.DiscriminatorField != "type" {
+		t.Errorf("expected discriminator_field 'type', got %q", cfg.Transport.DiscriminatorField)
 	}
 	if !cfg.Transport.Plaintext {
 		t.Error("expected plaintext true")
@@ -253,6 +286,25 @@ transport:
 	}
 	if key != "authorization" || value != "grpc-secret" {
 		t.Errorf("expected metadata authorization=grpc-secret, got %s=%s", key, value)
+	}
+}
+
+func TestLoadConfigFile_GRPCFieldTypeRequiresDiscriminatorField(t *testing.T) {
+	path := writeYAMLConfig(t, `
+transport:
+  type: grpc
+  target: "localhost:50051"
+  method: "/agent.v1.AgentService/StreamSession"
+  discriminator: field:type
+  plaintext: true
+`)
+
+	_, err := LoadConfigFile(path)
+	if err == nil {
+		t.Fatal("expected error when field:type lacks discriminator_field")
+	}
+	if !strings.Contains(err.Error(), "discriminator_field") {
+		t.Fatalf("expected discriminator_field error, got: %v", err)
 	}
 }
 

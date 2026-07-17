@@ -50,53 +50,22 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case streamStartMsg:
-		// Initialize incremental streaming state
-		m.streamBody = msg.body
+		// Initialize frame-level streaming state. The shared transport owns
+		// HTTP/SSE setup and wire parsing; the model owns only UI adaptation.
+		m.streamTransport = msg.stream
 		m.streamIndex = msg.index
-		m.streamCancel = msg.cancel
-		m.sseBuf = ""
-		m.sseEvent = ""
-		m.sseDataBuf.Reset()
-		// Kick off first read
-		return m, m.readStreamChunkCmd()
+		return m, m.readStreamFrameCmd()
 
-	case streamChunkMsg:
-		if msg.err != nil {
-			// Treat as completion with error
-			if m.streamBody != nil {
-				_ = m.streamBody.Close()
-				m.streamBody = nil
-			}
-			if m.streamCancel != nil {
-				m.streamCancel()
-				m.streamCancel = nil
-			}
-			m.err = msg.err
-			m.streaming = false
-			if m.streamIndex < len(m.messages) {
-				m.messages[m.streamIndex].Streaming = false
-			}
-			m.contentDirty = true
-			break
-		}
+	case streamFrameMsg:
 		if msg.eof {
-			// Finalize
-			if m.streamBody != nil {
-				_ = m.streamBody.Close()
-				m.streamBody = nil
-			}
-			if m.streamCancel != nil {
-				m.streamCancel()
-				m.streamCancel = nil
-			}
-			// Build parsed events once at end to fill Events if needed
+			// Finalize after the shared transport has closed its frame channel.
+			// Keep incrementally parsed Events — do not re-parse RawSSE as named
+			// SSE. That only works for named-event SSE and wipes OpenAI-style
+			// data-only streams and gRPC interactive sessions (binary/JSON raw).
+			m.closeActiveStream()
 			if m.streamIndex < len(m.messages) {
-				raw := m.messages[m.streamIndex].RawSSE
-				parsed, _ := parseSSEStream(raw)
-				m.messages[m.streamIndex].Events = parsed
-				// Ensure AgentResponses is fully built at end as well
 				if len(m.messages[m.streamIndex].AgentResponses) == 0 {
-					m.messages[m.streamIndex].AgentResponses = buildAgentResponses(parsed)
+					m.messages[m.streamIndex].AgentResponses = m.buildAgentResponses(m.messages[m.streamIndex].Events)
 				}
 				m.messages[m.streamIndex].Streaming = false
 			}
@@ -108,16 +77,27 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			break
 		}
 
-		// Append raw and incrementally parse
+		// Append the exact raw frame and decode through the same bridge parser
+		// used by every noninteractive transport path. applyParsedEvent owns
+		// the Events list — do not append here or every event is duplicated.
 		if m.streamIndex < len(m.messages) {
-			if len(msg.chunk) > 0 {
-				m.messages[m.streamIndex].RawSSE += string(msg.chunk)
-				m.incrementalParseSSE(msg.chunk)
-				m.contentDirty = true
+			if len(msg.frame.Raw) > 0 {
+				m.messages[m.streamIndex].RawSSE += string(msg.frame.Raw)
 			}
+			if msg.frame.Err != nil {
+				m.closeActiveStream()
+				m.err = msg.frame.Err
+				m.streaming = false
+				m.messages[m.streamIndex].Streaming = false
+				m.contentDirty = true
+				break
+			}
+			if evt, err := m.parser.Parse(msg.frame.Name, msg.frame.Data); err == nil && evt != nil {
+				m.applyParsedEvent(evt)
+			}
+			m.contentDirty = true
 		}
-		// Schedule next read
-		return m, m.readStreamChunkCmd()
+		return m, m.readStreamFrameCmd()
 
 	case streamErrorMsg:
 		m.err = msg.err
@@ -125,6 +105,33 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.messages[len(m.messages)-1].Streaming = false
 		}
 		m.streaming = false
+		m.contentDirty = true
+
+	case sessionSetupMsg:
+		m.closeActiveStream()
+		m.streaming = false
+		if msg.sessionID != "" {
+			m.cfg.Session.ID = msg.sessionID
+		}
+		if m.slog != nil {
+			_ = m.slog.Close()
+		}
+		if l, err := dblogger.NewStructuredLogger(m.cfg); err == nil {
+			m.slog = l
+		}
+
+		// Reset UI state for the newly requested session, retaining any setup
+		// error as a visible model error instead of swallowing it.
+		m.messages = make([]Message, 0)
+		m.err = msg.err
+		m.flowTurnIndex = 0
+		m.flowContinuous = true
+		m.selectedStepIndex = 0
+		m.flowExpanded = make(map[string]bool)
+		m.showTokens = false
+		m.eventsAggregatorOnly = false
+		m.appFocus = AppFocusAgents
+		m.viewport.SetContent("")
 		m.contentDirty = true
 	}
 
@@ -170,7 +177,10 @@ func (m InteractiveModel) currentPaneName() string {
 
 // parseSSEStream parses raw SSE stream into events
 func parseSSEStream(rawSSE string) ([]*events.Event, error) {
-	parser := bridge.NewParser()
+	return parseSSEStreamWithParser(rawSSE, bridge.NewParser())
+}
+
+func parseSSEStreamWithParser(rawSSE string, parser *bridge.Parser) ([]*events.Event, error) {
 	var parsedEvents []*events.Event
 
 	lines := strings.Split(rawSSE, "\n")
@@ -225,54 +235,6 @@ func parseSSEStream(rawSSE string) ([]*events.Event, error) {
 	return parsedEvents, nil
 }
 
-// incrementalParseSSE parses SSE incrementally from chunks to update AgentResponses as tokens arrive
-func (m *InteractiveModel) incrementalParseSSE(chunk []byte) {
-	if m.streamIndex >= len(m.messages) {
-		return
-	}
-	data := m.sseBuf + string(chunk)
-	lines := strings.Split(data, "\n")
-	// If the chunk doesn't end with a newline, keep last partial for next time
-	carry := ""
-	if !strings.HasSuffix(data, "\n") {
-		carry = lines[len(lines)-1]
-		lines = lines[:len(lines)-1]
-	}
-	parser := bridge.NewParser()
-	for _, line := range lines {
-		s := strings.TrimRight(line, "\r")
-		if strings.HasPrefix(s, "event:") {
-			// Finish previous event if any
-			if m.sseEvent != "" && m.sseDataBuf.Len() > 0 {
-				evt, err := parser.Parse(m.sseEvent, []byte(m.sseDataBuf.String()))
-				if err == nil && evt != nil {
-					m.applyParsedEvent(evt)
-				}
-				m.sseDataBuf.Reset()
-			}
-			m.sseEvent = strings.TrimSpace(strings.TrimPrefix(s, "event:"))
-		} else if strings.HasPrefix(s, "data:") {
-			payload := strings.TrimSpace(strings.TrimPrefix(s, "data:"))
-			if m.sseDataBuf.Len() > 0 {
-				m.sseDataBuf.WriteString("\n")
-			}
-			m.sseDataBuf.WriteString(payload)
-		} else if s == "" {
-			// End of one event
-			if m.sseEvent != "" && m.sseDataBuf.Len() > 0 {
-				evt, err := parser.Parse(m.sseEvent, []byte(m.sseDataBuf.String()))
-				if err == nil && evt != nil {
-					m.applyParsedEvent(evt)
-				}
-			}
-			m.sseEvent = ""
-			m.sseDataBuf.Reset()
-		}
-		// Unknown lines are silently ignored
-	}
-	m.sseBuf = carry
-}
-
 // applyParsedEvent updates agent responses incrementally from a parsed
 // event. Dispatches on evt.Kind + role, not on the dialect's own wire
 // event names (previously separate per-lane wire-event-shaped cases) —
@@ -296,7 +258,7 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
 		m.messages[idx].AgentResponses = make(map[string]*AgentResponse)
 	}
 	aid := evt.SourceID
-	isAggregator := m.dialectFlow.role(evt) == "aggregator"
+	isAggregator := m.dialectFlow.role(evt) == events.RoleAggregator
 
 	switch evt.Kind {
 	case events.KindStreamStart:
@@ -305,9 +267,10 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
 		}
 		ar := m.messages[idx].AgentResponses[aid]
 		if ar == nil {
-			ar = &AgentResponse{AgentID: aid}
+			ar = &AgentResponse{AgentID: aid, Role: m.dialectFlow.role(evt)}
 			m.messages[idx].AgentResponses[aid] = ar
 		}
+		ar.Role = m.dialectFlow.role(evt)
 		if isAggregator {
 			ar.StartTime = time.Now()
 		}
@@ -317,12 +280,13 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
 		}
 		ar := m.messages[idx].AgentResponses[aid]
 		if ar == nil {
-			ar = &AgentResponse{AgentID: aid}
+			ar = &AgentResponse{AgentID: aid, Role: m.dialectFlow.role(evt)}
 			if isAggregator {
 				ar.StartTime = time.Now()
 			}
 			m.messages[idx].AgentResponses[aid] = ar
 		}
+		ar.Role = m.dialectFlow.role(evt)
 		if isAggregator && ar.TokenCount == 0 && !ar.StartTime.IsZero() {
 			ar.FirstTokenMs = time.Since(ar.StartTime).Milliseconds()
 		}
@@ -336,9 +300,10 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
 		}
 		ar := m.messages[idx].AgentResponses[aid]
 		if ar == nil {
-			ar = &AgentResponse{AgentID: aid}
+			ar = &AgentResponse{AgentID: aid, Role: m.dialectFlow.role(evt)}
 			m.messages[idx].AgentResponses[aid] = ar
 		}
+		ar.Role = m.dialectFlow.role(evt)
 		if !isAggregator {
 			ar.Completed = true
 			break
@@ -381,9 +346,10 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
 		}
 		ar := m.messages[idx].AgentResponses[aid]
 		if ar == nil {
-			ar = &AgentResponse{AgentID: aid}
+			ar = &AgentResponse{AgentID: aid, Role: m.dialectFlow.role(evt)}
 			m.messages[idx].AgentResponses[aid] = ar
 		}
+		ar.Role = m.dialectFlow.role(evt)
 		appendToolEventLine(ar, evt)
 	default:
 		// ignore others
@@ -405,7 +371,7 @@ func (m InteractiveModel) aggregatorResponse(msg Message) *AgentResponse {
 	}
 	sort.Strings(ids)
 	for _, id := range ids {
-		if m.dialectFlow.role(&events.Event{SourceID: id}) == "aggregator" {
+		if m.dialectFlow.role(&events.Event{SourceID: id}) == events.RoleAggregator {
 			return msg.AgentResponses[id]
 		}
 	}
@@ -414,6 +380,14 @@ func (m InteractiveModel) aggregatorResponse(msg Message) *AgentResponse {
 
 // buildAgentResponses builds agent response map from parsed events
 func buildAgentResponses(evts []*events.Event) map[string]*AgentResponse {
+	return buildAgentResponsesWithFlow(evts, newFlowState())
+}
+
+func (m InteractiveModel) buildAgentResponses(evts []*events.Event) map[string]*AgentResponse {
+	return buildAgentResponsesWithFlow(evts, m.dialectFlow)
+}
+
+func buildAgentResponsesWithFlow(evts []*events.Event, flow flowState) map[string]*AgentResponse {
 	responses := make(map[string]*AgentResponse)
 
 	for _, event := range evts {
@@ -426,6 +400,7 @@ func buildAgentResponses(evts []*events.Event) map[string]*AgentResponse {
 		if _, exists := responses[agentID]; !exists {
 			responses[agentID] = &AgentResponse{
 				AgentID:       agentID,
+				Role:          flow.role(event),
 				ContentChunks: make([]string, 0),
 			}
 		}

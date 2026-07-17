@@ -3,7 +3,6 @@ package mapping
 import (
 	"encoding/json"
 	"fmt"
-	"maps"
 	"net/url"
 	"regexp"
 	"strings"
@@ -29,7 +28,9 @@ type InterpolationVars struct {
 }
 
 // knownNames returns every placeholder name available for substitution:
-// the fixed set plus each declared run-config var.
+// the fixed set plus each declared run-config var. A user var may repeat a
+// fixed name for configuration convenience, but the fixed value wins during
+// rendering and cannot be shadowed.
 func (v InterpolationVars) knownNames() map[string]bool {
 	known := map[string]bool{
 		"base_url":   true,
@@ -94,6 +95,9 @@ func Interpolate(template string, v InterpolationVars) (string, error) {
 		"agents":     string(agentsJSON),
 	}
 	for name, val := range v.Vars {
+		if _, reserved := values[name]; reserved {
+			continue
+		}
 		values[name] = jsonEscapeContent(val)
 	}
 
@@ -144,7 +148,12 @@ func InterpolateURL(template string, v InterpolationVars) (string, error) {
 		"message":    url.QueryEscape(v.Message),
 		"agents":     strings.Join(v.Agents, ","),
 	}
-	maps.Copy(values, v.Vars)
+	for name, value := range v.Vars {
+		if _, reserved := values[name]; reserved {
+			continue
+		}
+		values[name] = value
+	}
 
 	return placeholderPattern.ReplaceAllStringFunc(template, func(match string) string {
 		name := placeholderPattern.FindStringSubmatch(match)[1]

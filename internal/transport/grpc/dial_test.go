@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +10,18 @@ import (
 	"github.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc"
 	"github.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc/agentstreampb"
 )
+
+func waitForGoroutines(t *testing.T, baseline int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if runtime.NumGoroutine() <= baseline+8 {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("goroutines did not settle near baseline: baseline=%d current=%d", baseline, runtime.NumGoroutine())
+}
 
 func TestTransport_Connect_Plaintext(t *testing.T) {
 	srv, err := mockgrpc.New(nil)
@@ -116,6 +129,29 @@ func TestTransport_Connect_UnreachableTarget_FailsWithinDeadline(t *testing.T) {
 	if elapsed > 2*time.Second {
 		t.Errorf("expected Connect to fail within roughly ctx's deadline, took %v", elapsed)
 	}
+}
+
+func TestTransport_ConnectError_ClosesFrames(t *testing.T) {
+	baseline := runtime.NumGoroutine()
+	tr := New(Config{Target: "127.0.0.1:1", Plaintext: true})
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	if err := tr.Connect(ctx); err == nil {
+		t.Fatal("expected Connect to fail")
+	}
+
+	done := make(chan struct{})
+	go func() {
+		for range tr.Frames() {
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Frames() remained open after Connect error")
+	}
+	waitForGoroutines(t, baseline)
 }
 
 func TestTransport_Close_WithoutConnect_IsSafe(t *testing.T) {

@@ -14,6 +14,23 @@ import (
 // Used for Ctrl+S export to file
 func (m InteractiveModel) renderEventExpandedPlainText(evt *events.Event, msg *Message) string {
 	var b strings.Builder
+	if evt.Kind == events.KindStreamStart && m.dialectFlow.role(evt) == events.RoleAggregator {
+		b.WriteString("Message ID: " + evt.StringField("message_id") + "\n")
+		return b.String()
+	}
+	if evt.Kind == events.KindStreamEnd && m.dialectFlow.role(evt) == events.RoleAggregator {
+		if msg != nil {
+			if agg := m.aggregatorResponse(*msg); agg != nil && agg.FullContent != "" {
+				b.WriteString("Aggregator Response:\n")
+				b.WriteString(agg.FullContent)
+				b.WriteString("\n")
+				if agg.TokenCount > 0 {
+					_, _ = fmt.Fprintf(&b, "\nTokens: %d\n", agg.TokenCount)
+				}
+			}
+		}
+		return b.String()
+	}
 
 	switch evt.Name {
 	case "filter_detail":
@@ -37,17 +54,17 @@ func (m InteractiveModel) renderEventExpandedPlainText(evt *events.Event, msg *M
 		b.WriteString(evt.StringField("plan_id"))
 		b.WriteString("\nMethod: ")
 		b.WriteString(evt.StringField("synthesis_method"))
-		b.WriteString(fmt.Sprintf("\nSources Combined: %d", evt.IntField("sources_combined")))
+		_, _ = fmt.Fprintf(&b, "\nSources Combined: %d", evt.IntField("sources_combined"))
 		b.WriteString("\n\nSynthesis (full):\n")
 		b.WriteString(evt.StringField("synthesis_full"))
 	case "agent_metadata":
 		b.WriteString("Model: " + evt.StringField("model") + "\n")
-		b.WriteString(fmt.Sprintf("Total Tokens: %d\n", evt.IntField("total_tokens")))
-		b.WriteString(fmt.Sprintf("Response Length: %d chars\n", evt.IntField("response_length")))
-		b.WriteString(fmt.Sprintf("Latency: %dms\n", evt.IntField("latency_ms")))
+		_, _ = fmt.Fprintf(&b, "Total Tokens: %d\n", evt.IntField("total_tokens"))
+		_, _ = fmt.Fprintf(&b, "Response Length: %d chars\n", evt.IntField("response_length"))
+		_, _ = fmt.Fprintf(&b, "Latency: %dms\n", evt.IntField("latency_ms"))
 	case "prompt_info":
 		b.WriteString("Prompt File: " + evt.StringField("prompt_file") + "\n")
-		b.WriteString(fmt.Sprintf("Prompt Length: %d chars\n", evt.IntField("prompt_length")))
+		_, _ = fmt.Fprintf(&b, "Prompt Length: %d chars\n", evt.IntField("prompt_length"))
 		b.WriteString("\nSnippet:\n")
 		b.WriteString(evt.StringField("prompt_snippet"))
 	case "prompt_full":
@@ -59,28 +76,28 @@ func (m InteractiveModel) renderEventExpandedPlainText(evt *events.Event, msg *M
 		b.WriteString("Flow File: " + evt.StringField("flow_file") + "\n")
 		b.WriteString("Stages Order: " + strings.Join(evt.StringSliceField("stages_order"), " → ") + "\n")
 		b.WriteString("Routing Mode: " + evt.StringField("routing_mode") + "\n")
-		b.WriteString(fmt.Sprintf("Agent Count: %d\n", evt.IntField("agent_count")))
-		b.WriteString(fmt.Sprintf("Non-Aggregator Count: %d\n", evt.IntField(nonAggregatorCountFieldKey)))
+		_, _ = fmt.Fprintf(&b, "Agent Count: %d\n", evt.IntField("agent_count"))
+		_, _ = fmt.Fprintf(&b, "Non-Aggregator Count: %d\n", evt.ParticipantCount())
 		if stagesEnabled := evt.BoolMapField("stages_enabled"); len(stagesEnabled) > 0 {
 			b.WriteString("Stages Enabled:\n")
 			for stage, enabled := range stagesEnabled {
-				b.WriteString(fmt.Sprintf("  %s: %v\n", stage, enabled))
+				_, _ = fmt.Fprintf(&b, "  %s: %v\n", stage, enabled)
 			}
 		}
 	case "flow_step_start":
 		b.WriteString("Step: " + evt.StringField("step") + "\n")
-		b.WriteString(fmt.Sprintf("Enabled: %v\n", evt.BoolField("enabled")))
+		_, _ = fmt.Fprintf(&b, "Enabled: %v\n", evt.BoolField("enabled"))
 		if agentCount := evt.IntField("agent_count"); agentCount > 0 {
-			b.WriteString(fmt.Sprintf("Agent Count: %d\n", agentCount))
+			_, _ = fmt.Fprintf(&b, "Agent Count: %d\n", agentCount)
 		}
-		if nonAggregatorCount := evt.IntField(nonAggregatorCountFieldKey); nonAggregatorCount > 0 {
-			b.WriteString(fmt.Sprintf("Non-Aggregator Count: %d\n", nonAggregatorCount))
+		if participantCount := evt.ParticipantCount(); participantCount > 0 {
+			_, _ = fmt.Fprintf(&b, "Non-Aggregator Count: %d\n", participantCount)
 		}
 	case "flow_step_end":
 		b.WriteString("Step: " + evt.StringField("step") + "\n")
-		b.WriteString(fmt.Sprintf("Enabled: %v\n", evt.BoolField("enabled")))
+		_, _ = fmt.Fprintf(&b, "Enabled: %v\n", evt.BoolField("enabled"))
 		if durationMs := evt.IntField("duration_ms"); durationMs > 0 {
-			b.WriteString(fmt.Sprintf("Duration: %dms\n", durationMs))
+			_, _ = fmt.Fprintf(&b, "Duration: %dms\n", durationMs)
 		}
 		if routingMode := evt.StringField("routing_mode"); routingMode != "" {
 			b.WriteString("Routing Mode: " + routingMode + "\n")
@@ -123,32 +140,18 @@ func (m InteractiveModel) renderEventExpandedPlainText(evt *events.Event, msg *M
 				}
 				agentID, _ := p["agent_id"].(string)
 				summary, _ := p["summary"].(string)
-				b.WriteString(fmt.Sprintf("• %s: %s\n", agentID, summary))
+				_, _ = fmt.Fprintf(&b, "• %s: %s\n", agentID, summary)
 			}
 		}
 		if agents := evt.StringSliceField("agents"); len(agents) > 0 {
 			b.WriteString("\nAgents: " + strings.Join(agents, ", ") + "\n")
-		}
-	case aggregatorStreamStartEventName:
-		b.WriteString("Message ID: " + evt.StringField("message_id") + "\n")
-	case aggregatorStreamCompleteEventName:
-		// Show full aggregator response from AgentResponses
-		if msg != nil {
-			if agg := m.aggregatorResponse(*msg); agg != nil && agg.FullContent != "" {
-				b.WriteString("Aggregator Response:\n")
-				b.WriteString(agg.FullContent)
-				b.WriteString("\n")
-				if agg.TokenCount > 0 {
-					b.WriteString(fmt.Sprintf("\nTokens: %d\n", agg.TokenCount))
-				}
-			}
 		}
 	case "agent_stream_start":
 		b.WriteString("Agent: " + evt.SourceID + "\n")
 		b.WriteString("Message ID: " + evt.StringField("message_id") + "\n")
 	case "agent_stream_complete":
 		b.WriteString("Agent: " + evt.SourceID + "\n")
-		b.WriteString(fmt.Sprintf("Token Count: %d\n", evt.IntField("token_count")))
+		_, _ = fmt.Fprintf(&b, "Token Count: %d\n", evt.IntField("token_count"))
 		// Show full agent response from AgentResponses
 		if msg != nil {
 			if agent := msg.AgentResponses[evt.SourceID]; agent != nil && agent.FullContent != "" {

@@ -33,10 +33,12 @@ type Transport struct {
 	// goroutine unblocks immediately whether it's waiting on network I/O
 	// or blocked sending to a full, undrained frames channel — closing
 	// resp.Body alone only unblocks the former.
-	closed    chan struct{}
-	wg        sync.WaitGroup
-	closeOnce sync.Once
-	closeErr  error
+	closed       chan struct{}
+	wg           sync.WaitGroup
+	closeOnce    sync.Once
+	framesOnce   sync.Once
+	closeErr     error
+	streamCancel context.CancelFunc
 }
 
 // New builds an SSE transport for one request. method/url/body are
@@ -61,12 +63,27 @@ func (t *Transport) Name() string { return "sse" }
 // body as Frames in the background. It returns once the connection is
 // established and the read loop has started; Frames() delivers events as
 // they arrive.
-func (t *Transport) Connect(ctx context.Context) error {
+func (t *Transport) Connect(ctx context.Context) (err error) {
+	defer func() {
+		if err != nil {
+			t.closeFrames()
+		}
+	}()
+
+	streamCtx, streamCancel := context.WithCancel(context.Background())
+	stopDialCancel := context.AfterFunc(ctx, streamCancel)
+	defer stopDialCancel()
+	defer func() {
+		if err != nil {
+			streamCancel()
+		}
+	}()
+
 	var bodyReader io.Reader
 	if len(t.body) > 0 {
 		bodyReader = bytes.NewReader(t.body)
 	}
-	req, err := http.NewRequestWithContext(ctx, t.method, t.url, bodyReader)
+	req, err := http.NewRequestWithContext(streamCtx, t.method, t.url, bodyReader)
 	if err != nil {
 		return fmt.Errorf("sse: build request: %w", err)
 	}
@@ -79,15 +96,22 @@ func (t *Transport) Connect(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("sse: connect: %w", err)
 	}
+	if !stopDialCancel() && ctx.Err() != nil {
+		streamCancel()
+		_ = resp.Body.Close()
+		return fmt.Errorf("sse: connect: %w", ctx.Err())
+	}
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
+		streamCancel()
 		return fmt.Errorf("sse: unexpected status %d: %s", resp.StatusCode, respBody)
 	}
 	t.resp = resp
+	t.streamCancel = streamCancel
 
 	t.wg.Add(1)
-	go t.readLoop()
+	go t.readLoop(streamCtx)
 	return nil
 }
 
@@ -116,18 +140,26 @@ func (t *Transport) Close() error {
 		if t.resp != nil {
 			t.closeErr = t.resp.Body.Close()
 		}
+		if t.streamCancel != nil {
+			t.streamCancel()
+		}
 		t.wg.Wait()
+		t.closeFrames()
 	})
 	return t.closeErr
+}
+
+func (t *Transport) closeFrames() {
+	t.framesOnce.Do(func() { close(t.frames) })
 }
 
 // readLoop parses event:/data:/id:/retry: fields, dispatching a Frame on
 // every blank line. It never normalizes and never skips: a frame that
 // arrives malformed (the stream ends or errors mid-block) is still
 // emitted, with Err set and whatever bytes were received intact in Raw.
-func (t *Transport) readLoop() {
+func (t *Transport) readLoop(ctx context.Context) {
 	defer t.wg.Done()
-	defer close(t.frames)
+	defer t.closeFrames()
 
 	r := bufio.NewReader(t.resp.Body)
 
@@ -156,6 +188,8 @@ func (t *Transport) readLoop() {
 		select {
 		case t.frames <- frame:
 			return true
+		case <-ctx.Done():
+			return false
 		case <-t.closed:
 			return false
 		}
@@ -166,15 +200,9 @@ func (t *Transport) readLoop() {
 		if len(line) > 0 {
 			rawBuf.Write(line)
 		}
-		if err != nil {
-			if hasContent {
-				emit(fmt.Errorf("sse: stream ended mid-frame: %w", err))
-			}
-			return
-		}
 
 		trimmed := bytes.TrimRight(line, "\r\n")
-		if len(trimmed) == 0 {
+		if len(trimmed) == 0 && err == nil {
 			if hasContent {
 				if !emit(nil) {
 					return
@@ -182,25 +210,27 @@ func (t *Transport) readLoop() {
 			} else {
 				rawBuf.Reset() // pure blank/comment-only block: no frame to dispatch
 			}
-			continue
-		}
-		if trimmed[0] == ':' {
-			continue // comment line — kept in Raw, not a field
-		}
-
-		field, value, _ := bytes.Cut(trimmed, []byte(":"))
-		value = bytes.TrimPrefix(value, []byte(" "))
-		switch string(field) {
-		case "event":
-			eventName = string(value)
-			hasContent = true
-		case "data":
-			dataBuf.Write(value)
-			dataBuf.WriteByte('\n')
-			hasContent = true
+		} else if len(trimmed) > 0 && trimmed[0] != ':' {
+			field, value, _ := bytes.Cut(trimmed, []byte(":"))
+			value = bytes.TrimPrefix(value, []byte(" "))
+			switch string(field) {
+			case "event":
+				eventName = string(value)
+				hasContent = true
+			case "data":
+				dataBuf.Write(value)
+				dataBuf.WriteByte('\n')
+				hasContent = true
+			}
 		}
 		// id:/retry:/unknown fields are preserved in Raw but otherwise
 		// ignored — this transport never auto-reconnects, so retry: has
 		// no effect, and Frame carries no id.
+		if err != nil {
+			if hasContent {
+				emit(fmt.Errorf("sse: stream ended mid-frame: %w", err))
+			}
+			return
+		}
 	}
 }

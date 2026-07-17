@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/lancekrogers/stream-debugger/internal/config"
+	"github.com/lancekrogers/stream-debugger/internal/events"
+	"github.com/lancekrogers/stream-debugger/internal/mapping"
 )
 
 // TestModelAndInteractiveModel_AgreeOnStages is this task's explicit
@@ -44,5 +46,45 @@ func TestModel_RenderFlowStatus_IncludesFilterStage(t *testing.T) {
 	out := m.renderFlowStatus()
 	if !strings.Contains(out, "filter") {
 		t.Errorf("expected renderFlowStatus to include the 'filter' stage, got: %s", out)
+	}
+}
+
+func TestFlowState_FlowModelCarriesDeclaredRoles(t *testing.T) {
+	flow := flowState{spec: &mapping.FlowSpec{
+		Stages: []string{"routing", "supervisor"},
+		Lanes: []mapping.LaneRule{{
+			Match: mapping.LaneMatchSpec{Source: "supervisor"},
+			Role:  events.RoleAggregator,
+			Label: "Supervisor",
+		}},
+		DefaultRole: events.RoleWorker,
+	}}
+	flow.refreshModel()
+
+	model := flow.FlowModel()
+	if len(model.Lanes) != 1 || model.Lanes[0].Role != events.RoleAggregator {
+		t.Fatalf("expected declared lane role aggregator, got %+v", model.Lanes)
+	}
+	if model.Lanes[0].Label != "Supervisor" {
+		t.Errorf("expected declared lane label to survive projection, got %q", model.Lanes[0].Label)
+	}
+	if got := flow.stageRole("supervisor"); got != events.RoleAggregator {
+		t.Errorf("expected matching stage role aggregator, got %q", got)
+	}
+	if got := flow.stageRole("routing"); got != events.RoleWorker {
+		t.Errorf("expected unmatched stage role worker, got %q", got)
+	}
+}
+
+func TestFlowState_DerivedFlowModelDefaultsRolesToWorker(t *testing.T) {
+	flow := flowState{deriver: mapping.NewFlowDeriver()}
+	flow.observe(&events.Event{SourceID: "agent", Kind: events.KindStepStart, Fields: map[string]any{"step": "work"}})
+
+	model := flow.FlowModel()
+	if len(model.Lanes) != 1 || model.Lanes[0].Role != events.RoleWorker {
+		t.Fatalf("expected derived lane role worker, got %+v", model.Lanes)
+	}
+	if len(model.Stages) != 1 || model.Stages[0].Role != events.RoleWorker {
+		t.Fatalf("expected derived stage role worker, got %+v", model.Stages)
 	}
 }

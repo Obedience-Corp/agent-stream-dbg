@@ -44,6 +44,18 @@ build:
     mkdir -p bin
     go build -o bin/stream-debugger ./cmd/stream-debugger
 
+# Build outside the source tree and replay a fixture using embedded dialects.
+smoke-binary:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    repo_root=$PWD
+    tmp_dir=$(mktemp -d)
+    trap 'rm -rf "$tmp_dir"' EXIT
+    go build -o "$tmp_dir/stream-debugger" ./cmd/stream-debugger
+    cd "$tmp_dir"
+    "$tmp_dir/stream-debugger" --help >/dev/null
+    "$tmp_dir/stream-debugger" replay "$repo_root/testdata/fixtures/brainyard-session.jsonl" >/dev/null
+
 # Install the binary to $GOPATH/bin
 install:
     @echo "📦 Installing stream-debugger to Go bin..."
@@ -56,6 +68,10 @@ demo:
     @mkdir -p bin
     @test -f bin/stream-debugger || just build
     ./bin/stream-debugger timeline testdata/fixtures/brainyard-session.jsonl
+
+# Run the OpenAI fixture through the mock SSE server and report decode counts.
+demo-openai:
+    go test ./internal/client -run TestOpenAIDialectMockSSESmoke -count=1 -v
 
 # Run the debugger with a test message
 stream message="What is consciousness?" config="configs/brainyard-v3.yaml":
@@ -93,7 +109,15 @@ vet:
 
 # Lint code (requires golangci-lint)
 lint:
+    just lint-seam
     golangci-lint run
+
+# Guard the dialect seam with fragments, not whole words: issue #2 finding 1
+# showed that a split literal such as "wiz" + "ard" can evade whole-word
+# checks, so these tokens must stay absent from executable Go under internal/
+# and cmd/. Dialect data and fixtures remain allowed to name their system.
+lint-seam:
+    ! grep -rniE 'wiz|brainyard|sam_harris' --include='*.go' internal/ cmd/
 
 # Run all code quality checks
 check:

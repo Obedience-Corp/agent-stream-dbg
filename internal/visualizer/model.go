@@ -2,17 +2,17 @@ package visualizer
 
 import (
 	"context"
-	"io"
-	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/lancekrogers/stream-debugger/internal/bridge"
 	"github.com/lancekrogers/stream-debugger/internal/config"
 	"github.com/lancekrogers/stream-debugger/internal/events"
 	dblogger "github.com/lancekrogers/stream-debugger/internal/logger"
+	"github.com/lancekrogers/stream-debugger/internal/transport"
 )
 
 // ViewMode represents the display mode for responses
@@ -42,6 +42,27 @@ const (
 	AppFocusAgents
 )
 
+// FlowLane is a dialect-declared or observed lane in the flow projection.
+// Role is semantic metadata supplied by flow.lanes, not a wire-name guess.
+type FlowLane struct {
+	SourceID string
+	Role     events.Role
+	Label    string
+}
+
+// FlowStage is a stage in the flow projection. A stage role is resolved from
+// the matching lane source when the dialect declares one.
+type FlowStage struct {
+	Name string
+	Role events.Role
+}
+
+// FlowModel is the renderer-facing flow projection shared by both TUI models.
+type FlowModel struct {
+	Lanes  []FlowLane
+	Stages []FlowStage
+}
+
 // FlowNode represents a flow step's state for rendering
 type FlowNode struct {
 	Step          string
@@ -60,6 +81,7 @@ type FlowNode struct {
 // AgentResponse tracks a single agent's response
 type AgentResponse struct {
 	AgentID       string
+	Role          events.Role
 	ContentChunks []string
 	FullContent   string
 	TokenCount    int
@@ -114,12 +136,9 @@ type InteractiveModel struct {
 	agentCollapsed map[string]bool // per-agent collapsed state
 
 	// Streaming (incremental) state
-	streamBody   io.ReadCloser
-	streamIndex  int
-	sseBuf       string          // carryover between chunks
-	sseEvent     string          // current event type being assembled
-	sseDataBuf   strings.Builder // current event data buffer
-	streamCancel context.CancelFunc
+	streamTransport transport.Transport
+	streamIndex     int
+	streamContext   context.Context
 
 	// Flow pane state
 	flowTurnIndex  int  // which message index is displayed in Flow (default latest)
@@ -129,9 +148,6 @@ type InteractiveModel struct {
 	eventExpanded    map[int]bool // event index -> expanded state
 	selectedEventIdx int          // cursor position in events list
 
-	// Synthesis content for App pane attribution
-	synthesisContent string
-
 	// Save status message
 	saveStatus string
 
@@ -139,6 +155,7 @@ type InteractiveModel struct {
 	// loaded dialect's flow: spec, or derives them live from observed
 	// events when it declared none.
 	dialectFlow flowState
+	parser      *bridge.Parser
 }
 
 type Message struct {
@@ -158,6 +175,16 @@ type Message struct {
 
 // NewInteractiveModel creates a new interactive TUI model
 func NewInteractiveModel(cfg *config.EnhancedConfig) InteractiveModel {
+	return NewInteractiveModelWithContext(cfg, context.TODO())
+}
+
+// NewInteractiveModelWithContext creates an interactive model whose network
+// commands share the Bubble Tea program's lifecycle context.
+func NewInteractiveModelWithContext(cfg *config.EnhancedConfig, ctx context.Context) InteractiveModel {
+	if ctx == nil {
+		ctx = context.TODO()
+	}
+	parser := bridge.NewParser(cfg.Dialect.File)
 	ta := textarea.New()
 	ta.Placeholder = "Type your message and press Enter to send (Ctrl+C to quit)..."
 	ta.Focus()
@@ -201,7 +228,9 @@ func NewInteractiveModel(cfg *config.EnhancedConfig) InteractiveModel {
 		// Events pane expandable nodes
 		eventExpanded:    make(map[int]bool),
 		selectedEventIdx: 0,
-		dialectFlow:      newFlowState(),
+		dialectFlow:      newFlowStateWithParser(parser),
+		parser:           parser,
+		streamContext:    ctx,
 	}
 	// Set an initial placeholder so the viewport isn't blank before first refresh
 	m.viewport.SetContent(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(

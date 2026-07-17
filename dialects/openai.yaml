@@ -16,6 +16,10 @@ rules:
   - match: {raw: "[DONE]"}
     kind: session_end
 
+  - match: {exists: choices.0.delta.role}
+    kind: stream_start
+    source: {const: assistant}
+
   - match: {exists: choices.0.delta.content}
     kind: content
     source: {const: assistant}
@@ -35,6 +39,10 @@ rules:
     kind: usage
     fields: {tokens: usage.total_tokens, model: model}
 
-  # No rule maps the role-only first chunk (delta:{"role":"assistant"}, no
-  # content key) or the finish_reason-only trailer (delta:{}); both
-  # correctly fall through to Kind=Unknown — deliberate, not a gap.
+  - match: {path: choices.0.finish_reason, equals: stop}
+    kind: stream_end
+    source: {const: assistant}
+
+  # Role and finish chunks are structural stream lifecycle events, so the
+  # complete happy-path fixture stays fully classified without relying on an
+  # SSE event name.

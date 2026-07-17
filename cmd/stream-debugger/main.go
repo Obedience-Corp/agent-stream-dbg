@@ -1,34 +1,16 @@
 package main
 
 import (
-	"context"
 	"fmt"
-	"net/http"
 	neturl "net/url"
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/lancekrogers/stream-debugger/internal/bridge"
-	"github.com/lancekrogers/stream-debugger/internal/client"
-	"github.com/lancekrogers/stream-debugger/internal/config"
-	"github.com/lancekrogers/stream-debugger/internal/dialectinit"
-	"github.com/lancekrogers/stream-debugger/internal/events"
-	"github.com/lancekrogers/stream-debugger/internal/explain"
 	"github.com/lancekrogers/stream-debugger/internal/help"
-	"github.com/lancekrogers/stream-debugger/internal/logger"
 	"github.com/lancekrogers/stream-debugger/internal/mapping"
-	"github.com/lancekrogers/stream-debugger/internal/transport"
-	"github.com/lancekrogers/stream-debugger/internal/transport/replay"
-	"github.com/lancekrogers/stream-debugger/internal/transport/sse"
-	"github.com/lancekrogers/stream-debugger/internal/visualizer"
 	"github.com/urfave/cli/v2"
 )
 
 func main() {
-	// Set custom help printer with Lipgloss styling
 	cli.HelpPrinter = help.CustomHelpPrinter
 
 	app := &cli.App{
@@ -43,17 +25,12 @@ func main() {
    Press Ctrl+T in interactive mode to toggle between RAW (SSE) and PARSED (agent-organized) views.`,
 		Version: "1.0.0",
 		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "config",
-				Aliases: []string{"c"},
-				Usage:   "Path to YAML configuration file",
-			},
+			&cli.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "Path to YAML configuration file"},
+			&cli.StringFlag{Name: "dialect", Usage: "Embedded dialect name or path to a dialect YAML file (overrides config)"},
 		},
 		Commands: []*cli.Command{
 			{
-				Name:      "stream",
-				Usage:     "Send single message and exit (CI/CD mode)",
-				ArgsUsage: "<message>",
+				Name: "stream", Usage: "Send single message and exit (CI/CD mode)", ArgsUsage: "<message>",
 				Description: `Sends a single message to the configured backend and displays the streaming response.
    Useful for CI/CD pipelines, scripting, and quick one-off tests.
 
@@ -63,39 +40,29 @@ func main() {
      $ stream-debugger stream --config config.yaml "Hello"
      $ stream-debugger stream -c my-api.yaml "What is consciousness?"`,
 				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:     "config",
-						Aliases:  []string{"c"},
-						Usage:    "Path to YAML configuration file",
-						Required: true,
-					},
-				},
-				Action: streamAction,
+					&cli.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "Path to YAML configuration file", Required: true},
+					&cli.StringFlag{Name: "dialect", Usage: "Embedded dialect name or path to a dialect YAML file (overrides config)"},
+				}, Action: streamAction,
 			},
 			{
-				Name:      "replay",
-				Usage:     "Replay session from log file",
-				ArgsUsage: "<session-file>",
+				Name: "replay", Usage: "Replay session from log file", ArgsUsage: "<session-file>",
 				Description: `Replays a recorded session from log files.
 
    Example:
      $ stream-debugger replay logs/by-session/session_*.jsonl`,
-				Action: replayAction,
+				Flags: []cli.Flag{&cli.StringFlag{Name: "dialect", Usage: "Embedded dialect name or path to a dialect YAML file"}}, Action: replayAction,
 			},
 			{
-				Name:      "timeline",
-				Usage:     "Visualize agent execution timeline",
-				ArgsUsage: "<session-file>",
+				Name: "timeline", Usage: "Visualize agent execution timeline", ArgsUsage: "<session-file>",
 				Description: `Generates a visual timeline showing which agents ran in parallel,
    execution durations, and performance metrics.
 
    Example:
      $ stream-debugger timeline logs/by-session/session_*.jsonl`,
-				Action: timelineAction,
+				Flags: []cli.Flag{&cli.StringFlag{Name: "dialect", Usage: "Embedded dialect name or path to a dialect YAML file"}}, Action: timelineAction,
 			},
 			{
-				Name:  "init",
-				Usage: "Infer a commented draft dialect from a live stream or recording",
+				Name: "init", Usage: "Infer a commented draft dialect from a live stream or recording",
 				Description: `Observes frames — live over SSE or from a recorded JSONL fixture — and
    writes a commented, editable draft dialect YAML to stdout. A draft is a
    starting point, not a finished dialect: review every UNCLASSIFIED rule
@@ -108,12 +75,10 @@ func main() {
 					&cli.StringFlag{Name: "url", Usage: "SSE endpoint to sample live (mutually exclusive with --from)"},
 					&cli.StringFlag{Name: "send", Usage: "Message to send when sampling --url (sent as a ?message= query param)"},
 					&cli.StringFlag{Name: "from", Usage: "JSONL fixture to sample from (mutually exclusive with --url)"},
-				},
-				Action: initAction,
+				}, Action: initAction,
 			},
 			{
-				Name:  "explain",
-				Usage: "Trace every frame through a dialect: which rule matched, what was extracted, why not",
+				Name: "explain", Usage: "Trace every frame through a dialect: which rule matched, what was extracted, why not",
 				Description: `Debug your own config: for every frame, shows which rule matched (or a
    hint for why none did) and, per matched rule, each extracted field's
    declared path and resolved value — flagging empty extractions, which
@@ -123,17 +88,16 @@ func main() {
    extractions, 1 otherwise — usable as a CI check for a shipped dialect.
 
    Example:
-     $ stream-debugger explain --dialect dialects/brainyard.yaml --from testdata/fixtures/brainyard-session.jsonl`,
+     $ stream-debugger explain --dialect dialects/reference.yaml --from testdata/fixtures/session.jsonl`,
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: "dialect", Required: true, Usage: "Path to the dialect YAML file"},
 					&cli.StringFlag{Name: "from", Usage: "JSONL fixture to trace (mutually exclusive with --url)"},
 					&cli.StringFlag{Name: "url", Usage: "SSE endpoint to trace live (mutually exclusive with --from)"},
 					&cli.StringFlag{Name: "send", Usage: "Message to send when tracing --url"},
-				},
-				Action: explainAction,
+				}, Action: explainAction,
 			},
 		},
-		Action: defaultAction, // Interactive mode when no command
+		Action: defaultAction,
 	}
 
 	if err := app.Run(os.Args); err != nil {
@@ -142,60 +106,48 @@ func main() {
 	}
 }
 
-// defaultAction runs when no command is provided (interactive mode)
 func defaultAction(c *cli.Context) error {
 	configPath := c.String("config")
 	if configPath == "" {
 		return fmt.Errorf("--config flag is required for interactive mode")
 	}
-	return runInteractive(configPath)
+	return runInteractive(configPath, c.String("dialect"))
 }
 
-// streamAction handles the stream command
 func streamAction(c *cli.Context) error {
 	if c.NArg() < 1 {
 		return fmt.Errorf("message argument is required")
 	}
-	message := c.Args().Get(0)
-	configPath := c.String("config")
-	return runStream(configPath, message)
+	return runStream(c.String("config"), c.Args().Get(0), c.String("dialect"))
 }
 
-// replayAction handles the replay command
 func replayAction(c *cli.Context) error {
 	if c.NArg() < 1 {
 		return fmt.Errorf("session file argument is required")
 	}
-	sessionFile := c.Args().Get(0)
-	return runReplay(sessionFile)
+	return runReplay(c.Args().Get(0), c.String("dialect"))
 }
 
-// timelineAction handles the timeline command
 func timelineAction(c *cli.Context) error {
 	if c.NArg() < 1 {
 		return fmt.Errorf("session file argument is required")
 	}
-	sessionFile := c.Args().Get(0)
-	return runTimeline(sessionFile)
+	return runTimeline(c.Args().Get(0), c.String("dialect"))
 }
 
-// initAction handles the init command
 func initAction(c *cli.Context) error {
 	url := c.String("url")
 	from := c.String("from")
 	send := c.String("send")
-
 	if url == "" && from == "" {
 		return fmt.Errorf("one of --url or --from is required")
 	}
 	if url != "" && from != "" {
 		return fmt.Errorf("--url and --from are mutually exclusive")
 	}
-
 	if from != "" {
 		return runInit(from, from)
 	}
-
 	target := url
 	if send != "" {
 		target = url + "?message=" + neturl.QueryEscape(send)
@@ -203,376 +155,27 @@ func initAction(c *cli.Context) error {
 	return runInitLive(target, url)
 }
 
-// explainAction handles the explain command
 func explainAction(c *cli.Context) error {
 	dialectPath := c.String("dialect")
 	url := c.String("url")
 	from := c.String("from")
 	send := c.String("send")
-
 	if url == "" && from == "" {
 		return fmt.Errorf("one of --url or --from is required")
 	}
 	if url != "" && from != "" {
 		return fmt.Errorf("--url and --from are mutually exclusive")
 	}
-
 	engine, err := mapping.LoadFile(dialectPath)
 	if err != nil {
 		return fmt.Errorf("failed to load dialect: %w", err)
 	}
-
 	if from != "" {
 		return runExplain(engine, from)
 	}
-
 	target := url
 	if send != "" {
 		target = url + "?message=" + neturl.QueryEscape(send)
 	}
 	return runExplainLive(engine, target)
-}
-
-func runInteractive(configPath string) error {
-	fmt.Printf("🚀 Stream Debugger - Interactive Mode\n\n")
-
-	// Load YAML configuration
-	cfg, err := config.LoadConfigFile(configPath)
-	if err != nil {
-		return fmt.Errorf("failed to load configuration: %w", err)
-	}
-
-	fmt.Printf("🔧 Configuration loaded from: %s\n", configPath)
-	fmt.Printf("   Backend: %s\n", cfg.Transport.BaseURL)
-	fmt.Printf("   Session: %s\n", cfg.Session.ID)
-	fmt.Printf("   Log Dir: %s\n\n", cfg.LogDir)
-
-	// Auto-setup session if configured
-	if cfg.Session.AutoSetup {
-		fmt.Printf("🔄 Auto-setting up session...\n")
-
-		vars := mapping.InterpolationVars{
-			BaseURL:   cfg.Transport.BaseURL,
-			SessionID: cfg.Session.ID,
-			Agents:    cfg.Session.DefaultAgents,
-		}
-		sessionID, err := bridge.RunSetup(context.Background(), vars, cfg.Transport.ResolvedHeaders(), nil)
-		if err != nil {
-			return fmt.Errorf("failed to setup session: %w", err)
-		}
-
-		// Update config with actual session ID
-		cfg.Session.ID = sessionID
-
-		fmt.Printf("✅ Session ready: %s\n\n", sessionID)
-	}
-
-	fmt.Printf("✅ Starting interactive TUI...\n\n")
-
-	// Create interactive TUI model
-	model := visualizer.NewInteractiveModel(cfg)
-
-	// Start bubbletea program
-	p := tea.NewProgram(model, tea.WithAltScreen())
-
-	// Run the program
-	if _, err := p.Run(); err != nil {
-		return fmt.Errorf("TUI error: %w", err)
-	}
-
-	fmt.Printf("\n\n📊 Session Summary\n")
-	fmt.Printf("   Logs saved to: %s\n", cfg.LogDir)
-
-	return nil
-}
-
-func runStream(configPath string, message string) error {
-	// Load YAML configuration
-	cfg, err := config.LoadConfigFile(configPath)
-	if err != nil {
-		return fmt.Errorf("failed to load configuration: %w", err)
-	}
-
-	fmt.Printf("🔧 Configuration loaded\n")
-	fmt.Printf("   Backend: %s\n", cfg.Transport.BaseURL)
-	fmt.Printf("   Session: %s\n", cfg.Session.ID)
-	fmt.Printf("   Log Dir: %s\n\n", cfg.LogDir)
-
-	// Auto-setup session if configured
-	if cfg.Session.AutoSetup {
-		fmt.Printf("🔄 Auto-setting up session...\n")
-
-		vars := mapping.InterpolationVars{
-			BaseURL:   cfg.Transport.BaseURL,
-			SessionID: cfg.Session.ID,
-			Agents:    cfg.Session.DefaultAgents,
-		}
-		sessionID, err := bridge.RunSetup(context.Background(), vars, cfg.Transport.ResolvedHeaders(), nil)
-		if err != nil {
-			return fmt.Errorf("failed to setup session: %w", err)
-		}
-
-		// Update config with actual session ID
-		cfg.Session.ID = sessionID
-
-		fmt.Printf("✅ Session ready: %s\n\n", sessionID)
-	}
-
-	structuredLogger, err := logger.NewStructuredLogger(cfg)
-	if err != nil {
-		return fmt.Errorf("failed to create logger: %w", err)
-	}
-	defer func() { _ = structuredLogger.Close() }()
-
-	fmt.Printf("📝 Structured logging initialized\n")
-	fmt.Printf("   Event types: %s/by-event-type/\n", cfg.LogDir)
-	fmt.Printf("   Agents:      %s/by-agent/\n", cfg.LogDir)
-	fmt.Printf("   Session:     %s/by-session/\n", cfg.LogDir)
-	fmt.Printf("   API calls:   %s/api-calls/\n\n", cfg.LogDir)
-
-	// Create SSE client
-	sseClient := client.NewSSEClient(cfg)
-
-	fmt.Printf("🌐 Connecting to backend...\n")
-	fmt.Printf("   Endpoint: %s\n", cfg.StreamEndpointURL())
-	fmt.Printf("   Message: \"%s\"\n\n", message)
-
-	// Connect to SSE endpoint
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Handle interrupt signal
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-sigCh
-		fmt.Println("\n\n🛑 Interrupt received, shutting down...")
-		cancel()
-	}()
-
-	if err := sseClient.Connect(ctx, message); err != nil {
-		return fmt.Errorf("failed to connect to SSE endpoint: %w", err)
-	}
-
-	fmt.Printf("✅ Connected! Starting TUI...\n\n")
-
-	// Create TUI model
-	model := visualizer.NewModel(cfg, sseClient, structuredLogger, message)
-
-	// Start bubbletea program
-	p := tea.NewProgram(model, tea.WithAltScreen())
-
-	// Run the program
-	if _, err := p.Run(); err != nil {
-		return fmt.Errorf("TUI error: %w", err)
-	}
-
-	fmt.Printf("\n\n📊 Session Summary\n")
-	fmt.Printf("   Logs saved to: %s\n", cfg.LogDir)
-
-	return nil
-}
-
-func runReplay(sessionFile string) error {
-	fmt.Printf("🔄 Replaying session from: %s\n\n", sessionFile)
-
-	// Load events from log file
-	evts, err := loadEventsFromFile(sessionFile)
-	if err != nil {
-		return fmt.Errorf("failed to load events: %w", err)
-	}
-
-	if len(evts) == 0 {
-		return fmt.Errorf("no events found in file")
-	}
-
-	fmt.Printf("📝 Loaded %d events\n\n", len(evts))
-
-	// Create timeline visualizer and add events
-	tv := visualizer.NewTimelineVisualizer()
-	for _, evt := range evts {
-		tv.AddEvent(evt)
-	}
-
-	// Show detailed log for replay
-	fmt.Println(tv.RenderDetailedLog())
-	fmt.Println()
-	fmt.Println(tv.RenderParallelSummary())
-
-	return nil
-}
-
-func runTimeline(sessionFile string) error {
-	fmt.Printf("📊 Generating timeline from: %s\n\n", sessionFile)
-
-	// Load events from log file
-	evts, err := loadEventsFromFile(sessionFile)
-	if err != nil {
-		return fmt.Errorf("failed to load events: %w", err)
-	}
-
-	if len(evts) == 0 {
-		return fmt.Errorf("no events found in file")
-	}
-
-	fmt.Printf("📝 Loaded %d events\n\n", len(evts))
-
-	// Create timeline visualizer and add events
-	tv := visualizer.NewTimelineVisualizer()
-	for _, evt := range evts {
-		tv.AddEvent(evt)
-	}
-
-	// Render timeline (default width 120)
-	fmt.Println(tv.RenderTimeline(120))
-	fmt.Println()
-	fmt.Println(tv.RenderParallelSummary())
-
-	return nil
-}
-
-// loadEventsFromFile reads a JSONL session log file through the replay
-// transport — the same Transport → Frame → dialect-engine path a live SSE
-// stream goes through, so timeline/replay decode events identically to a
-// real session rather than through a special-cased file reader.
-func loadEventsFromFile(filePath string) ([]*events.Event, error) {
-	tr, err := replay.New(filePath, 0)
-	if err != nil {
-		return nil, err
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	if err := tr.Connect(ctx); err != nil {
-		return nil, fmt.Errorf("failed to start replay: %w", err)
-	}
-	defer func() { _ = tr.Close() }()
-
-	parser := bridge.NewParser()
-	var result []*events.Event
-	for frame := range tr.Frames() {
-		if frame.Err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: malformed frame: %v\n", frame.Err)
-			continue
-		}
-		evt, _ := parser.Parse(frame.Name, frame.Data)
-		result = append(result, evt)
-	}
-
-	return result, nil
-}
-
-// runInit infers a draft dialect from a recorded JSONL fixture and writes
-// it to stdout.
-func runInit(fixturePath, sourceLabel string) error {
-	tr, err := replay.New(fixturePath, 0)
-	if err != nil {
-		return err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if err := tr.Connect(ctx); err != nil {
-		return fmt.Errorf("failed to start replay: %w", err)
-	}
-	defer func() { _ = tr.Close() }()
-
-	samples := collectSamples(tr.Frames())
-	if len(samples) == 0 {
-		return fmt.Errorf("no frames observed in %s", fixturePath)
-	}
-	fmt.Print(dialectinit.Infer(samples, sourceLabel).Render())
-	return nil
-}
-
-// runInitLive infers a draft dialect by sampling a live SSE endpoint for
-// up to 10 seconds, then writes it to stdout.
-func runInitLive(requestURL, sourceLabel string) error {
-	tr := sse.New(http.MethodGet, requestURL, nil, nil)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := tr.Connect(ctx); err != nil {
-		return fmt.Errorf("failed to connect: %w", err)
-	}
-	defer func() { _ = tr.Close() }()
-
-	samples := collectSamples(tr.Frames())
-	if len(samples) == 0 {
-		return fmt.Errorf("no frames observed from %s", requestURL)
-	}
-	fmt.Print(dialectinit.Infer(samples, sourceLabel).Render())
-	return nil
-}
-
-// collectSamples drains a Frames channel into dialectinit.Samples,
-// skipping malformed frames (a draft can't reason about a frame it
-// couldn't even parse).
-func collectSamples(frames <-chan transport.Frame) []dialectinit.Sample {
-	var samples []dialectinit.Sample
-	for f := range frames {
-		if f.Err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: malformed frame skipped: %v\n", f.Err)
-			continue
-		}
-		samples = append(samples, dialectinit.Sample{Name: f.Name, Data: f.Data})
-	}
-	return samples
-}
-
-// runExplain traces every frame in a recorded JSONL fixture through
-// engine and prints the result.
-func runExplain(engine *mapping.Engine, fixturePath string) error {
-	tr, err := replay.New(fixturePath, 0)
-	if err != nil {
-		return err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if err := tr.Connect(ctx); err != nil {
-		return fmt.Errorf("failed to start replay: %w", err)
-	}
-	defer func() { _ = tr.Close() }()
-
-	return renderExplainTraces(engine, tr.Frames())
-}
-
-// runExplainLive traces every frame from a live SSE endpoint (sampled for
-// up to 10 seconds) through engine and prints the result.
-func runExplainLive(engine *mapping.Engine, requestURL string) error {
-	tr := sse.New(http.MethodGet, requestURL, nil, nil)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := tr.Connect(ctx); err != nil {
-		return fmt.Errorf("failed to connect: %w", err)
-	}
-	defer func() { _ = tr.Close() }()
-
-	return renderExplainTraces(engine, tr.Frames())
-}
-
-// renderExplainTraces prints a trace per frame and exits nonzero if any
-// frame is unhealthy (unmatched, or an empty extraction) — the "explain
-// doubles as the CI harness" property.
-func renderExplainTraces(engine *mapping.Engine, frames <-chan transport.Frame) error {
-	index := 0
-	unhealthy := false
-	for f := range frames {
-		index++
-		if f.Err != nil {
-			fmt.Printf("frame %d  ✗ malformed frame: %v\n", index, f.Err)
-			unhealthy = true
-			continue
-		}
-		trace := explain.Trace(engine, f.Name, f.Data, index)
-		fmt.Print(trace.Render())
-		if trace.Unhealthy() {
-			unhealthy = true
-		}
-	}
-	if index == 0 {
-		return fmt.Errorf("no frames observed")
-	}
-	if unhealthy {
-		os.Exit(1)
-	}
-	return nil
 }

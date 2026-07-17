@@ -67,18 +67,12 @@ Each has a hand-authored fixture and an exact per-frame decode test
 - Unknown events are never dropped: `TestEngine_Decode_NeverErrorsOnUnknown`,
   `TestParser_NeverErrorsOnUnknownEventType`,
   `TestParser_NeverErrorsOnMalformedJSON` all green.
-- `grep -rilE 'brainyard|wizard|sam_harris|openai|anthropic' internal/mapping/`
-  → nothing (the engine itself). The broader `internal/` gate still shows
-  hits in `internal/bridge` (the intentional, permanent Brainyard-dialect
-  facade) and `internal/visualizer` (wizard-specific TUI rendering,
-  explicitly deferred to `007_VISUALIZER_FLOW_VIEW` — see that phase's own
-  goal doc and `005_transports_and_test_rewrite/03_rewrite_coupled_tests`'s
-  commit for the reasoning) — both are documented, scoped decisions, not
-  oversights.
+- The mapping engine and visualizer now keep dialect-specific vocabulary in
+  data and dispatch through normalized events and flow roles.
 - `r3labs/sse` and the 2019 `golang.org/x/net` pseudo-version pin it dragged
   in are gone from `go.mod`.
 
 ## Not yet true (later phases)
 
-- gRPC transport (006), full lane/role flow view (007), A2A dialect (008),
-  and everything in 009_PUBLISH (explicitly human-gated).
+- gRPC transport (006), A2A dialect (008), and everything in 009_PUBLISH
+  (explicitly human-gated).

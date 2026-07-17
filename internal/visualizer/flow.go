@@ -7,31 +7,64 @@ import (
 )
 
 // flowState resolves stages and lane roles from the loaded dialect's
-// flow: spec, or derives them live from observed events when the
-// dialect declared none — the single source both Model (tui.go) and
-// InteractiveModel (interactive.go) read from, replacing what used to
-// be hardcoded stage literals and dialect-specific string comparisons
-// that had already drifted out of sync with each other.
+// flow: spec, or derives them live from observed events when the dialect
+// declared none. Both TUI models read this state, so role metadata follows
+// the same path as stage order instead of being rediscovered by renderers.
 type flowState struct {
 	spec    *mapping.FlowSpec
 	deriver *mapping.FlowDeriver
+	model   FlowModel
 }
 
-// newFlowState resolves the current dialect's flow: spec via
-// internal/bridge's facade (the same single-load-per-process pattern
-// bridge already uses for Parse/RenderSend/RunSetup), falling back to a
-// fresh FlowDeriver when the dialect declared no flow: block.
+// newFlowState resolves the current dialect's flow: spec via internal/bridge's
+// facade. When the dialect has no flow: block, the model starts empty and is
+// filled from the observed event stream by FlowDeriver.
 func newFlowState() flowState {
-	spec := bridge.Flow()
+	return newFlowStateWithParser(bridge.NewParser())
+}
+
+func newFlowStateWithParser(parser *bridge.Parser) flowState {
+	spec := parser.Flow()
 	fs := flowState{spec: spec}
 	if spec == nil {
 		fs.deriver = mapping.NewFlowDeriver()
 	}
+	fs.refreshModel()
 	return fs
 }
 
-// stages returns the declared stage order, or the dynamically-derived
-// one if no flow: block was declared.
+// observe feeds evt into the deriver — a no-op when a flow: block was
+// declared — and refreshes the derived flow model after each event.
+func (f *flowState) observe(evt *events.Event) {
+	if f.deriver != nil {
+		f.deriver.Observe(evt)
+		f.refreshModel()
+	}
+}
+
+// role resolves evt's lane role from the loaded dialect, or the worker
+// default when a flow: block was not declared.
+func (f flowState) role(evt *events.Event) events.Role {
+	if f.spec != nil {
+		return f.spec.RoleFor(evt)
+	}
+	return f.deriver.RoleFor(evt)
+}
+
+// stageRole resolves a declared or derived stage through the flow model.
+// A stage and its aggregator lane share the same source name in the dialect
+// projection, so this is the stage-side view of the same role metadata.
+func (f flowState) stageRole(name string) events.Role {
+	for _, stage := range f.FlowModel().Stages {
+		if stage.Name == name {
+			return stage.Role
+		}
+	}
+	return events.RoleWorker
+}
+
+// stages returns the declared stage order, or the dynamically-derived one
+// if no flow: block was declared.
 func (f flowState) stages() []string {
 	if f.spec != nil {
 		return f.spec.Stages
@@ -39,40 +72,53 @@ func (f flowState) stages() []string {
 	return f.deriver.Stages()
 }
 
-// observe feeds evt into the deriver — a no-op when a flow: block was
-// declared, since there's nothing left to derive. Call this once per
-// event, in order, as events are processed.
-func (f flowState) observe(evt *events.Event) {
-	if f.deriver != nil {
-		f.deriver.Observe(evt)
-	}
-}
-
-// role resolves evt's lane role: a declared lookup, or "worker" (via
-// FlowDeriver) if no flow: block was declared.
-func (f flowState) role(evt *events.Event) string {
+// refreshModel builds the renderer-facing flow projection from the dialect
+// data or the observations accumulated by FlowDeriver.
+func (f *flowState) refreshModel() {
+	model := FlowModel{}
 	if f.spec != nil {
-		return f.spec.RoleFor(evt)
+		model.Lanes = make([]FlowLane, 0, len(f.spec.Lanes))
+		for _, lane := range f.spec.Lanes {
+			model.Lanes = append(model.Lanes, FlowLane{
+				SourceID: lane.Match.Source,
+				Role:     lane.Role,
+				Label:    lane.Label,
+			})
+		}
+		model.Stages = make([]FlowStage, 0, len(f.spec.Stages))
+		for _, name := range f.spec.Stages {
+			model.Stages = append(model.Stages, FlowStage{
+				Name: name,
+				Role: f.spec.RoleFor(&events.Event{SourceID: name}),
+			})
+		}
+	} else if f.deriver != nil {
+		lanes := f.deriver.Lanes()
+		model.Lanes = make([]FlowLane, 0, len(lanes))
+		for _, sourceID := range lanes {
+			model.Lanes = append(model.Lanes, FlowLane{
+				SourceID: sourceID,
+				Role:     events.RoleWorker,
+			})
+		}
+		stages := f.deriver.Stages()
+		model.Stages = make([]FlowStage, 0, len(stages))
+		for _, name := range stages {
+			model.Stages = append(model.Stages, FlowStage{
+				Name: name,
+				Role: events.RoleWorker,
+			})
+		}
 	}
-	return f.deriver.RoleFor(evt)
+	f.model = model
 }
 
-// The constants below are the brainyard dialect's own real wire
-// vocabulary (see testdata/fixtures/brainyard-session.jsonl and
-// dialects/brainyard.yaml's flow.stages) — the aggregator lane's wire
-// event names, its declared stage name, and the raw wire field key for
-// the "how many non-aggregator agents" count on the routing/agent_exec
-// step. Several evt.Name-keyed dispatches in this package (a
-// pre-existing pattern this task doesn't touch) still need to match
-// these exact values verbatim to keep identical behavior for that one
-// dialect. Built at runtime via concatenation, not as literals, purely
-// so this generic package's own source carries no dialect-specific
-// vocabulary as a grep-able substring — the values themselves are
-// byte-for-byte identical to the real wire protocol, unchanged.
-const (
-	aggregatorStreamStartEventName    = "wiz" + "ard_stream_start"
-	aggregatorContentEventName        = "wiz" + "ard_content"
-	aggregatorStreamCompleteEventName = "wiz" + "ard_stream_complete"
-	aggregatorStageName               = "wiz" + "ard"
-	nonAggregatorCountFieldKey        = "non_" + "wiz" + "ard_count"
-)
+// FlowModel returns a copy of the current projection so callers can inspect
+// dialect-declared roles without mutating flowState's internal slices.
+func (f flowState) FlowModel() FlowModel {
+	f.refreshModel()
+	model := f.model
+	model.Lanes = append([]FlowLane(nil), model.Lanes...)
+	model.Stages = append([]FlowStage(nil), model.Stages...)
+	return model
+}

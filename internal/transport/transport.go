@@ -16,13 +16,17 @@ import (
 type Frame struct {
 	Name      string    // SSE event name; gRPC oneof case; "" if undiscriminated
 	Data      []byte    // JSON (SSE) or protojson-rendered (gRPC)
-	Raw       []byte    // exact bytes as received — never normalized
+	Raw       []byte    // wire-level bytes; gRPC dynamic fallback deterministically re-marshals the full envelope
 	Timestamp time.Time // local receipt time, always set
 	Err       error     // malformed frame — surfaced, not dropped
 }
 
 // Transport yields raw frames from one wire shape. Implementations must
 // never silently reconnect or drop malformed input — see Frame.Err.
+// Connect's context governs dialing and initial stream setup only. After
+// Connect returns successfully, the stream lifetime is governed by Close;
+// implementations derive an internal stream context so a short-lived
+// dialing timeout cannot terminate an otherwise healthy stream.
 type Transport interface {
 	Name() string
 	Connect(ctx context.Context) error

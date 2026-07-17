@@ -43,6 +43,10 @@ type YAMLConfig struct {
 		Target        string `yaml:"target"`
 		Method        string `yaml:"method"`        // fully-qualified RPC method, e.g. /agent.v1.AgentService/StreamSession
 		Discriminator string `yaml:"discriminator"` // oneof | field:type | message_type | none — resolved in sequence 03
+		// DiscriminatorField is the proto field name used when
+		// discriminator is field:type (e.g. "type"). Required for that
+		// mode; ignored otherwise.
+		DiscriminatorField string `yaml:"discriminator_field"`
 		// PreserveFieldNames mirrors grpc.Config.PreserveFieldNames: nil
 		// (the key omitted, the common case) means "unset" and resolves to
 		// true — today's snake_case rendering — not Go's bool zero value,
@@ -57,9 +61,8 @@ type YAMLConfig struct {
 		Auth               authYAML `yaml:"auth"`
 	} `yaml:"transport"`
 
-	// Dialect declares which mapping file interprets this system's frames.
-	// Not yet loaded — the mapping engine lands in phase 004. Declared now so
-	// run configs don't need a second migration when it does.
+	// Dialect declares which mapping file or embedded dialect name interprets
+	// this system's frames.
 	Dialect struct {
 		File string `yaml:"file"`
 	} `yaml:"dialect"`
@@ -117,8 +120,8 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 	if transportType == "" {
 		transportType = "sse"
 	}
-	if transportType != "sse" && transportType != "grpc" {
-		return nil, fmt.Errorf("unknown transport.type %q (must be \"sse\" or \"grpc\")", transportType)
+	if transportType != "sse" && transportType != "grpc" && transportType != "replay" {
+		return nil, fmt.Errorf("unknown transport.type %q (must be \"sse\", \"grpc\", or \"replay\")", transportType)
 	}
 
 	// Load environment variables (for secrets like API_KEY)
@@ -132,12 +135,16 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 		if err != nil {
 			return nil, err
 		}
+		if yamlCfg.Transport.Discriminator == "field:type" && yamlCfg.Transport.DiscriminatorField == "" {
+			return nil, fmt.Errorf("transport.discriminator_field is required when transport.discriminator is \"field:type\"")
+		}
 		apiKey = resolvedToken
 		transport = TransportConfig{
 			Type:               "grpc",
 			Target:             yamlCfg.Transport.Target,
 			GRPCMethod:         yamlCfg.Transport.Method,
 			Discriminator:      yamlCfg.Transport.Discriminator,
+			DiscriminatorField: yamlCfg.Transport.DiscriminatorField,
 			PreserveFieldNames: yamlCfg.Transport.PreserveFieldNames,
 			Plaintext:          yamlCfg.Transport.Plaintext,
 			DescriptorSet:      yamlCfg.Transport.DescriptorSet,
@@ -145,8 +152,20 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 			ProtoImportPath:    yamlCfg.Transport.ProtoImportPath,
 			Auth:               auth,
 		}
+	case "replay":
+		auth, resolvedToken, err := resolveAuth(yamlCfg.Transport.Auth, "none")
+		if err != nil {
+			return nil, err
+		}
+		apiKey = resolvedToken
+		transport = TransportConfig{
+			Type:           "replay",
+			BaseURL:        yamlCfg.Transport.BaseURL,
+			StreamEndpoint: yamlCfg.Transport.StreamEndpoint.URL,
+			Auth:           auth,
+		}
 	default: // sse
-		auth, resolvedToken, err := resolveAuth(yamlCfg.Transport.StreamEndpoint.Auth, "bearer")
+		auth, resolvedToken, err := resolveAuth(yamlCfg.Transport.StreamEndpoint.Auth, "none")
 		if err != nil {
 			return nil, err
 		}
@@ -215,18 +234,17 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 }
 
 // resolveAuth turns a raw auth: YAML block into a resolved AuthConfig,
-// reading any *_env-named credential from the environment. defaultType
-// is used when the block omits type: — "bearer" for SSE (a bare API_KEY
-// is the common case), "none" for gRPC (metadata auth needs an explicit
-// key:, so there's no sensible implicit default). Returns the resolved
+// reading only the explicitly named *_env credential from the environment.
+// defaultType is used when the block omits type: — all product transports
+// pass "none", so credentials require an explicit auth.type opt-in. Returns the resolved
 // token separately since callers outside the transport itself (session
 // auto-setup) still read EnhancedConfig.APIKey directly, regardless of
 // which auth type the primary transport ends up using.
 func resolveAuth(y authYAML, defaultType string) (AuthConfig, string, error) {
 	tokenEnv := y.TokenEnv
-	apiKey := os.Getenv(tokenEnv)
-	if apiKey == "" {
-		apiKey = os.Getenv("API_KEY") // Fallback
+	var apiKey string
+	if tokenEnv != "" {
+		apiKey = os.Getenv(tokenEnv)
 	}
 
 	authType := y.Type
@@ -243,11 +261,10 @@ func resolveAuth(y authYAML, defaultType string) (AuthConfig, string, error) {
 	switch authType {
 	case "bearer", "api_key", "metadata":
 		if apiKey == "" {
-			envName := tokenEnv
-			if envName == "" {
-				envName = "API_KEY"
+			if tokenEnv == "" {
+				return AuthConfig{}, "", fmt.Errorf("auth.type %q requires token_env", authType)
 			}
-			return AuthConfig{}, "", fmt.Errorf("%s environment variable not set", envName)
+			return AuthConfig{}, "", fmt.Errorf("%s environment variable not set", tokenEnv)
 		}
 		if authType == "metadata" && auth.HeaderName == "" {
 			return AuthConfig{}, "", fmt.Errorf("auth.type \"metadata\" requires header_name (the metadata key to attach)")
@@ -304,7 +321,7 @@ type DebugConfig struct {
 // TransportConfig holds transport-level connection configuration for
 // either transport type; which fields apply is determined by Type.
 type TransportConfig struct {
-	Type string // "sse" (default) or "grpc"
+	Type string // "sse" (default), "grpc", or "replay"
 
 	// SSE fields.
 	BaseURL        string
@@ -313,9 +330,10 @@ type TransportConfig struct {
 	Headers        map[string]string
 
 	// gRPC fields.
-	Target        string
-	GRPCMethod    string // fully-qualified RPC method, e.g. /agent.v1.AgentService/StreamSession
-	Discriminator string // oneof | field:type | message_type | none
+	Target             string
+	GRPCMethod         string // fully-qualified RPC method, e.g. /agent.v1.AgentService/StreamSession
+	Discriminator      string // oneof | field:type | message_type | none
+	DiscriminatorField string // proto field name for discriminator field:type
 	// PreserveFieldNames: nil (unset) = true = snake_case field names
 	// (today's default for every existing dialect); false = lowerCamelCase,
 	// for a dialect whose real wire protocol mandates it. See
@@ -341,8 +359,8 @@ func (t TransportConfig) ResolvedHeaders() map[string]string {
 	return h
 }
 
-// DialectConfig declares which mapping file interprets this system's
-// frames. Not yet loaded by this phase — see YAMLConfig.Dialect.
+// DialectConfig declares which mapping file or embedded dialect name
+// interprets this system's frames.
 type DialectConfig struct {
 	File string
 }

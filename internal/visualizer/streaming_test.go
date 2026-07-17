@@ -19,20 +19,20 @@ func TestUrlQueryEscape(t *testing.T) {
 	}
 }
 
-// TestReadStreamChunkCmd_NilBody proves a nil stream body (already closed,
-// or never opened) reads as an immediate EOF rather than panicking —
+// TestReadStreamFrameCmd_NilTransport proves a nil stream transport (already
+// closed, or never opened) reads as an immediate EOF rather than panicking —
 // startStreamingCmd's happy path against a real server is already covered
 // by interactive_send_test.go.
-func TestReadStreamChunkCmd_NilBody(t *testing.T) {
+func TestReadStreamFrameCmd_NilTransport(t *testing.T) {
 	m := InteractiveModel{streamIndex: 3}
-	cmd := m.readStreamChunkCmd()
+	cmd := m.readStreamFrameCmd()
 	msg := cmd()
-	chunk, ok := msg.(streamChunkMsg)
+	frame, ok := msg.(streamFrameMsg)
 	if !ok {
-		t.Fatalf("expected streamChunkMsg, got %T", msg)
+		t.Fatalf("expected streamFrameMsg, got %T", msg)
 	}
-	if !chunk.eof || chunk.index != 3 {
-		t.Errorf("expected eof=true index=3, got eof=%v index=%d", chunk.eof, chunk.index)
+	if !frame.eof || frame.index != 3 {
+		t.Errorf("expected eof=true index=3, got eof=%v index=%d", frame.eof, frame.index)
 	}
 }
 
@@ -62,9 +62,18 @@ func TestNewSessionCmd_ResetsStateWithoutBackend(t *testing.T) {
 	m.appFocus = AppFocusAggregator
 
 	cmd := m.newSessionCmd()
-	cmd() // side effects land on the closure's own model copy, not m
+	msg := cmd()
+	setupMsg, ok := msg.(sessionSetupMsg)
+	if !ok {
+		t.Fatalf("expected sessionSetupMsg, got %T", msg)
+	}
+	updated, _ := m.Update(setupMsg)
+	im := updated.(InteractiveModel)
 
 	if cfg.Session.ID == "old-session" {
 		t.Error("expected a fresh session id to be generated even without backend confirmation")
+	}
+	if im.err == nil {
+		t.Fatal("expected failed session setup to be surfaced in the model error state")
 	}
 }

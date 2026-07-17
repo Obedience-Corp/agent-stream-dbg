@@ -193,7 +193,7 @@ func TestLogAPICall(t *testing.T) {
 // — proving the log path is genuinely keyed by AgentID, not a literal
 // identity this function only ever wrote once.
 func TestLogAgentTurnMetrics_PerAgentFiles(t *testing.T) {
-	const staleHardcodedName = "wiza" + "rd" // built at runtime so this file itself doesn't match a literal grep for the retired identifier
+	const staleHardcodedName = "retired-role"
 
 	tmpDir := t.TempDir()
 	cfg := &config.EnhancedConfig{

@@ -1,6 +1,6 @@
 # Stream Debugger
 
-**A configuration-driven CLI tool for visualizing and debugging Server-Sent Events (SSE) streaming from any API.**
+**A configuration-driven CLI tool for visualizing and debugging SSE and gRPC streams from any API.**
 
 Real-time TUI for watching streams + timeline analysis for understanding parallel execution patterns.
 
@@ -13,7 +13,7 @@ Real-time TUI for watching streams + timeline analysis for understanding paralle
 
 🎬 **Real-Time TUI** - Watch SSE streams live in your terminal
 📊 **Timeline Visualization** - Analyze parallel execution from logs
-⚙️ **Configuration-Driven** - Built for brainyard-shaped SSE APIs today via YAML config (generic dialect support is in progress)
+⚙️ **Configuration-Driven** - Select a wire dialect and SSE, gRPC, or replay transport via YAML config
 📝 **Multi-Dimensional Logging** - Events logged by type, agent, session, and API calls
 🎯 **19 Event Types** - Full SSE lifecycle support
 🚀 **Performance Tracking** - Tokens/sec, latency, sequence numbers
@@ -210,7 +210,20 @@ wizard ran sequentially after all agents
 
 ## Configuration
 
-Stream Debugger uses YAML configuration files to work with any SSE API.
+Stream Debugger uses YAML configuration files to work with any supported stream
+transport and dialect.
+
+### Transport Types
+
+Set `transport.type` in a run config:
+
+- `sse` (default) — connect to an HTTP Server-Sent Events endpoint using the
+  dialect's `send:` request template.
+- `grpc` — discover the configured streaming method through reflection, a
+  descriptor set, or a `.proto` fallback, then decode frames with the same
+  dialect engine.
+- `replay` — read a JSONL fixture from `transport.base_url` through the same
+  client/event pipeline without a live backend.
 
 ### Example Config
 
@@ -246,7 +259,21 @@ logging:
     api_calls: true
 ```
 
+Authentication is opt-in. Omitting `auth:` sends no credential and does not
+read `API_KEY`; set an explicit `auth.type` and `token_env` to attach a
+credential. Review the configured URL carefully because the resulting header
+is sent wherever that config points. This is a breaking change for configs
+that relied on the former implicit `API_KEY` bearer default.
+
 See [`config.yaml.example`](config.yaml.example) for all options.
+
+Dialect `setup:` and `send:` templates can use the built-ins `{base_url}`,
+`{session_id}`, `{message}`, and `{agents}`, plus names declared under the
+config's `vars:` map. In JSON body templates every placeholder (including user
+vars) is JSON-escaped. In URL templates only `{message}` is URL-escaped; other
+placeholders — including user `vars:` — are substituted as trusted structural
+config values. User vars cannot shadow the built-ins; an undeclared placeholder
+fails before a request is sent.
 
 ### Pre-configured Examples
 
@@ -358,7 +385,7 @@ codesign --sign "Developer ID Application: Your Name" bin/stream-debugger
 stream-debugger/
 ├── cmd/stream-debugger/  # CLI entry point
 ├── internal/
-│   ├── client/          # SSE client (config-driven)
+│   ├── client/          # Transport-neutral streaming client
 │   ├── config/          # YAML config loading
 │   ├── events/          # Event type definitions
 │   ├── logger/          # Multi-dimensional logging

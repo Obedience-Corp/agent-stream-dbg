@@ -59,11 +59,11 @@ func (m InteractiveModel) renderTimelinePane() string {
 
 		bar := strings.Repeat("█", barWidth)
 
-		b.WriteString(fmt.Sprintf("%-12s %s %dms\n", stage, bar, n.DurationMs))
+		_, _ = fmt.Fprintf(&b, "%-12s %s %dms\n", stage, bar, n.DurationMs)
 	}
 
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("Total: %dms\n", totalDuration))
+	_, _ = fmt.Fprintf(&b, "Total: %dms\n", totalDuration)
 
 	// Show agent timeline bars
 	if len(msg.AgentResponses) > 0 {
@@ -106,7 +106,7 @@ func (m InteractiveModel) renderTimelinePane() string {
 			agentColor := m.getAgentColor(agentID)
 			barStyled := lipgloss.NewStyle().Foreground(agentColor).Render(bar)
 
-			b.WriteString(fmt.Sprintf("%s %-15s %s %d tokens\n", status, agentID, barStyled, resp.TokenCount))
+			_, _ = fmt.Fprintf(&b, "%s %-15s %s %d tokens\n", status, agentID, barStyled, resp.TokenCount)
 		}
 	}
 
@@ -115,14 +115,13 @@ func (m InteractiveModel) renderTimelinePane() string {
 
 // isEventVisible checks if an event should be visible based on current filter settings
 func (m InteractiveModel) isEventVisible(evt *events.Event) bool {
-	// Check if this is an aggregator-lane event
-	isAggregatorEvent := evt.Name == aggregatorStreamStartEventName ||
-		evt.Name == aggregatorContentEventName ||
-		evt.Name == aggregatorStreamCompleteEventName
-	// synthesis flow_step events are also relevant for the aggregator-only view
+	// Check the normalized event kind and the dialect-declared lane role.
+	isAggregatorEvent := m.dialectFlow.role(evt) == events.RoleAggregator &&
+		(evt.Kind == events.KindStreamStart || evt.Kind == events.KindContent || evt.Kind == events.KindStreamEnd)
+	// Aggregator-role stages are also relevant for the aggregator-only view.
 	step := evt.StringField("step")
-	isSynthesisFlowEvent := (evt.Name == "flow_step_start" || evt.Name == "flow_step_end") &&
-		(step == "synthesis" || step == aggregatorStageName)
+	isSynthesisFlowEvent := (evt.Kind == events.KindStepStart || evt.Kind == events.KindStepEnd) &&
+		m.dialectFlow.stageRole(step) == events.RoleAggregator
 
 	// Skip non-aggregator events if the aggregator-only filter is on
 	if m.eventsAggregatorOnly && !isAggregatorEvent && !isSynthesisFlowEvent {
@@ -130,7 +129,7 @@ func (m InteractiveModel) isEventVisible(evt *events.Event) bool {
 	}
 
 	// Skip token events if showTokens is false
-	isTokenEvent := evt.Name == "agent_content" || evt.Name == aggregatorContentEventName
+	isTokenEvent := evt.Kind == events.KindContent
 	if isTokenEvent && !m.showTokens {
 		return false
 	}

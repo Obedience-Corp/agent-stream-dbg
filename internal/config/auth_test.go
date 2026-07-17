@@ -99,13 +99,14 @@ func TestLoadConfigFile_AuthStrategies(t *testing.T) {
 		wantValue  string
 	}{
 		{
-			name: "bearer (default)",
+			name: "bearer (explicit opt-in)",
 			yaml: `
 transport:
   base_url: "http://localhost:8080"
   stream_endpoint:
     url: "/api/stream"
     auth:
+      type: "bearer"
       token_env: "API_KEY"
 `,
 			env:        map[string]string{"API_KEY": "tok-123"},
@@ -251,6 +252,7 @@ transport:
   stream_endpoint:
     url: "/api/stream"
     auth:
+      type: "bearer"
       token_env: "API_KEY"
 `)
 		cfg, err := LoadConfigFile(path)
@@ -270,6 +272,7 @@ transport:
   stream_endpoint:
     url: "/api/stream"
     auth:
+      type: "bearer"
       token_env: "API_KEY"
 logging:
   dimensions:
@@ -300,6 +303,7 @@ transport:
   stream_endpoint:
     url: "/api/stream"
     auth:
+      type: "bearer"
       token_env: "API_KEY"
 session:
   id: "static-session-id"
@@ -323,6 +327,7 @@ transport:
   stream_endpoint:
     url: "/api/stream"
     auth:
+      type: "bearer"
       token_env: "API_KEY"
 session:
   id: "static-session-id"

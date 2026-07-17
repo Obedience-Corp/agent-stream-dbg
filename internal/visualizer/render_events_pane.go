@@ -32,10 +32,10 @@ func (m InteractiveModel) renderEventsPane() string {
 	}
 
 	b.WriteString(headerStyle.Render("Events"))
-	b.WriteString(fmt.Sprintf(" (View: %s)", viewLabel))
+	_, _ = fmt.Fprintf(&b, " (View: %s)", viewLabel)
 	if m.viewMode == ViewModeParsed {
-		b.WriteString(fmt.Sprintf(" (Tokens: %s)", tokensLabel))
-		b.WriteString(fmt.Sprintf(" (Aggregator: %s)", aggregatorOnlyLabel))
+		_, _ = fmt.Fprintf(&b, " (Tokens: %s)", tokensLabel)
+		_, _ = fmt.Fprintf(&b, " (Aggregator: %s)", aggregatorOnlyLabel)
 	}
 	b.WriteString("\n")
 	b.WriteString(dimStyle.Render("─────────────────────────────────────────"))
@@ -54,13 +54,13 @@ func (m InteractiveModel) renderEventsPane() string {
 		if msg.AgentResponses != nil {
 			if aggResp := m.aggregatorResponse(msg); aggResp != nil {
 				var metricsLine strings.Builder
-				metricsLine.WriteString(fmt.Sprintf("🧙 Aggregator: %d tokens", aggResp.TokenCount))
+				_, _ = fmt.Fprintf(&metricsLine, "🧙 Aggregator: %d tokens", aggResp.TokenCount)
 				if aggResp.DurationMs > 0 && aggResp.TokenCount > 0 {
 					tokensPerSec := float64(aggResp.TokenCount) * 1000.0 / float64(aggResp.DurationMs)
-					metricsLine.WriteString(fmt.Sprintf(" | %.1f tok/s", tokensPerSec))
+					_, _ = fmt.Fprintf(&metricsLine, " | %.1f tok/s", tokensPerSec)
 				}
 				if aggResp.FirstTokenMs > 0 {
-					metricsLine.WriteString(fmt.Sprintf(" | first: %dms", aggResp.FirstTokenMs))
+					_, _ = fmt.Fprintf(&metricsLine, " | first: %dms", aggResp.FirstTokenMs)
 				}
 				if !aggResp.Completed {
 					metricsLine.WriteString(" ⏳")
@@ -114,14 +114,13 @@ func (m InteractiveModel) renderEventsPane() string {
 			continue
 		}
 
-		// Check if this is an aggregator-lane event (for styling)
-		isAggregatorEvent := evt.Name == aggregatorStreamStartEventName ||
-			evt.Name == aggregatorContentEventName ||
-			evt.Name == aggregatorStreamCompleteEventName
+		// Check the normalized event kind and the dialect-declared role.
+		isAggregatorEvent := m.dialectFlow.role(evt) == events.RoleAggregator &&
+			(evt.Kind == events.KindStreamStart || evt.Kind == events.KindContent || evt.Kind == events.KindStreamEnd)
 		evtStep := evt.StringField("step")
-		isSynthesisFlowEvent := (evt.Name == "flow_step_start" || evt.Name == "flow_step_end") &&
-			(evtStep == "synthesis" || evtStep == aggregatorStageName)
-		isTokenEvent := evt.Name == "agent_content" || evt.Name == aggregatorContentEventName
+		isSynthesisFlowEvent := (evt.Kind == events.KindStepStart || evt.Kind == events.KindStepEnd) &&
+			m.dialectFlow.stageRole(evtStep) == events.RoleAggregator
+		isTokenEvent := evt.Kind == events.KindContent
 
 		// All events are expandable - show raw JSON when expanded
 		isExpandable := true
@@ -175,44 +174,46 @@ func (m InteractiveModel) renderEventsPane() string {
 		}
 
 		// Add relevant details (compact summary on main line)
-		switch evt.Name {
-		case "flow_step_start":
-			line += fmt.Sprintf(" step=%s enabled=%v", evt.StringField("step"), evt.BoolField("enabled"))
-		case "flow_step_end":
-			line += fmt.Sprintf(" step=%s duration=%dms", evt.StringField("step"), evt.IntField("duration_ms"))
-		case "agent_stream_start":
-			line += fmt.Sprintf(" agent=%s", evt.SourceID)
-		case "agent_stream_complete":
-			line += fmt.Sprintf(" agent=%s tokens=%d", evt.SourceID, evt.IntField("token_count"))
-		case "agent_content":
-			content := evt.Content
-			if len(content) > 30 {
-				content = content[:30] + "..."
-			}
-			line += fmt.Sprintf(" agent=%s content=%q", evt.SourceID, content)
-		case aggregatorContentEventName:
+		if evt.Kind == events.KindContent && m.dialectFlow.role(evt) == events.RoleAggregator {
 			content := evt.Content
 			if len(content) > 30 {
 				content = content[:30] + "..."
 			}
 			line += fmt.Sprintf(" content=%q", content)
-		// New debug event types - show compact summary
-		case "filter_detail":
-			line += fmt.Sprintf(" agent=%s thinking=%d filtered=%d", evt.StringField("agent_id"), evt.IntField("original_length"), evt.IntField("filtered_length"))
-		case "perspective_detail":
-			line += fmt.Sprintf(" agent=%s relevance=%.2f", evt.StringField("agent_id"), evt.Float64Field("relevance_score"))
-		case "synthesis_detail":
-			line += fmt.Sprintf(" plan=%s method=%s sources=%d", evt.StringField("plan_id"), evt.StringField("synthesis_method"), evt.IntField("sources_combined"))
-		case "agent_metadata":
-			line += fmt.Sprintf(" agent=%s model=%s tokens=%d latency=%dms", evt.StringField("agent_id"), evt.StringField("model"), evt.IntField("total_tokens"), evt.IntField("latency_ms"))
-		case "prompt_info":
-			line += fmt.Sprintf(" agent=%s file=%s len=%d", evt.StringField("agent_id"), evt.StringField("prompt_file"), evt.IntField("prompt_length"))
-		case "prompt_full":
-			line += fmt.Sprintf(" agent=%s len=%d", evt.StringField("agent_id"), len(evt.StringField("system_prompt")))
-		case "flow_config":
-			line += fmt.Sprintf(" flow=%s agents=%d stages=%d", evt.StringField("flow_id"), evt.IntField("agent_count"), len(evt.StringSliceField("stages_order")))
-		case "flow_step_detail":
-			line += fmt.Sprintf(" step=%s", evt.StringField("step"))
+		} else {
+			switch evt.Name {
+			case "flow_step_start":
+				line += fmt.Sprintf(" step=%s enabled=%v", evt.StringField("step"), evt.BoolField("enabled"))
+			case "flow_step_end":
+				line += fmt.Sprintf(" step=%s duration=%dms", evt.StringField("step"), evt.IntField("duration_ms"))
+			case "agent_stream_start":
+				line += fmt.Sprintf(" agent=%s", evt.SourceID)
+			case "agent_stream_complete":
+				line += fmt.Sprintf(" agent=%s tokens=%d", evt.SourceID, evt.IntField("token_count"))
+			case "agent_content":
+				content := evt.Content
+				if len(content) > 30 {
+					content = content[:30] + "..."
+				}
+				line += fmt.Sprintf(" agent=%s content=%q", evt.SourceID, content)
+			// New debug event types - show compact summary
+			case "filter_detail":
+				line += fmt.Sprintf(" agent=%s thinking=%d filtered=%d", evt.StringField("agent_id"), evt.IntField("original_length"), evt.IntField("filtered_length"))
+			case "perspective_detail":
+				line += fmt.Sprintf(" agent=%s relevance=%.2f", evt.StringField("agent_id"), evt.Float64Field("relevance_score"))
+			case "synthesis_detail":
+				line += fmt.Sprintf(" plan=%s method=%s sources=%d", evt.StringField("plan_id"), evt.StringField("synthesis_method"), evt.IntField("sources_combined"))
+			case "agent_metadata":
+				line += fmt.Sprintf(" agent=%s model=%s tokens=%d latency=%dms", evt.StringField("agent_id"), evt.StringField("model"), evt.IntField("total_tokens"), evt.IntField("latency_ms"))
+			case "prompt_info":
+				line += fmt.Sprintf(" agent=%s file=%s len=%d", evt.StringField("agent_id"), evt.StringField("prompt_file"), evt.IntField("prompt_length"))
+			case "prompt_full":
+				line += fmt.Sprintf(" agent=%s len=%d", evt.StringField("agent_id"), len(evt.StringField("system_prompt")))
+			case "flow_config":
+				line += fmt.Sprintf(" flow=%s agents=%d stages=%d", evt.StringField("flow_id"), evt.IntField("agent_count"), len(evt.StringSliceField("stages_order")))
+			case "flow_step_detail":
+				line += fmt.Sprintf(" step=%s", evt.StringField("step"))
+			}
 		}
 
 		// Apply appropriate styling
@@ -232,99 +233,7 @@ func (m InteractiveModel) renderEventsPane() string {
 		// Render expanded content if expanded
 		if isExpandable && isExpanded {
 			var expandedContent strings.Builder
-			switch evt.Name {
-			case "filter_detail":
-				expandedContent.WriteString(labelStyle.Render("Thinking (full):"))
-				expandedContent.WriteString("\n")
-				expandedContent.WriteString(expandedContentStyle.Render(evt.StringField("thinking_full")))
-				expandedContent.WriteString("\n")
-				expandedContent.WriteString(labelStyle.Render("Filtered Response:"))
-				expandedContent.WriteString("\n")
-				expandedContent.WriteString(expandedContentStyle.Render(evt.StringField("filtered_response")))
-			case "perspective_detail":
-				expandedContent.WriteString(labelStyle.Render("Perspective (full):"))
-				expandedContent.WriteString("\n")
-				expandedContent.WriteString(expandedContentStyle.Render(evt.StringField("perspective_full")))
-				expandedContent.WriteString("\n")
-				expandedContent.WriteString(labelStyle.Render("Summary:"))
-				expandedContent.WriteString("\n")
-				expandedContent.WriteString(expandedContentStyle.Render(evt.StringField("summary")))
-				if insights := evt.StringSliceField("key_insights"); len(insights) > 0 {
-					expandedContent.WriteString("\n")
-					expandedContent.WriteString(labelStyle.Render("Key Insights:"))
-					expandedContent.WriteString("\n")
-					for _, insight := range insights {
-						expandedContent.WriteString(expandedContentStyle.Render("• " + insight))
-						expandedContent.WriteString("\n")
-					}
-				}
-			case "synthesis_detail":
-				expandedContent.WriteString(labelStyle.Render("Synthesis (full):"))
-				expandedContent.WriteString("\n")
-				expandedContent.WriteString(expandedContentStyle.Render(evt.StringField("synthesis_full")))
-			case "agent_metadata":
-				expandedContent.WriteString(labelStyle.Render("Model:"))
-				expandedContent.WriteString(" " + evt.StringField("model") + "\n")
-				expandedContent.WriteString(labelStyle.Render("Total Tokens:"))
-				expandedContent.WriteString(fmt.Sprintf(" %d\n", evt.IntField("total_tokens")))
-				expandedContent.WriteString(labelStyle.Render("Response Length:"))
-				expandedContent.WriteString(fmt.Sprintf(" %d chars\n", evt.IntField("response_length")))
-				expandedContent.WriteString(labelStyle.Render("Latency:"))
-				expandedContent.WriteString(fmt.Sprintf(" %dms\n", evt.IntField("latency_ms")))
-			case "prompt_info":
-				expandedContent.WriteString(labelStyle.Render("Prompt File:"))
-				expandedContent.WriteString(" " + evt.StringField("prompt_file") + "\n")
-				expandedContent.WriteString(labelStyle.Render("Snippet:"))
-				expandedContent.WriteString("\n")
-				expandedContent.WriteString(expandedContentStyle.Render(evt.StringField("prompt_snippet")))
-			case "prompt_full":
-				expandedContent.WriteString(labelStyle.Render("System Prompt (full):"))
-				expandedContent.WriteString("\n")
-				expandedContent.WriteString(expandedContentStyle.Render(evt.StringField("system_prompt")))
-			case "flow_config":
-				expandedContent.WriteString(labelStyle.Render("Flow File:"))
-				expandedContent.WriteString(" " + evt.StringField("flow_file") + "\n")
-				expandedContent.WriteString(labelStyle.Render("Stages Order:"))
-				expandedContent.WriteString(" " + strings.Join(evt.StringSliceField("stages_order"), " → ") + "\n")
-				expandedContent.WriteString(labelStyle.Render("Routing Mode:"))
-				expandedContent.WriteString(" " + evt.StringField("routing_mode") + "\n")
-				expandedContent.WriteString(labelStyle.Render("Agent Count:"))
-				expandedContent.WriteString(fmt.Sprintf(" %d\n", evt.IntField("agent_count")))
-			case "flow_step_detail":
-				if preview := evt.StringField("synthesis_preview"); preview != "" {
-					expandedContent.WriteString(labelStyle.Render("Synthesis Preview:"))
-					expandedContent.WriteString("\n")
-					expandedContent.WriteString(expandedContentStyle.Render(preview))
-					expandedContent.WriteString("\n")
-				}
-				if full := evt.StringField("synthesis_full"); full != "" {
-					expandedContent.WriteString(labelStyle.Render("Synthesis Full:"))
-					expandedContent.WriteString("\n")
-					expandedContent.WriteString(expandedContentStyle.Render(full))
-					expandedContent.WriteString("\n")
-				}
-				if thinking := evt.StringField("thinking_preview"); thinking != "" {
-					expandedContent.WriteString(labelStyle.Render("Thinking Preview:"))
-					expandedContent.WriteString("\n")
-					expandedContent.WriteString(expandedContentStyle.Render(thinking))
-					expandedContent.WriteString("\n")
-				}
-				if perspectives, ok := evt.Fields["perspectives"].([]any); ok && len(perspectives) > 0 {
-					expandedContent.WriteString(labelStyle.Render("Perspectives:"))
-					expandedContent.WriteString("\n")
-					for _, raw := range perspectives {
-						p, ok := raw.(map[string]any)
-						if !ok {
-							continue
-						}
-						agentID, _ := p["agent_id"].(string)
-						summary, _ := p["summary"].(string)
-						expandedContent.WriteString(expandedContentStyle.Render(fmt.Sprintf("• %s: %s", agentID, summary)))
-						expandedContent.WriteString("\n")
-					}
-				}
-			case aggregatorStreamCompleteEventName:
-				// Show full aggregator response from AgentResponses
+			if evt.Kind == events.KindStreamEnd && m.dialectFlow.role(evt) == events.RoleAggregator {
 				if agg := m.aggregatorResponse(msg); agg != nil && agg.FullContent != "" {
 					expandedContent.WriteString(labelStyle.Render("Aggregator Response:"))
 					expandedContent.WriteString("\n")
@@ -332,20 +241,113 @@ func (m InteractiveModel) renderEventsPane() string {
 					expandedContent.WriteString("\n")
 					if agg.TokenCount > 0 {
 						expandedContent.WriteString(labelStyle.Render("Tokens:"))
-						expandedContent.WriteString(fmt.Sprintf(" %d\n", agg.TokenCount))
+						_, _ = fmt.Fprintf(&expandedContent, " %d\n", agg.TokenCount)
 					}
 				}
-			default:
-				// For any event type, show the raw JSON
-				if len(evt.Raw) > 0 {
-					expandedContent.WriteString(labelStyle.Render("Raw Event Data:"))
+			} else {
+				switch evt.Name {
+				case "filter_detail":
+					expandedContent.WriteString(labelStyle.Render("Thinking (full):"))
 					expandedContent.WriteString("\n")
-					// Pretty-print the JSON
-					var prettyJSON bytes.Buffer
-					if err := json.Indent(&prettyJSON, evt.Raw, "", "  "); err == nil {
-						expandedContent.WriteString(expandedContentStyle.Render(prettyJSON.String()))
-					} else {
-						expandedContent.WriteString(expandedContentStyle.Render(string(evt.Raw)))
+					expandedContent.WriteString(expandedContentStyle.Render(evt.StringField("thinking_full")))
+					expandedContent.WriteString("\n")
+					expandedContent.WriteString(labelStyle.Render("Filtered Response:"))
+					expandedContent.WriteString("\n")
+					expandedContent.WriteString(expandedContentStyle.Render(evt.StringField("filtered_response")))
+				case "perspective_detail":
+					expandedContent.WriteString(labelStyle.Render("Perspective (full):"))
+					expandedContent.WriteString("\n")
+					expandedContent.WriteString(expandedContentStyle.Render(evt.StringField("perspective_full")))
+					expandedContent.WriteString("\n")
+					expandedContent.WriteString(labelStyle.Render("Summary:"))
+					expandedContent.WriteString("\n")
+					expandedContent.WriteString(expandedContentStyle.Render(evt.StringField("summary")))
+					if insights := evt.StringSliceField("key_insights"); len(insights) > 0 {
+						expandedContent.WriteString("\n")
+						expandedContent.WriteString(labelStyle.Render("Key Insights:"))
+						expandedContent.WriteString("\n")
+						for _, insight := range insights {
+							expandedContent.WriteString(expandedContentStyle.Render("• " + insight))
+							expandedContent.WriteString("\n")
+						}
+					}
+				case "synthesis_detail":
+					expandedContent.WriteString(labelStyle.Render("Synthesis (full):"))
+					expandedContent.WriteString("\n")
+					expandedContent.WriteString(expandedContentStyle.Render(evt.StringField("synthesis_full")))
+				case "agent_metadata":
+					expandedContent.WriteString(labelStyle.Render("Model:"))
+					expandedContent.WriteString(" " + evt.StringField("model") + "\n")
+					expandedContent.WriteString(labelStyle.Render("Total Tokens:"))
+					_, _ = fmt.Fprintf(&expandedContent, " %d\n", evt.IntField("total_tokens"))
+					expandedContent.WriteString(labelStyle.Render("Response Length:"))
+					_, _ = fmt.Fprintf(&expandedContent, " %d chars\n", evt.IntField("response_length"))
+					expandedContent.WriteString(labelStyle.Render("Latency:"))
+					_, _ = fmt.Fprintf(&expandedContent, " %dms\n", evt.IntField("latency_ms"))
+				case "prompt_info":
+					expandedContent.WriteString(labelStyle.Render("Prompt File:"))
+					expandedContent.WriteString(" " + evt.StringField("prompt_file") + "\n")
+					expandedContent.WriteString(labelStyle.Render("Snippet:"))
+					expandedContent.WriteString("\n")
+					expandedContent.WriteString(expandedContentStyle.Render(evt.StringField("prompt_snippet")))
+				case "prompt_full":
+					expandedContent.WriteString(labelStyle.Render("System Prompt (full):"))
+					expandedContent.WriteString("\n")
+					expandedContent.WriteString(expandedContentStyle.Render(evt.StringField("system_prompt")))
+				case "flow_config":
+					expandedContent.WriteString(labelStyle.Render("Flow File:"))
+					expandedContent.WriteString(" " + evt.StringField("flow_file") + "\n")
+					expandedContent.WriteString(labelStyle.Render("Stages Order:"))
+					expandedContent.WriteString(" " + strings.Join(evt.StringSliceField("stages_order"), " → ") + "\n")
+					expandedContent.WriteString(labelStyle.Render("Routing Mode:"))
+					expandedContent.WriteString(" " + evt.StringField("routing_mode") + "\n")
+					expandedContent.WriteString(labelStyle.Render("Agent Count:"))
+					_, _ = fmt.Fprintf(&expandedContent, " %d\n", evt.IntField("agent_count"))
+				case "flow_step_detail":
+					if preview := evt.StringField("synthesis_preview"); preview != "" {
+						expandedContent.WriteString(labelStyle.Render("Synthesis Preview:"))
+						expandedContent.WriteString("\n")
+						expandedContent.WriteString(expandedContentStyle.Render(preview))
+						expandedContent.WriteString("\n")
+					}
+					if full := evt.StringField("synthesis_full"); full != "" {
+						expandedContent.WriteString(labelStyle.Render("Synthesis Full:"))
+						expandedContent.WriteString("\n")
+						expandedContent.WriteString(expandedContentStyle.Render(full))
+						expandedContent.WriteString("\n")
+					}
+					if thinking := evt.StringField("thinking_preview"); thinking != "" {
+						expandedContent.WriteString(labelStyle.Render("Thinking Preview:"))
+						expandedContent.WriteString("\n")
+						expandedContent.WriteString(expandedContentStyle.Render(thinking))
+						expandedContent.WriteString("\n")
+					}
+					if perspectives, ok := evt.Fields["perspectives"].([]any); ok && len(perspectives) > 0 {
+						expandedContent.WriteString(labelStyle.Render("Perspectives:"))
+						expandedContent.WriteString("\n")
+						for _, raw := range perspectives {
+							p, ok := raw.(map[string]any)
+							if !ok {
+								continue
+							}
+							agentID, _ := p["agent_id"].(string)
+							summary, _ := p["summary"].(string)
+							expandedContent.WriteString(expandedContentStyle.Render(fmt.Sprintf("• %s: %s", agentID, summary)))
+							expandedContent.WriteString("\n")
+						}
+					}
+				default:
+					// For any event type, show the raw JSON
+					if len(evt.Raw) > 0 {
+						expandedContent.WriteString(labelStyle.Render("Raw Event Data:"))
+						expandedContent.WriteString("\n")
+						// Pretty-print the JSON
+						var prettyJSON bytes.Buffer
+						if err := json.Indent(&prettyJSON, evt.Raw, "", "  "); err == nil {
+							expandedContent.WriteString(expandedContentStyle.Render(prettyJSON.String()))
+						} else {
+							expandedContent.WriteString(expandedContentStyle.Render(string(evt.Raw)))
+						}
 					}
 				}
 			}

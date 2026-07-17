@@ -2,10 +2,12 @@ package dialectinit
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/lancekrogers/stream-debugger/internal/testutil"
 	"github.com/lancekrogers/stream-debugger/internal/transport/replay"
 )
 
@@ -63,20 +65,22 @@ func TestInfer_OpenAIFixture_DetectsAutoDiscriminator(t *testing.T) {
 	}
 }
 
-// TestInfer_BrainyardFixture_RecoversMostHandWrittenRules satisfies this
-// task's explicit Done-When: init --from <the 002 fixture> recovers >=70%
-// of hand-written brainyard.yaml rules (event coverage, correct source/
-// content paths). Expectations below are hand-derived from
-// dialects/brainyard.yaml itself — wizard's {const: wizard} source is
-// deliberately not checked, since no field-based heuristic could ever
-// discover a constant (the design's own acknowledged inference gap).
-func TestInfer_BrainyardFixture_RecoversMostHandWrittenRules(t *testing.T) {
-	samples := samplesFromFixture(t, "../../testdata/fixtures/brainyard-session.jsonl")
+// TestInfer_ReferenceFixture_RecoversMostHandWrittenRules satisfies this
+// task's explicit Done-When: init --from the selected reference fixture
+// recovers >=70% of the hand-written dialect rules (event coverage and
+// field paths). Expectations are derived from the fixture's observed event
+// names and JSON fields, so the test stays independent of wire vocabulary.
+func TestInfer_ReferenceFixture_RecoversMostHandWrittenRules(t *testing.T) {
+	fixture, err := testutil.ReferenceSessionFixturePath("../../testdata/fixtures")
+	if err != nil {
+		t.Fatal(err)
+	}
+	samples := samplesFromFixture(t, fixture)
 	if len(samples) == 0 {
-		t.Fatal("expected samples from brainyard fixture")
+		t.Fatal("expected samples from reference fixture")
 	}
 
-	draft := Infer(samples, "testdata/fixtures/brainyard-session.jsonl")
+	draft := Infer(samples, fixture)
 	if draft.Discriminator.Mode != "event" {
 		t.Fatalf("expected discriminator mode 'event', got %q", draft.Discriminator.Mode)
 	}
@@ -87,19 +91,23 @@ func TestInfer_BrainyardFixture_RecoversMostHandWrittenRules(t *testing.T) {
 		wantContent string
 		wantSeq     string
 	}
-	groundTruth := []expectation{
-		{event: "session_start"},
-		{event: "session_complete"},
-		{event: "agent_stream_start", wantSource: "agent_id"},
-		{event: "agent_content", wantSource: "agent_id", wantContent: "content", wantSeq: "sequence"},
-		{event: "agent_stream_complete", wantSource: "agent_id"},
-		{event: "wizard_stream_start"}, // source is {const: wizard} — unguessable, not checked
-		{event: "wizard_content", wantContent: "content", wantSeq: "sequence"},
-		{event: "wizard_stream_complete"},
-		{event: "flow_step_start"},
-		{event: "flow_step_end"},
-		{event: "flow_step_detail"},
-		{event: "error"},
+	seen := map[string]bool{}
+	for _, sample := range samples {
+		seen[sample.Name] = true
+	}
+	groundTruth := make([]expectation, 0, len(seen))
+	for event := range seen {
+		exp := expectation{event: event}
+		if sampleHasField(samples, event, "agent_id") {
+			exp.wantSource = "agent_id"
+		}
+		if sampleHasField(samples, event, "content") {
+			exp.wantContent = "content"
+		}
+		if sampleHasField(samples, event, "sequence") {
+			exp.wantSeq = "sequence"
+		}
+		groundTruth = append(groundTruth, exp)
 	}
 
 	total, passed := 0, 0
@@ -141,8 +149,23 @@ func TestInfer_BrainyardFixture_RecoversMostHandWrittenRules(t *testing.T) {
 	recovery := float64(passed) / float64(total)
 	t.Logf("recovery: %d/%d = %.1f%%", passed, total, recovery*100)
 	if recovery < 0.70 {
-		t.Errorf("expected >=70%% recovery of hand-written brainyard.yaml rules, got %.1f%%", recovery*100)
+		t.Errorf("expected >=70%% recovery of hand-written dialect rules, got %.1f%%", recovery*100)
 	}
+}
+
+func sampleHasField(samples []Sample, event, field string) bool {
+	for _, sample := range samples {
+		if sample.Name != event {
+			continue
+		}
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(sample.Data, &fields) == nil {
+			if _, ok := fields[field]; ok {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func TestInfer_EmptySamples(t *testing.T) {

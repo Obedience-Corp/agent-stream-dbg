@@ -4,10 +4,17 @@
 # dialect engine lands, what the bytes mean (dialect). It never encodes
 # any one system's defaults — every value below must be set explicitly.
 
-# Transport: how bytes arrive. Only "sse" is supported today.
+# Transport: how bytes arrive. Supported values are "sse", "grpc", and "replay".
 transport:
   type: "sse"
   base_url: "http://localhost:5003"
+
+  # gRPC example (type: grpc):
+  # target: "localhost:50051"
+  # method: "/agent.v1.AgentService/StreamSession"
+  # discriminator: field:type   # oneof | field:type | message_type | none
+  # discriminator_field: type   # required when discriminator is field:type
+  # plaintext: true
 
   # How to initiate streaming
   stream_endpoint:
@@ -22,7 +29,7 @@ transport:
       Accept: "text/event-stream"
       # Add custom headers as needed
 
-    # Authentication
+    # Authentication (opt-in; this header is sent to the URL named above)
     auth:
       type: "bearer"  # Options: bearer, api_key, basic, none
       token_env: "API_KEY"  # Read token from this env var (bearer, api_key)
@@ -32,14 +39,16 @@ transport:
       # username_env: "API_USERNAME"
       # password_env: "API_PASSWORD"
 
-# Dialect: what the bytes mean. Not yet loaded (the mapping engine lands in
-# phase 004) — declared now so run configs don't need a second migration.
-# dialect:
-#   file: "dialects/generic.yaml"
+# Dialect: what the bytes mean. Use the embedded default by name, or provide
+# an explicit YAML path. The CLI --dialect flag overrides this value.
+dialect:
+  file: "brainyard"
 
 # Vars: user-defined values available for interpolation in a dialect's
-# setup:/send: templates (phase 004).
-# vars: {}
+# setup:/send: templates. Built-ins (base_url, session_id, message, agents)
+# always win if a user var uses one of those names.
+vars:
+  region: "us-west"
 
 # Session Configuration
 session:

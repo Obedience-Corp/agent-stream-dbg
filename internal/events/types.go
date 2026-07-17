@@ -1,6 +1,9 @@
 package events
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Kind is the closed, cross-system vocabulary the visualizer renders
 // against. Triangulated from OTel GenAI semconv, the Vercel AI SDK, and
@@ -27,6 +30,21 @@ const (
 	KindDetail       Kind = "detail"
 	KindError        Kind = "error"
 	KindUnknown      Kind = "unknown"
+)
+
+// Role is the closed vocabulary the flow projection uses to describe a
+// lane's responsibility. Dialects declare roles as data; the visualizer
+// compares these values instead of knowing a system's wire names.
+type Role string
+
+const (
+	RoleWorker     Role = "worker"
+	RoleRouter     Role = "router"
+	RoleAggregator Role = "aggregator"
+	RoleSupervisor Role = "supervisor"
+	RoleJudge      Role = "judge"
+	RoleTool       Role = "tool"
+	RoleHuman      Role = "human"
 )
 
 // Event is the open, cross-system representation every dialect maps onto.
@@ -58,6 +76,28 @@ func (e *Event) IntField(key string) int {
 		return v
 	case float64:
 		return int(v)
+	}
+	return 0
+}
+
+// ParticipantCount returns a dialect-normalized participant count when one
+// is present, or discovers the conventional non-primary count field exposed
+// by a dialect's raw Fields map. The wire key remains dialect data; callers
+// only depend on this semantic accessor.
+func (e *Event) ParticipantCount() int {
+	if count := e.IntField("participant_count"); count > 0 {
+		return count
+	}
+	for key, value := range e.Fields {
+		if !strings.HasPrefix(key, "non_") || !strings.HasSuffix(key, "_count") {
+			continue
+		}
+		switch v := value.(type) {
+		case int:
+			return v
+		case float64:
+			return int(v)
+		}
 	}
 	return 0
 }

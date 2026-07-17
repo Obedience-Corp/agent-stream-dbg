@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,11 +12,9 @@ import (
 	"github.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc/agentstreampb"
 )
 
-// connectStreamingTransport connects with a context that outlives this
-// call — a server-streaming RPC's context governs the stream for its
-// whole lifetime (like internal/transport/sse's Connect), not just the
-// initial handshake, so the ctx used here must stay live until the
-// caller is done draining Frames() and calls Close.
+// connectStreamingTransport uses a context that outlives setup. The
+// transport itself derives an internal stream context; Close owns the
+// stream lifetime after Connect returns.
 func connectStreamingTransport(t *testing.T, addr string, cfg Config) *Transport {
 	t.Helper()
 	cfg.Target = addr
@@ -132,6 +131,50 @@ func TestDiscriminator_FieldType_ReadsConfiguredField(t *testing.T) {
 	}
 }
 
+func TestDiscriminator_FieldTypeErrorsSurfacePayload(t *testing.T) {
+	tests := []struct {
+		name  string
+		field string
+	}{
+		{name: "missing field", field: "not_present"},
+		{name: "non-string field", field: "sequence"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv, err := mockgrpc.New([]*agentstreampb.StreamEvent{
+				{Payload: &agentstreampb.StreamEvent_AgentContent{AgentContent: &agentstreampb.AgentContent{
+					AgentId: "agent_a", Content: "hi", Sequence: 1,
+				}}},
+			})
+			if err != nil {
+				t.Fatalf("mockgrpc.New: %v", err)
+			}
+			defer srv.Close()
+
+			tr := connectStreamingTransport(t, srv.Addr(), Config{
+				Method:             "/agentstream.v1.AgentStream/Stream",
+				Request:            map[string]any{"session_id": "s1"},
+				Discriminator:      "field:type",
+				DiscriminatorField: tt.field,
+			})
+
+			frame := <-tr.Frames()
+			if frame.Err == nil {
+				t.Fatalf("expected discriminator error for %s, got frame=%+v", tt.field, frame)
+			}
+			if frame.Name != "" {
+				t.Errorf("expected no fabricated frame name, got %q", frame.Name)
+			}
+			if len(frame.Data) == 0 || len(frame.Raw) == 0 {
+				t.Errorf("expected payload preserved with discriminator error, got data=%q raw=%q", frame.Data, frame.Raw)
+			}
+			if !strings.Contains(frame.Err.Error(), tt.field) {
+				t.Errorf("expected error to name discriminator field %q, got %v", tt.field, frame.Err)
+			}
+		})
+	}
+}
+
 func TestDiscriminator_MessageType_UsesFullyQualifiedName(t *testing.T) {
 	srv, err := mockgrpc.New([]*agentstreampb.StreamEvent{
 		{Payload: &agentstreampb.StreamEvent_AgentContent{AgentContent: &agentstreampb.AgentContent{AgentId: "agent_a", Content: "hi"}}},
@@ -212,7 +255,7 @@ func TestDiscriminator_Oneof_DecodesThroughUnmodifiedMappingEngine(t *testing.T)
 	}
 
 	// A dialect that has never heard of gRPC — discriminator: event is
-	// exactly what dialects/brainyard.yaml uses for SSE.
+	// exactly what the shipped SSE dialect uses.
 	engine, err := mapping.Load([]byte(`
 version: 1
 name: test

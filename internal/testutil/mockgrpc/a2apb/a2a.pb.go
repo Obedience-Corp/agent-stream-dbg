@@ -19,7 +19,7 @@
 //     status_update=3, artifact_update=4 field numbers and names, but
 //     drops the real message=2 branch (type Message) entirely: this
 //     test's two sub-cases are statusUpdate and artifactUpdate (mirroring
-//     dialects/cross_transport_test.go's TestBrainyardDialect_CrossTransportParity's
+//     dialects/cross_transport_test.go's cross-transport parity test's
 //     two sub-cases) — a2a.yaml's `message` rule is already proven over
 //     SSE by dialects/dialects_test.go's TestA2ADialect_ExactDecode; this
 //     file's job is the gRPC transport seam, not re-proving every dialect

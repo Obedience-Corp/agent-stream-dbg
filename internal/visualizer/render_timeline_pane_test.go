@@ -33,7 +33,7 @@ func TestRenderTimelinePane(t *testing.T) {
 func TestIsEventVisible_And_CountVisibleEvents(t *testing.T) {
 	m := newFixtureModel(t)
 
-	tokenEvt := &events.Event{Name: "agent_content"}
+	tokenEvt := &events.Event{Kind: events.KindContent, SourceID: "agent"}
 	m.showTokens = false
 	if m.isEventVisible(tokenEvt) {
 		t.Error("expected a token event to be hidden when showTokens is false")
@@ -43,8 +43,8 @@ func TestIsEventVisible_And_CountVisibleEvents(t *testing.T) {
 		t.Error("expected a token event to be visible when showTokens is true")
 	}
 
-	aggregatorEvt := &events.Event{Name: aggregatorStreamStartEventName}
-	nonAggregatorEvt := &events.Event{Name: "agent_stream_start"}
+	aggregatorEvt := &events.Event{Kind: events.KindStreamStart, SourceID: aggregatorStageName}
+	nonAggregatorEvt := &events.Event{Kind: events.KindStreamStart, SourceID: "agent"}
 	m.eventsAggregatorOnly = true
 	if !m.isEventVisible(aggregatorEvt) {
 		t.Error("expected an aggregator event to remain visible under aggregator-only filter")

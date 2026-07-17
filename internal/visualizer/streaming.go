@@ -1,94 +1,62 @@
 package visualizer
 
 import (
-	"bytes"
-	"context"
 	"fmt"
-	"io"
-	"net/http"
 	neturl "net/url"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/lancekrogers/stream-debugger/internal/bridge"
+	"github.com/lancekrogers/stream-debugger/internal/client"
+	"github.com/lancekrogers/stream-debugger/internal/config"
 	"github.com/lancekrogers/stream-debugger/internal/events"
-	dblogger "github.com/lancekrogers/stream-debugger/internal/logger"
-	"github.com/lancekrogers/stream-debugger/internal/mapping"
+	"github.com/lancekrogers/stream-debugger/internal/transport"
 )
 
 // urlQueryEscape safely escapes a message for URL query use
 func urlQueryEscape(s string) string { return neturl.QueryEscape(s) }
 
-// startStreamingCmd initiates the streaming request and hands off to chunk reader
+// startStreamingCmd initiates the shared configured transport and hands off to
+// the frame reader. The dialect send template is rendered by client.NewTransport;
+// this model only adapts raw transport frames into Bubble Tea messages.
 func (m InteractiveModel) startStreamingCmd(message string, index int) tea.Cmd {
 	return func() tea.Msg {
-		vars := mapping.InterpolationVars{
-			BaseURL:   m.cfg.Transport.BaseURL,
-			SessionID: m.cfg.Session.ID,
-			Message:   message,
-		}
-		method, sendURL, sendBody, err := bridge.RenderSend(vars)
+		tr, err := client.NewTransport(m.cfg, m.parser, message)
 		if err != nil {
-			return streamErrorMsg{err: fmt.Errorf("failed to render send request: %w", err)}
+			return streamErrorMsg{err: fmt.Errorf("failed to build stream transport: %w", err)}
 		}
-		// Pass through stream debug level if set (enables flow_step_detail synthesis output)
-		if lvl := m.cfg.Debug.Level; lvl != "" {
-			sendURL += "&debug=" + urlQueryEscape(lvl)
+		if err := tr.Connect(m.streamContext); err != nil {
+			_ = tr.Close()
+			return streamErrorMsg{err: fmt.Errorf("failed to connect stream transport: %w", err)}
 		}
-
-		var bodyReader io.Reader
-		if sendBody != nil {
-			bodyReader = bytes.NewReader(sendBody)
-		}
-		req, err := http.NewRequest(method, sendURL, bodyReader)
-		if err != nil {
-			return streamErrorMsg{err: fmt.Errorf("failed to create request: %w", err)}
-		}
-		if sendBody != nil {
-			req.Header.Set("Content-Type", "application/json")
-		}
-		for k, v := range m.cfg.Transport.ResolvedHeaders() {
-			req.Header.Set(k, v)
-		}
-		req.Header.Set("Accept", "text/event-stream")
-
-		clientHTTP := &http.Client{} // no timeout; SSE is long-lived
-		ctx, cancel := context.WithCancel(context.Background())
-		req = req.WithContext(ctx)
-
-		resp, err := clientHTTP.Do(req)
-		if err != nil {
-			cancel() // Cancel context on error to avoid leak
-			return streamErrorMsg{err: fmt.Errorf("failed to send request: %w", err)}
-		}
-		if resp.StatusCode != http.StatusOK {
-			cancel() // Cancel context on error to avoid leak
-			body, _ := io.ReadAll(resp.Body)
-			_ = resp.Body.Close()
-			return streamErrorMsg{err: fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))}
-		}
-		return streamStartMsg{index: index, body: resp.Body, cancel: cancel}
+		return streamStartMsg{index: index, stream: tr}
 	}
 }
 
-// readStreamChunkCmd reads the next chunk from the active stream and returns a chunk message
-func (m InteractiveModel) readStreamChunkCmd() tea.Cmd {
-	// capture the current ReadCloser
-	r := m.streamBody
+// readStreamFrameCmd reads one complete raw frame from the active transport.
+// The transport owns wire parsing and lifecycle; the TUI only schedules one
+// frame at a time so its existing tea.Cmd update pattern remains intact.
+func (m InteractiveModel) readStreamFrameCmd() tea.Cmd {
+	tr := m.streamTransport
 	idx := m.streamIndex
 	return func() tea.Msg {
-		if r == nil {
-			return streamChunkMsg{index: idx, eof: true}
+		if tr == nil {
+			return streamFrameMsg{index: idx, eof: true}
 		}
-		buf := make([]byte, 4096)
-		n, err := r.Read(buf)
-		if err != nil {
-			if err == io.EOF {
-				return streamChunkMsg{index: idx, chunk: buf[:n], eof: true}
-			}
-			return streamChunkMsg{index: idx, err: err}
+		frame, ok := <-tr.Frames()
+		if !ok {
+			return streamFrameMsg{index: idx, eof: true}
 		}
-		return streamChunkMsg{index: idx, chunk: buf[:n]}
+		return streamFrameMsg{index: idx, frame: frame}
+	}
+}
+
+// closeActiveStream is safe to call from normal completion, error handling,
+// and the quit path. Transport.Close guarantees the frame channel is closed
+// and its reader has stopped before returning.
+func (m *InteractiveModel) closeActiveStream() {
+	if m.streamTransport != nil {
+		_ = m.streamTransport.Close()
+		m.streamTransport = nil
 	}
 }
 
@@ -107,57 +75,39 @@ type streamErrorMsg struct {
 // streamStartMsg signals beginning of incremental streaming
 type streamStartMsg struct {
 	index  int
-	body   io.ReadCloser
-	cancel context.CancelFunc
+	stream transport.Transport
 }
 
-// streamChunkMsg carries data chunk from the streaming response
-type streamChunkMsg struct {
+// streamFrameMsg carries one transport frame from the streaming response.
+type streamFrameMsg struct {
 	index int
-	chunk []byte
+	frame transport.Frame
 	eof   bool
-	err   error
 }
 
-// newSessionCmd generates a fresh session id, sets it, calls setup, and resets state
+// newSessionCmd generates a fresh session id and performs setup. The returned
+// message lets Update apply both the reset and any setup error to the live
+// model instead of mutating a command's value-receiver copy.
 func (m InteractiveModel) newSessionCmd() tea.Cmd {
 	return func() tea.Msg {
 		// Generate new session id
 		newID := fmt.Sprintf("debug-session-%s", time.Now().Format("20060102-150405"))
 		m.cfg.Session.ID = newID
 
-		// Recreate logger for new session
-		if m.slog != nil {
-			_ = m.slog.Close()
-		}
-		if l, err := dblogger.NewStructuredLogger(m.cfg); err == nil {
-			m.slog = l
-		}
-
 		// Call session setup (auto create)
-		vars := mapping.InterpolationVars{
-			BaseURL:   m.cfg.Transport.BaseURL,
-			SessionID: m.cfg.Session.ID,
-			Agents:    m.cfg.Session.DefaultAgents,
+		vars := config.InterpolationVarsFromConfig(m.cfg)
+		sessionID, err := m.parser.RunSetup(m.streamContext, vars, m.cfg.Transport.ResolvedHeaders(), nil)
+		if err != nil {
+			return sessionSetupMsg{
+				sessionID: newID,
+				err:       fmt.Errorf("session setup failed: %w", err),
+			}
 		}
-		if sessionID, err := bridge.RunSetup(context.Background(), vars, m.cfg.Transport.ResolvedHeaders(), nil); err == nil {
-			// Ensure we track the actual backend session id
-			m.cfg.Session.ID = sessionID
-		}
-
-		// Reset UI state (clear all prior content and counters)
-		m.messages = make([]Message, 0)
-		m.err = nil
-		m.flowTurnIndex = 0
-		m.flowContinuous = true
-		m.selectedStepIndex = 0
-		m.flowExpanded = make(map[string]bool)
-		m.showTokens = false
-		m.eventsAggregatorOnly = false
-		m.appFocus = AppFocusAgents
-		m.viewport.SetContent("")
-		m.contentDirty = true
-		m.refreshViewportContent()
-		return nil
+		return sessionSetupMsg{sessionID: sessionID}
 	}
+}
+
+type sessionSetupMsg struct {
+	sessionID string
+	err       error
 }

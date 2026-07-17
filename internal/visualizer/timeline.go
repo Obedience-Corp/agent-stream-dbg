@@ -143,8 +143,8 @@ func (tv *TimelineVisualizer) RenderTimeline(width int) string {
 
 	// Duration info
 	duration := tv.endTime.Sub(tv.startTime)
-	sb.WriteString(fmt.Sprintf("Duration: %s | Events: %d | Agents: %d\n\n",
-		duration.Round(time.Millisecond), len(tv.entries), len(agents)))
+	_, _ = fmt.Fprintf(&sb, "Duration: %s | Events: %d | Agents: %d\n\n",
+		duration.Round(time.Millisecond), len(tv.entries), len(agents))
 
 	// Column headers
 	timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
