@@ -43,6 +43,10 @@ type YAMLConfig struct {
 		Target        string `yaml:"target"`
 		Method        string `yaml:"method"`        // fully-qualified RPC method, e.g. /agent.v1.AgentService/StreamSession
 		Discriminator string `yaml:"discriminator"` // oneof | field:type | message_type | none — resolved in sequence 03
+		// DiscriminatorField is the proto field name used when
+		// discriminator is field:type (e.g. "type"). Required for that
+		// mode; ignored otherwise.
+		DiscriminatorField string `yaml:"discriminator_field"`
 		// PreserveFieldNames mirrors grpc.Config.PreserveFieldNames: nil
 		// (the key omitted, the common case) means "unset" and resolves to
 		// true — today's snake_case rendering — not Go's bool zero value,
@@ -131,12 +135,16 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 		if err != nil {
 			return nil, err
 		}
+		if yamlCfg.Transport.Discriminator == "field:type" && yamlCfg.Transport.DiscriminatorField == "" {
+			return nil, fmt.Errorf("transport.discriminator_field is required when transport.discriminator is \"field:type\"")
+		}
 		apiKey = resolvedToken
 		transport = TransportConfig{
 			Type:               "grpc",
 			Target:             yamlCfg.Transport.Target,
 			GRPCMethod:         yamlCfg.Transport.Method,
 			Discriminator:      yamlCfg.Transport.Discriminator,
+			DiscriminatorField: yamlCfg.Transport.DiscriminatorField,
 			PreserveFieldNames: yamlCfg.Transport.PreserveFieldNames,
 			Plaintext:          yamlCfg.Transport.Plaintext,
 			DescriptorSet:      yamlCfg.Transport.DescriptorSet,
@@ -322,9 +330,10 @@ type TransportConfig struct {
 	Headers        map[string]string
 
 	// gRPC fields.
-	Target        string
-	GRPCMethod    string // fully-qualified RPC method, e.g. /agent.v1.AgentService/StreamSession
-	Discriminator string // oneof | field:type | message_type | none
+	Target             string
+	GRPCMethod         string // fully-qualified RPC method, e.g. /agent.v1.AgentService/StreamSession
+	Discriminator      string // oneof | field:type | message_type | none
+	DiscriminatorField string // proto field name for discriminator field:type
 	// PreserveFieldNames: nil (unset) = true = snake_case field names
 	// (today's default for every existing dialect); false = lowerCamelCase,
 	// for a dialect whose real wire protocol mandates it. See

@@ -59,13 +59,13 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case streamFrameMsg:
 		if msg.eof {
 			// Finalize after the shared transport has closed its frame channel.
+			// Keep incrementally parsed Events — do not re-parse RawSSE as named
+			// SSE. That only works for named-event SSE and wipes OpenAI-style
+			// data-only streams and gRPC interactive sessions (binary/JSON raw).
 			m.closeActiveStream()
 			if m.streamIndex < len(m.messages) {
-				raw := m.messages[m.streamIndex].RawSSE
-				parsed, _ := parseSSEStreamWithParser(raw, m.parser)
-				m.messages[m.streamIndex].Events = parsed
 				if len(m.messages[m.streamIndex].AgentResponses) == 0 {
-					m.messages[m.streamIndex].AgentResponses = m.buildAgentResponses(parsed)
+					m.messages[m.streamIndex].AgentResponses = m.buildAgentResponses(m.messages[m.streamIndex].Events)
 				}
 				m.messages[m.streamIndex].Streaming = false
 			}
@@ -78,7 +78,8 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Append the exact raw frame and decode through the same bridge parser
-		// used by every noninteractive transport path.
+		// used by every noninteractive transport path. applyParsedEvent owns
+		// the Events list — do not append here or every event is duplicated.
 		if m.streamIndex < len(m.messages) {
 			if len(msg.frame.Raw) > 0 {
 				m.messages[m.streamIndex].RawSSE += string(msg.frame.Raw)
@@ -92,7 +93,6 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			if evt, err := m.parser.Parse(msg.frame.Name, msg.frame.Data); err == nil && evt != nil {
-				m.messages[m.streamIndex].Events = append(m.messages[m.streamIndex].Events, evt)
 				m.applyParsedEvent(evt)
 			}
 			m.contentDirty = true

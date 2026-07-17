@@ -269,9 +269,11 @@ See [`config.yaml.example`](config.yaml.example) for all options.
 
 Dialect `setup:` and `send:` templates can use the built-ins `{base_url}`,
 `{session_id}`, `{message}`, and `{agents}`, plus names declared under the
-config's `vars:` map. User vars are JSON/URL escaped by the mapping engine and
-cannot shadow the built-ins; an undeclared placeholder fails before a request
-is sent.
+config's `vars:` map. In JSON body templates every placeholder (including user
+vars) is JSON-escaped. In URL templates only `{message}` is URL-escaped; other
+placeholders — including user `vars:` — are substituted as trusted structural
+config values. User vars cannot shadow the built-ins; an undeclared placeholder
+fails before a request is sent.
 
 ### Pre-configured Examples
 

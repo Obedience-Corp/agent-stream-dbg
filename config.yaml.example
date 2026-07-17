@@ -9,6 +9,13 @@ transport:
   type: "sse"
   base_url: "http://localhost:5003"
 
+  # gRPC example (type: grpc):
+  # target: "localhost:50051"
+  # method: "/agent.v1.AgentService/StreamSession"
+  # discriminator: field:type   # oneof | field:type | message_type | none
+  # discriminator_field: type   # required when discriminator is field:type
+  # plaintext: true
+
   # How to initiate streaming
   stream_endpoint:
     # URL pattern (supports {session_id} placeholder)

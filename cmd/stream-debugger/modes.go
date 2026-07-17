@@ -65,14 +65,21 @@ func runStream(configPath string, message string, dialectOverride string) error 
 	if err != nil {
 		return fmt.Errorf("failed to load dialect: %w", err)
 	}
+	transportName := cfg.Transport.Type
+	if transportName == "" {
+		transportName = "sse"
+	}
 	fmt.Printf("🔧 Configuration loaded\n")
-	fmt.Printf("   Backend: %s\n", cfg.Transport.BaseURL)
+	fmt.Printf("   Transport: %s\n", transportName)
+	fmt.Printf("   Backend: %s\n", streamTarget(cfg))
 	fmt.Printf("   Session: %s\n", cfg.Session.ID)
 	fmt.Printf("   Log Dir: %s\n\n", cfg.LogDir)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
 	if cfg.Session.AutoSetup {
 		fmt.Printf("🔄 Auto-setting up session...\n")
 		vars := config.InterpolationVarsFromConfig(cfg)
-		sessionID, err := parser.RunSetup(context.Background(), vars, cfg.Transport.ResolvedHeaders(), nil)
+		sessionID, err := parser.RunSetup(ctx, vars, cfg.Transport.ResolvedHeaders(), nil)
 		if err != nil {
 			return fmt.Errorf("failed to setup session: %w", err)
 		}
@@ -90,24 +97,16 @@ func runStream(configPath string, message string, dialectOverride string) error 
 	fmt.Printf("   Session:     %s/by-session/\n", cfg.LogDir)
 	fmt.Printf("   API calls:   %s/api-calls/\n\n", cfg.LogDir)
 
-	sseClient := client.NewSSEClient(cfg)
+	streamClient := client.NewClient(cfg)
+	defer streamClient.Close()
 	fmt.Printf("🌐 Connecting to backend...\n")
-	fmt.Printf("   Endpoint: %s\n", cfg.StreamEndpointURL())
+	fmt.Printf("   Target: %s\n", streamTarget(cfg))
 	fmt.Printf("   Message: \"%s\"\n\n", message)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-sigCh
-		fmt.Println("\n\n🛑 Interrupt received, shutting down...")
-		cancel()
-	}()
-	if err := sseClient.Connect(ctx, message); err != nil {
-		return fmt.Errorf("failed to connect to SSE endpoint: %w", err)
+	if err := streamClient.Connect(ctx, message); err != nil {
+		return fmt.Errorf("failed to connect %s transport: %w", transportName, err)
 	}
 	fmt.Printf("✅ Connected! Starting TUI...\n\n")
-	model := visualizer.NewModelWithContext(cfg, sseClient, structuredLogger, message, ctx)
+	model := visualizer.NewModelWithContext(cfg, streamClient, structuredLogger, message, ctx)
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithContext(ctx))
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("TUI error: %w", err)
@@ -115,6 +114,18 @@ func runStream(configPath string, message string, dialectOverride string) error 
 	fmt.Printf("\n\n📊 Session Summary\n")
 	fmt.Printf("   Logs saved to: %s\n", cfg.LogDir)
 	return nil
+}
+
+// streamTarget returns a human-readable connection target for logging.
+func streamTarget(cfg *config.EnhancedConfig) string {
+	switch cfg.Transport.Type {
+	case "grpc":
+		return cfg.Transport.Target
+	case "replay":
+		return cfg.Transport.BaseURL
+	default:
+		return cfg.StreamEndpointURL()
+	}
 }
 
 func runReplay(sessionFile, dialectSource string) error {

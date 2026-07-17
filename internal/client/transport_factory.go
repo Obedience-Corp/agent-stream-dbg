@@ -79,6 +79,7 @@ func newGRPCTransport(cfg *config.EnhancedConfig) transport.Transport {
 		MetadataValue:      metadataValue,
 		Method:             cfg.Transport.GRPCMethod,
 		Discriminator:      cfg.Transport.Discriminator,
+		DiscriminatorField: cfg.Transport.DiscriminatorField,
 		PreserveFieldNames: cfg.Transport.PreserveFieldNames,
 		DescriptorSetPath:  cfg.Transport.DescriptorSet,
 		ProtoFilePath:      cfg.Transport.ProtoFile,
