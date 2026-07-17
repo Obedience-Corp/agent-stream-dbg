@@ -4,7 +4,7 @@
 # dialect engine lands, what the bytes mean (dialect). It never encodes
 # any one system's defaults — every value below must be set explicitly.
 
-# Transport: how bytes arrive. Only "sse" is supported today.
+# Transport: how bytes arrive. Supported values are "sse", "grpc", and "replay".
 transport:
   type: "sse"
   base_url: "http://localhost:5003"
