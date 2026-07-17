@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func connectedTransport(t *testing.T, addr string) *Transport {
@@ -128,6 +130,28 @@ func TestDiscover_UnknownMethod_ReturnsClearError(t *testing.T) {
 	_, err = Discover(ctx, tr.Conn(), "/agentstream.v1.AgentStream/NoSuchMethod")
 	if err == nil {
 		t.Fatal("expected an error for a nonexistent method")
+	}
+}
+
+func TestClassifyReflectionError(t *testing.T) {
+	tests := []struct {
+		name string
+		code codes.Code
+		want reflectionErrorClass
+	}{
+		{name: "reflection unimplemented", code: codes.Unimplemented, want: reflectionNoService},
+		{name: "server unavailable", code: codes.Unavailable, want: reflectionTransient},
+		{name: "deadline exceeded", code: codes.DeadlineExceeded, want: reflectionTransient},
+		{name: "not found", code: codes.NotFound, want: reflectionOther},
+		{name: "internal", code: codes.Internal, want: reflectionOther},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := classifyReflectionError(status.Error(tt.code, "reflection failure"))
+			if got != tt.want {
+				t.Errorf("classifyReflectionError(%s) = %q, want %q", tt.code, got, tt.want)
+			}
+		})
 	}
 }
 

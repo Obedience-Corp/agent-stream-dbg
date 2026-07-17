@@ -157,7 +157,7 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 			Auth:           auth,
 		}
 	default: // sse
-		auth, resolvedToken, err := resolveAuth(yamlCfg.Transport.StreamEndpoint.Auth, "bearer")
+		auth, resolvedToken, err := resolveAuth(yamlCfg.Transport.StreamEndpoint.Auth, "none")
 		if err != nil {
 			return nil, err
 		}
@@ -226,18 +226,17 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 }
 
 // resolveAuth turns a raw auth: YAML block into a resolved AuthConfig,
-// reading any *_env-named credential from the environment. defaultType
-// is used when the block omits type: — "bearer" for SSE (a bare API_KEY
-// is the common case), "none" for gRPC (metadata auth needs an explicit
-// key:, so there's no sensible implicit default). Returns the resolved
+// reading only the explicitly named *_env credential from the environment.
+// defaultType is used when the block omits type: — all product transports
+// pass "none", so credentials require an explicit auth.type opt-in. Returns the resolved
 // token separately since callers outside the transport itself (session
 // auto-setup) still read EnhancedConfig.APIKey directly, regardless of
 // which auth type the primary transport ends up using.
 func resolveAuth(y authYAML, defaultType string) (AuthConfig, string, error) {
 	tokenEnv := y.TokenEnv
-	apiKey := os.Getenv(tokenEnv)
-	if apiKey == "" {
-		apiKey = os.Getenv("API_KEY") // Fallback
+	var apiKey string
+	if tokenEnv != "" {
+		apiKey = os.Getenv(tokenEnv)
 	}
 
 	authType := y.Type
@@ -254,11 +253,10 @@ func resolveAuth(y authYAML, defaultType string) (AuthConfig, string, error) {
 	switch authType {
 	case "bearer", "api_key", "metadata":
 		if apiKey == "" {
-			envName := tokenEnv
-			if envName == "" {
-				envName = "API_KEY"
+			if tokenEnv == "" {
+				return AuthConfig{}, "", fmt.Errorf("auth.type %q requires token_env", authType)
 			}
-			return AuthConfig{}, "", fmt.Errorf("%s environment variable not set", envName)
+			return AuthConfig{}, "", fmt.Errorf("%s environment variable not set", tokenEnv)
 		}
 		if authType == "metadata" && auth.HeaderName == "" {
 			return AuthConfig{}, "", fmt.Errorf("auth.type \"metadata\" requires header_name (the metadata key to attach)")

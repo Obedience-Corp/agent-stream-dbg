@@ -26,11 +26,10 @@ import (
 	"github.com/jhump/protoreflect/desc"    //nolint:staticcheck // SA1019: same reasoning as reflect.go — grpcdynamic requires this type
 	"github.com/jhump/protoreflect/dynamic" //nolint:staticcheck // SA1019: grpcdynamic's own message factory produces this concrete type; see MarshalJSONPB comment above
 	"github.com/jhump/protoreflect/dynamic/grpcdynamic"
+	"github.com/lancekrogers/stream-debugger/internal/transport"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
-
-	"github.com/lancekrogers/stream-debugger/internal/transport"
 )
 
 // recvStream is satisfied by both *grpcdynamic.ServerStream and
@@ -185,7 +184,16 @@ func (t *Transport) readLoop(ctx context.Context, md *desc.MethodDescriptor, str
 			continue
 		}
 
-		name, toMarshal := t.resolveFrame(md, dm)
+		name, toMarshal, resolveErr := t.resolveFrame(md, dm)
+		var rawBuffer proto.Buffer
+		rawBuffer.SetDeterministic(true)
+		if err := rawBuffer.Marshal(dm); err != nil {
+			if !emit(transport.Frame{Name: name, Timestamp: time.Now(), Err: fmt.Errorf("grpc: marshal raw response: %w", err)}) {
+				return
+			}
+			continue
+		}
+		raw := append([]byte(nil), rawBuffer.Bytes()...)
 
 		data, err := toMarshal.MarshalJSONPB(t.jsonMarshaler)
 		if err != nil {
@@ -194,11 +202,17 @@ func (t *Transport) readLoop(ctx context.Context, md *desc.MethodDescriptor, str
 			}
 			continue
 		}
+		if resolveErr != nil {
+			if !emit(transport.Frame{Name: name, Data: data, Raw: raw, Timestamp: time.Now(), Err: resolveErr}) {
+				return
+			}
+			continue
+		}
 
 		if !emit(transport.Frame{
 			Name:      name,
 			Data:      data,
-			Raw:       data,
+			Raw:       raw,
 			Timestamp: time.Now(),
 		}) {
 			return
@@ -297,7 +311,7 @@ func (t *Transport) emitStreamEnd(stream recvStream, recvErr error, emit func(tr
 // one with a field actually populated wins — not just the first
 // declared — since oneof groups are independent of each other and any
 // of them could be the one a given message actually set.
-func (t *Transport) resolveFrame(md *desc.MethodDescriptor, dm *dynamic.Message) (name string, toMarshal *dynamic.Message) {
+func (t *Transport) resolveFrame(md *desc.MethodDescriptor, dm *dynamic.Message) (name string, toMarshal *dynamic.Message, err error) {
 	mode := t.cfg.Discriminator
 	if mode == "" {
 		// Auto: the design's stated happy path — a method whose response
@@ -315,7 +329,7 @@ func (t *Transport) resolveFrame(md *desc.MethodDescriptor, dm *dynamic.Message)
 	case "oneof":
 		oneofs := md.GetOutputType().GetOneOfs()
 		if len(oneofs) == 0 {
-			return md.GetOutputType().GetFullyQualifiedName(), dm
+			return md.GetOutputType().GetFullyQualifiedName(), dm, nil
 		}
 		var fd *desc.FieldDescriptor
 		var val any
@@ -326,23 +340,29 @@ func (t *Transport) resolveFrame(md *desc.MethodDescriptor, dm *dynamic.Message)
 			}
 		}
 		if fd == nil {
-			return "", dm // every oneof declared but nothing populated — proto3 allows this
+			return "", dm, fmt.Errorf("grpc: discriminator oneof has no populated field")
 		}
 		if inner, ok := val.(*dynamic.Message); ok {
-			return fd.GetName(), inner
+			return fd.GetName(), inner, nil
 		}
 		// A scalar (non-message) oneof case: nothing to unwrap.
-		return fd.GetName(), dm
+		return fd.GetName(), dm, nil
 	case "field:type":
 		v, err := dm.TryGetFieldByName(t.cfg.DiscriminatorField)
 		if err != nil {
-			return "", dm
+			return "", dm, fmt.Errorf("grpc: discriminator field %q lookup failed: %w", t.cfg.DiscriminatorField, err)
 		}
-		s, _ := v.(string)
-		return s, dm
+		s, ok := v.(string)
+		if !ok {
+			return "", dm, fmt.Errorf("grpc: discriminator field %q must be string, got %T", t.cfg.DiscriminatorField, v)
+		}
+		if s == "" {
+			return "", dm, fmt.Errorf("grpc: discriminator field %q is empty", t.cfg.DiscriminatorField)
+		}
+		return s, dm, nil
 	case "message_type":
-		return md.GetOutputType().GetFullyQualifiedName(), dm
+		return md.GetOutputType().GetFullyQualifiedName(), dm, nil
 	default: // "none"
-		return "", dm
+		return "", dm, nil
 	}
 }

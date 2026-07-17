@@ -259,6 +259,12 @@ logging:
     api_calls: true
 ```
 
+Authentication is opt-in. Omitting `auth:` sends no credential and does not
+read `API_KEY`; set an explicit `auth.type` and `token_env` to attach a
+credential. Review the configured URL carefully because the resulting header
+is sent wherever that config points. This is a breaking change for configs
+that relied on the former implicit `API_KEY` bearer default.
+
 See [`config.yaml.example`](config.yaml.example) for all options.
 
 Dialect `setup:` and `send:` templates can use the built-ins `{base_url}`,

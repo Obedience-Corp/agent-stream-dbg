@@ -148,3 +148,47 @@ func TestSSEClient_APIKeyAuthHeaderArrives(t *testing.T) {
 		t.Errorf("expected no Authorization header for api_key auth, got %q", got)
 	}
 }
+
+func TestSSEClient_NoAuthDoesNotAttachAuthorization(t *testing.T) {
+	fixture, err := testutil.ReferenceSessionFixturePath("../../testdata/fixtures")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, err := testutil.NewMockSSEServer(fixture, 0)
+	if err != nil {
+		t.Fatalf("NewMockSSEServer: %v", err)
+	}
+	defer srv.Close()
+
+	cfg := &config.EnhancedConfig{
+		Transport: config.TransportConfig{
+			BaseURL: srv.URL(),
+			Auth:    config.AuthConfig{Type: "none"},
+		},
+		Session: config.SessionConfig{ID: "no-auth-session"},
+	}
+	cfg.Normalize()
+	c := NewSSEClient(cfg)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := c.Connect(ctx, "hello"); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	defer c.Close()
+
+	select {
+	case <-c.Events():
+	case err := <-c.Errors():
+		t.Fatalf("unexpected client error: %v", err)
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for first event")
+	}
+
+	headers := srv.LastHeaders()
+	if got := headers.Get("Authorization"); got != "" {
+		t.Errorf("expected no Authorization header, got %q", got)
+	}
+	if got := headers.Get("X-API-Key"); got != "" {
+		t.Errorf("expected no X-API-Key header, got %q", got)
+	}
+}

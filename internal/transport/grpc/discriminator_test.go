@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -127,6 +128,50 @@ func TestDiscriminator_FieldType_ReadsConfiguredField(t *testing.T) {
 		if names[i] != w {
 			t.Errorf("frame %d: expected name %q, got %q", i, w, names[i])
 		}
+	}
+}
+
+func TestDiscriminator_FieldTypeErrorsSurfacePayload(t *testing.T) {
+	tests := []struct {
+		name  string
+		field string
+	}{
+		{name: "missing field", field: "not_present"},
+		{name: "non-string field", field: "sequence"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv, err := mockgrpc.New([]*agentstreampb.StreamEvent{
+				{Payload: &agentstreampb.StreamEvent_AgentContent{AgentContent: &agentstreampb.AgentContent{
+					AgentId: "agent_a", Content: "hi", Sequence: 1,
+				}}},
+			})
+			if err != nil {
+				t.Fatalf("mockgrpc.New: %v", err)
+			}
+			defer srv.Close()
+
+			tr := connectStreamingTransport(t, srv.Addr(), Config{
+				Method:             "/agentstream.v1.AgentStream/Stream",
+				Request:            map[string]any{"session_id": "s1"},
+				Discriminator:      "field:type",
+				DiscriminatorField: tt.field,
+			})
+
+			frame := <-tr.Frames()
+			if frame.Err == nil {
+				t.Fatalf("expected discriminator error for %s, got frame=%+v", tt.field, frame)
+			}
+			if frame.Name != "" {
+				t.Errorf("expected no fabricated frame name, got %q", frame.Name)
+			}
+			if len(frame.Data) == 0 || len(frame.Raw) == 0 {
+				t.Errorf("expected payload preserved with discriminator error, got data=%q raw=%q", frame.Data, frame.Raw)
+			}
+			if !strings.Contains(frame.Err.Error(), tt.field) {
+				t.Errorf("expected error to name discriminator field %q, got %v", tt.field, frame.Err)
+			}
+		})
 	}
 }
 

@@ -32,6 +32,7 @@ transport:
   stream_endpoint:
     url: "/api/stream"
     auth:
+      type: "bearer"
       token_env: "API_KEY"
 sesion:
   id_env: "SESSION_ID"
@@ -46,6 +47,7 @@ transport:
   stream_endpoint:
     url: "/api/stream"
     auth:
+      type: "bearer"
       typ: "bearer"
       token_env: "API_KEY"
 `,
@@ -150,6 +152,31 @@ session:
 	}
 }
 
+func TestLoadConfigFile_SSETransport_DefaultsToNoAuth(t *testing.T) {
+	t.Setenv("API_KEY", "")
+	path := writeYAMLConfig(t, `
+transport:
+  type: sse
+  base_url: "http://localhost:8080"
+  stream_endpoint:
+    url: "/api/stream"
+`)
+
+	cfg, err := LoadConfigFile(path)
+	if err != nil {
+		t.Fatalf("unexpected error loading minimal config: %v", err)
+	}
+	if cfg.Transport.Auth.Type != "none" {
+		t.Fatalf("expected auth type none, got %q", cfg.Transport.Auth.Type)
+	}
+	if name, value, ok := cfg.Transport.Auth.Header(); ok {
+		t.Fatalf("expected no auth header, got %s=%s", name, value)
+	}
+	if cfg.APIKey != "" {
+		t.Fatalf("expected no ambient API_KEY resolution, got %q", cfg.APIKey)
+	}
+}
+
 func TestLoadConfigFile_DialectFileReference(t *testing.T) {
 	_ = os.Setenv("API_KEY", "test-key")
 	defer func() { _ = os.Unsetenv("API_KEY") }()
@@ -160,6 +187,7 @@ transport:
   stream_endpoint:
     url: "/api/stream"
     auth:
+      type: "bearer"
       token_env: "API_KEY"
 dialect:
   file: "dialects/reference.yaml"
@@ -184,6 +212,7 @@ transport:
   stream_endpoint:
     url: "/api/stream"
     auth:
+      type: "bearer"
       token_env: "API_KEY"
 vars:
   region: "us-west"

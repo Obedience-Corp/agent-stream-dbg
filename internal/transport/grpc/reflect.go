@@ -31,6 +31,11 @@ import (
 // wrapped error string.
 var ErrReflectionUnavailable = errors.New("grpc: server reflection unavailable")
 
+// ErrReflectionTransient identifies a temporary connectivity failure while
+// contacting reflection, distinct from a server that deliberately does not
+// register the reflection service.
+var ErrReflectionTransient = errors.New("grpc: reflection connection transient")
+
 // Discover resolves method — a fully-qualified RPC path shaped like
 // "/agent.v1.AgentService/StreamSession" — to its *desc.MethodDescriptor
 // via server reflection. Zero generated code, zero SDK: this is what
@@ -53,8 +58,11 @@ func Discover(ctx context.Context, conn *grpc.ClientConn, method string) (*desc.
 
 	svc, err := client.ResolveService(serviceName)
 	if err != nil {
-		if isReflectionUnavailable(err) {
+		switch classifyReflectionError(err) {
+		case reflectionNoService:
 			return nil, fmt.Errorf("%w (target has no reflection.Register(s) — use --descriptor-set or a .proto instead): %w", ErrReflectionUnavailable, err)
+		case reflectionTransient:
+			return nil, fmt.Errorf("%w (server unreachable at target %q while contacting reflection): %w", ErrReflectionTransient, conn.Target(), err)
 		}
 		return nil, fmt.Errorf("grpc: resolve service %q via reflection: %w", serviceName, err)
 	}
@@ -66,13 +74,23 @@ func Discover(ctx context.Context, conn *grpc.ClientConn, method string) (*desc.
 	return md, nil
 }
 
-// isReflectionUnavailable reports whether err means the server has no
-// reflection service registered at all (Unimplemented/Unavailable on the
-// reflection RPC itself), as opposed to reflection working but the
-// requested symbol not existing (a NotFound-shaped error).
-func isReflectionUnavailable(err error) bool {
-	code := status.Code(err)
-	return code == codes.Unimplemented || code == codes.Unavailable
+type reflectionErrorClass string
+
+const (
+	reflectionOther     reflectionErrorClass = "other"
+	reflectionNoService reflectionErrorClass = "no_service"
+	reflectionTransient reflectionErrorClass = "transient"
+)
+
+func classifyReflectionError(err error) reflectionErrorClass {
+	switch status.Code(err) {
+	case codes.Unimplemented:
+		return reflectionNoService
+	case codes.Unavailable, codes.DeadlineExceeded:
+		return reflectionTransient
+	default:
+		return reflectionOther
+	}
 }
 
 // splitMethod parses "/pkg.Service/Method" into ("pkg.Service", "Method").

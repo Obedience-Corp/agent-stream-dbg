@@ -16,7 +16,7 @@ import (
 type Frame struct {
 	Name      string    // SSE event name; gRPC oneof case; "" if undiscriminated
 	Data      []byte    // JSON (SSE) or protojson-rendered (gRPC)
-	Raw       []byte    // exact bytes as received — never normalized
+	Raw       []byte    // wire-level bytes; gRPC dynamic fallback deterministically re-marshals the full envelope
 	Timestamp time.Time // local receipt time, always set
 	Err       error     // malformed frame — surfaced, not dropped
 }

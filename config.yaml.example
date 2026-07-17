@@ -22,7 +22,7 @@ transport:
       Accept: "text/event-stream"
       # Add custom headers as needed
 
-    # Authentication
+    # Authentication (opt-in; this header is sent to the URL named above)
     auth:
       type: "bearer"  # Options: bearer, api_key, basic, none
       token_env: "API_KEY"  # Read token from this env var (bearer, api_key)
