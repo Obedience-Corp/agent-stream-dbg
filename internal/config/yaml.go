@@ -116,8 +116,8 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 	if transportType == "" {
 		transportType = "sse"
 	}
-	if transportType != "sse" && transportType != "grpc" {
-		return nil, fmt.Errorf("unknown transport.type %q (must be \"sse\" or \"grpc\")", transportType)
+	if transportType != "sse" && transportType != "grpc" && transportType != "replay" {
+		return nil, fmt.Errorf("unknown transport.type %q (must be \"sse\", \"grpc\", or \"replay\")", transportType)
 	}
 
 	// Load environment variables (for secrets like API_KEY)
@@ -143,6 +143,18 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 			ProtoFile:          yamlCfg.Transport.ProtoFile,
 			ProtoImportPath:    yamlCfg.Transport.ProtoImportPath,
 			Auth:               auth,
+		}
+	case "replay":
+		auth, resolvedToken, err := resolveAuth(yamlCfg.Transport.Auth, "none")
+		if err != nil {
+			return nil, err
+		}
+		apiKey = resolvedToken
+		transport = TransportConfig{
+			Type:           "replay",
+			BaseURL:        yamlCfg.Transport.BaseURL,
+			StreamEndpoint: yamlCfg.Transport.StreamEndpoint.URL,
+			Auth:           auth,
 		}
 	default: // sse
 		auth, resolvedToken, err := resolveAuth(yamlCfg.Transport.StreamEndpoint.Auth, "bearer")
@@ -303,7 +315,7 @@ type DebugConfig struct {
 // TransportConfig holds transport-level connection configuration for
 // either transport type; which fields apply is determined by Type.
 type TransportConfig struct {
-	Type string // "sse" (default) or "grpc"
+	Type string // "sse" (default), "grpc", or "replay"
 
 	// SSE fields.
 	BaseURL        string

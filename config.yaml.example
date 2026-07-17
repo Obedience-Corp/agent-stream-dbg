@@ -38,8 +38,10 @@ dialect:
   file: "brainyard"
 
 # Vars: user-defined values available for interpolation in a dialect's
-# setup:/send: templates (phase 004).
-# vars: {}
+# setup:/send: templates. Built-ins (base_url, session_id, message, agents)
+# always win if a user var uses one of those names.
+vars:
+  region: "us-west"
 
 # Session Configuration
 session:

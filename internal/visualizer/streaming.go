@@ -10,9 +10,9 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/lancekrogers/stream-debugger/internal/config"
 	"github.com/lancekrogers/stream-debugger/internal/events"
 	dblogger "github.com/lancekrogers/stream-debugger/internal/logger"
-	"github.com/lancekrogers/stream-debugger/internal/mapping"
 )
 
 // urlQueryEscape safely escapes a message for URL query use
@@ -21,11 +21,8 @@ func urlQueryEscape(s string) string { return neturl.QueryEscape(s) }
 // startStreamingCmd initiates the streaming request and hands off to chunk reader
 func (m InteractiveModel) startStreamingCmd(message string, index int) tea.Cmd {
 	return func() tea.Msg {
-		vars := mapping.InterpolationVars{
-			BaseURL:   m.cfg.Transport.BaseURL,
-			SessionID: m.cfg.Session.ID,
-			Message:   message,
-		}
+		vars := config.InterpolationVarsFromConfig(m.cfg)
+		vars.Message = message
 		method, sendURL, sendBody, err := m.parser.RenderSend(vars)
 		if err != nil {
 			return streamErrorMsg{err: fmt.Errorf("failed to render send request: %w", err)}
@@ -134,11 +131,7 @@ func (m InteractiveModel) newSessionCmd() tea.Cmd {
 		}
 
 		// Call session setup (auto create)
-		vars := mapping.InterpolationVars{
-			BaseURL:   m.cfg.Transport.BaseURL,
-			SessionID: m.cfg.Session.ID,
-			Agents:    m.cfg.Session.DefaultAgents,
-		}
+		vars := config.InterpolationVarsFromConfig(m.cfg)
 		if sessionID, err := m.parser.RunSetup(context.Background(), vars, m.cfg.Transport.ResolvedHeaders(), nil); err == nil {
 			// Ensure we track the actual backend session id
 			m.cfg.Session.ID = sessionID

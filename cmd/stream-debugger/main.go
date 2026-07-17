@@ -271,11 +271,7 @@ func runInteractive(configPath, dialectOverride string) error {
 	if cfg.Session.AutoSetup {
 		fmt.Printf("🔄 Auto-setting up session...\n")
 
-		vars := mapping.InterpolationVars{
-			BaseURL:   cfg.Transport.BaseURL,
-			SessionID: cfg.Session.ID,
-			Agents:    cfg.Session.DefaultAgents,
-		}
+		vars := config.InterpolationVarsFromConfig(cfg)
 		sessionID, err := parser.RunSetup(context.Background(), vars, cfg.Transport.ResolvedHeaders(), nil)
 		if err != nil {
 			return fmt.Errorf("failed to setup session: %w", err)
@@ -327,11 +323,7 @@ func runStream(configPath string, message string, dialectOverride string) error 
 	if cfg.Session.AutoSetup {
 		fmt.Printf("🔄 Auto-setting up session...\n")
 
-		vars := mapping.InterpolationVars{
-			BaseURL:   cfg.Transport.BaseURL,
-			SessionID: cfg.Session.ID,
-			Agents:    cfg.Session.DefaultAgents,
-		}
+		vars := config.InterpolationVarsFromConfig(cfg)
 		sessionID, err := parser.RunSetup(context.Background(), vars, cfg.Transport.ResolvedHeaders(), nil)
 		if err != nil {
 			return fmt.Errorf("failed to setup session: %w", err)
