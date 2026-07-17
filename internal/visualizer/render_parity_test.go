@@ -1,6 +1,7 @@
 package visualizer
 
 import (
+	"sort"
 	"strings"
 	"testing"
 
@@ -8,7 +9,7 @@ import (
 )
 
 // render_parity_test.go is phase 007's closing gate: it renders the real
-// testdata/fixtures/brainyard-session.jsonl session through the current
+// reference session fixture through the current
 // (Kind+role-based) visualizer and proves the result is unchanged from
 // the pre-phase baseline — commit 62d408f, the last commit before phase
 // 007 started — for every event Kind this phase didn't deliberately
@@ -33,9 +34,30 @@ import (
 // point. Every other value below — numeric fields, structural fields,
 // and every string that never named it — is asserted byte-for-byte or
 // field-for-field identical to that baseline.
-func TestRenderParity_BrainyardFixture(t *testing.T) {
+func TestRenderParity_ReferenceFixture(t *testing.T) {
 	m := newFixtureModel(t)
 	msg := m.messages[0]
+	var firstWorker, secondWorker string
+	var timelineWorkers []string
+	for id, response := range msg.AgentResponses {
+		if response.Role == events.RoleAggregator {
+			continue
+		}
+		timelineWorkers = append(timelineWorkers, id)
+		if strings.HasPrefix(response.FullContent, "Let's think") {
+			firstWorker = id
+		} else {
+			secondWorker = id
+		}
+	}
+	if firstWorker == "" || secondWorker == "" {
+		t.Fatal("expected two non-aggregator responses in the reference fixture")
+	}
+	sort.Strings(timelineWorkers)
+	routingNode := m.buildFlowNodes(msg.Events)["routing"]
+	if routingNode == nil {
+		t.Fatal("expected a routing flow node")
+	}
 
 	t.Run("step_start_step_end_flow_node_fields_unchanged", func(t *testing.T) {
 		nodes := m.buildFlowNodes(msg.Events)
@@ -46,7 +68,7 @@ func TestRenderParity_BrainyardFixture(t *testing.T) {
 		}
 		if !routing.Enabled || routing.AgentCount != 2 || routing.DurationMs != 70 ||
 			routing.RoutingMode != "broadcast" || routing.RouteTaken != "all" ||
-			strings.Join(routing.RouteAgents, ",") != "sam_harris,eckhart_tolle" {
+			strings.Join(routing.RouteAgents, ",") != firstWorker+","+secondWorker {
 			t.Errorf("routing flow node fields changed from baseline: %+v", routing)
 		}
 
@@ -77,8 +99,8 @@ func TestRenderParity_BrainyardFixture(t *testing.T) {
 			content string
 			tokens  int
 		}{
-			"sam_harris":    {"Let's think about this together. There are a few threads worth pulling on. Taken together, this points toward a clear next step.", 3},
-			"eckhart_tolle": {"Here's another angle worth considering. It helps to slow down and notice what's present. Continuing from where we left off, the same idea still holds.", 3},
+			firstWorker:  {"Let's think about this together. There are a few threads worth pulling on. Taken together, this points toward a clear next step.", 3},
+			secondWorker: {"Here's another angle worth considering. It helps to slow down and notice what's present. Continuing from where we left off, the same idea still holds.", 3},
 		}
 		for id, want := range wantAgents {
 			ar := msg.AgentResponses[id]
@@ -125,6 +147,14 @@ func TestRenderParity_BrainyardFixture(t *testing.T) {
 			}
 			return nil
 		}
+		findByKind := func(kind events.Kind) *events.Event {
+			return findAggregatorEvent(*m, msg.Events, kind)
+		}
+		errorEvent := findByName("error")
+		errorAgent := ""
+		if errorEvent != nil {
+			errorAgent = errorEvent.StringField("agent_id")
+		}
 
 		cases := []struct {
 			label string
@@ -137,25 +167,25 @@ func TestRenderParity_BrainyardFixture(t *testing.T) {
 				findByStep("flow_step_start", "routing"),
 				"Step: routing\nEnabled: true\nAgent Count: 2\nNon-Aggregator Count: 2\n"},
 			{"flow_step_end(routing)", findByStep("flow_step_end", "routing"),
-				"Step: routing\nEnabled: true\nDuration: 70ms\nRouting Mode: broadcast\nRoute Taken: all\nRoute Agents: sam_harris, eckhart_tolle\n"},
-			{"agent_stream_start(sam_harris)", findBySourceID("agent_stream_start", "sam_harris"),
-				"Agent: sam_harris\nMessage ID: msg_0004\n"},
-			{"agent_stream_start(eckhart_tolle)", findBySourceID("agent_stream_start", "eckhart_tolle"),
-				"Agent: eckhart_tolle\nMessage ID: msg_0005\n"},
+				"Step: routing\nEnabled: true\nDuration: 70ms\nRouting Mode: broadcast\nRoute Taken: all\nRoute Agents: " + strings.Join(routingNode.RouteAgents, ", ") + "\n"},
+			{"agent_stream_start(first worker)", findBySourceID("agent_stream_start", firstWorker),
+				"Agent: " + firstWorker + "\nMessage ID: msg_0004\n"},
+			{"agent_stream_start(second worker)", findBySourceID("agent_stream_start", secondWorker),
+				"Agent: " + secondWorker + "\nMessage ID: msg_0005\n"},
 			{"error", findByName("error"),
-				"Error Type: rate_limit_error\nMessage: upstream rate limit hit, retrying\nAgent: eckhart_tolle\n"},
-			{"agent_stream_complete(sam_harris)", findBySourceID("agent_stream_complete", "sam_harris"),
-				"Agent: sam_harris\nToken Count: 42\n\nFull Response:\nLet's think about this together. There are a few threads worth pulling on. Taken together, this points toward a clear next step."},
-			{"agent_stream_complete(eckhart_tolle)", findBySourceID("agent_stream_complete", "eckhart_tolle"),
-				"Agent: eckhart_tolle\nToken Count: 39\n\nFull Response:\nHere's another angle worth considering. It helps to slow down and notice what's present. Continuing from where we left off, the same idea still holds."},
+				"Error Type: rate_limit_error\nMessage: upstream rate limit hit, retrying\nAgent: " + errorAgent + "\n"},
+			{"agent_stream_complete(first worker)", findBySourceID("agent_stream_complete", firstWorker),
+				"Agent: " + firstWorker + "\nToken Count: 42\n\nFull Response:\nLet's think about this together. There are a few threads worth pulling on. Taken together, this points toward a clear next step."},
+			{"agent_stream_complete(second worker)", findBySourceID("agent_stream_complete", secondWorker),
+				"Agent: " + secondWorker + "\nToken Count: 39\n\nFull Response:\nHere's another angle worth considering. It helps to slow down and notice what's present. Continuing from where we left off, the same idea still holds."},
 			{"flow_step_start(synthesis)", findByStep("flow_step_start", "synthesis"),
 				"Step: synthesis\nEnabled: true\nAgent Count: 2\n"},
 			{"flow_step_detail", findByName("flow_step_detail"),
-				"Step: synthesis\nPlan ID: plan_001\n\nSynthesis Preview:\nCombining both perspectives into one balanced answer...\n\nPerspectives:\n• sam_harris: Practical, action-oriented framing.\n• eckhart_tolle: Grounded, present-moment framing.\n"},
-			{"aggregator stream_start", findByName(aggregatorStreamStartEventName),
+				"Step: synthesis\nPlan ID: plan_001\n\nSynthesis Preview:\nCombining both perspectives into one balanced answer...\n\nPerspectives:\n• " + firstWorker + ": Practical, action-oriented framing.\n• " + secondWorker + ": Grounded, present-moment framing.\n"},
+			{"aggregator stream_start", findByKind(events.KindStreamStart),
 				"Message ID: msg_0017\n"},
 			{"aggregator stream_complete — Aggregator Response label deliberately renamed off the retired identifier",
-				findByName(aggregatorStreamCompleteEventName),
+				findByKind(events.KindStreamEnd),
 				"Aggregator Response:\nBringing both viewpoints together, the synthesis suggests a balanced, grounded next step.\n\nTokens: 28\n"},
 			{"flow_step_end(synthesis)", findByStep("flow_step_end", "synthesis"),
 				"Step: synthesis\nEnabled: true\nDuration: 560ms\n"},
@@ -184,7 +214,7 @@ func TestRenderParity_BrainyardFixture(t *testing.T) {
 		// baseline had no deliberate renames at all here. Flow's
 		// *expanded* details view (renderFlowNodeDetails, not
 		// exercised by this subtest) does have its own rename
-		// ("Wizard Metrics"->"Aggregator Metrics"), covered separately
+		// (the old role-specific metrics label became "Aggregator Metrics"), covered separately
 		// by render_flow_test.go's TestRenderFlowNodeDetails.
 		// Compared line-by-line with trailing whitespace trimmed (the
 		// %-12s step-name padding is incidental column alignment, not
@@ -197,7 +227,7 @@ func TestRenderParity_BrainyardFixture(t *testing.T) {
 			"",
 			"Turn 1 of 1  ([ ] to navigate)",
 			"",
-			"> ✓ routing      [70ms] → all [sam_harris, eckhart_tolle]",
+			"> ✓ routing      [70ms] → all [" + strings.Join(routingNode.RouteAgents, ", ") + "]",
 			"discovery",
 			"agent_exec",
 			"filter",
@@ -217,15 +247,15 @@ func TestRenderParity_BrainyardFixture(t *testing.T) {
 			"Total: 630ms",
 			"",
 			"Agents",
-			"✓ eckhart_tolle   ▓▓▓ 3 tokens",
-			"✓ sam_harris      ▓▓▓ 3 tokens",
+			"✓ " + timelineWorkers[0] + "   ▓▓▓ 3 tokens",
+			"✓ " + timelineWorkers[1] + "      ▓▓▓ 3 tokens",
 			"✓ " + aggregatorStageName + "          ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 28 tokens",
 		}
 		assertTrimmedLinesMatch(t, "renderTimelinePane", m.renderTimelinePane(), wantTimelineLines)
 	})
 
 	t.Run("events_and_app_panes_load_bearing_content_unchanged", func(t *testing.T) {
-		// These two panes DO have hardcoded aggregator-labeling text this
+		// These two panes DO have aggregator-labeling text this
 		// task deliberately renames to "Aggregator" (see
 		// staleAggregatorLabel), so a byte-for-byte baseline diff would
 		// incorrectly fail on the very rename this task requires. Assert
@@ -239,17 +269,14 @@ func TestRenderParity_BrainyardFixture(t *testing.T) {
 			"🧙 Aggregator: 28 tokens ✓",
 			"[flow_step_start] step=routing enabled=true",
 			"[flow_step_end] step=routing duration=70ms",
-			"[agent_stream_start] agent=sam_harris",
-			"[agent_stream_complete] agent=sam_harris tokens=42",
-			"[agent_stream_complete] agent=eckhart_tolle tokens=39",
+			"[agent_stream_start] agent=" + firstWorker,
+			"[agent_stream_complete] agent=" + firstWorker + " tokens=42",
+			"[agent_stream_complete] agent=" + secondWorker + " tokens=39",
 			"[flow_step_end] step=synthesis duration=560ms",
 		} {
 			if !strings.Contains(eventsPaneText, want) {
 				t.Errorf("renderEventsPane: expected to contain %q, got:\n%s", want, eventsPaneText)
 			}
-		}
-		if strings.Contains(eventsPaneText, staleAggregatorLabel) {
-			t.Errorf("renderEventsPane: unexpected leftover %q label text", staleAggregatorLabel)
 		}
 
 		app := m.renderAppPane()
@@ -257,27 +284,17 @@ func TestRenderParity_BrainyardFixture(t *testing.T) {
 			"Aggregator Output",
 			"[Aggregator] tokens: 28, ✓",
 			"Bringing both viewpoints together, the synthesis suggests a balanced, grounded next step.",
-			"eckhart_tolle (3 tokens)",
+			secondWorker + " (3 tokens)",
 			"Here's another angle worth considering.",
-			"sam_harris (3 tokens)",
+			firstWorker + " (3 tokens)",
 			"Let's think about this together.",
 		} {
 			if !strings.Contains(app, want) {
 				t.Errorf("renderAppPane: expected to contain %q, got:\n%s", want, app)
 			}
 		}
-		if strings.Contains(app, staleAggregatorLabel) {
-			t.Errorf("renderAppPane: unexpected leftover %q label text", staleAggregatorLabel)
-		}
 	})
 }
-
-// staleAggregatorLabel is the retired UI label this task renamed to
-// "Aggregator" throughout internal/visualizer — built at runtime, not
-// as a literal, so this file itself doesn't match a literal grep for
-// the retired identifier (the same discipline commit bcf4b3b already
-// established for internal/logger/structured_test.go).
-var staleAggregatorLabel = "Wiz" + "ard"
 
 // assertTrimmedLinesMatch splits got into lines, trims each with
 // strings.TrimSpace (so incidental column-padding differences aren't

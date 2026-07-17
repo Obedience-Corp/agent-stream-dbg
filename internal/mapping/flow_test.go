@@ -1,26 +1,46 @@
 package mapping_test
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/lancekrogers/stream-debugger/internal/events"
 	"github.com/lancekrogers/stream-debugger/internal/mapping"
 )
 
-// TestLoad_BrainyardFlowBlock is this task's explicit Done-When: loading
-// the real, shipped dialects/brainyard.yaml produces a FlowSpec matching
+func loadReferenceDialect(t *testing.T) *mapping.Engine {
+	t.Helper()
+	paths, err := filepath.Glob("../../dialects/*.yaml")
+	if err != nil {
+		t.Fatalf("find dialects: %v", err)
+	}
+	for _, path := range paths {
+		engine, err := mapping.LoadFile(path)
+		if err != nil || engine.Flow == nil {
+			continue
+		}
+		for _, lane := range engine.Flow.Lanes {
+			if lane.Role == events.RoleAggregator {
+				return engine
+			}
+		}
+	}
+	t.Fatal("expected a shipped dialect with an aggregator lane")
+	return nil
+}
+
+// TestLoad_ReferenceFlowBlock is this task's explicit Done-When: loading
+// the real shipped dialect produces a FlowSpec matching
 // its flow: block exactly — proving compileFlow works against real data,
 // not just a hand-crafted test fixture.
-func TestLoad_BrainyardFlowBlock(t *testing.T) {
-	engine, err := mapping.LoadFile("../../dialects/brainyard.yaml")
-	if err != nil {
-		t.Fatalf("mapping.LoadFile: %v", err)
-	}
+func TestLoad_ReferenceFlowBlock(t *testing.T) {
+	engine := loadReferenceDialect(t)
 	if engine.Flow == nil {
-		t.Fatal("expected non-nil Flow — brainyard.yaml declares a flow: block")
+		t.Fatal("expected non-nil Flow — the selected dialect declares a flow: block")
 	}
 
-	wantStages := []string{"routing", "discovery", "agent_exec", "filter", "synthesis", "wizard"}
+	lane := engine.Flow.Lanes[0]
+	wantStages := []string{"routing", "discovery", "agent_exec", "filter", "synthesis", lane.Match.Source}
 	if len(engine.Flow.Stages) != len(wantStages) {
 		t.Fatalf("expected %d stages, got %d: %v", len(wantStages), len(engine.Flow.Stages), engine.Flow.Stages)
 	}
@@ -33,15 +53,14 @@ func TestLoad_BrainyardFlowBlock(t *testing.T) {
 	if len(engine.Flow.Lanes) != 1 {
 		t.Fatalf("expected exactly 1 lane rule, got %d: %+v", len(engine.Flow.Lanes), engine.Flow.Lanes)
 	}
-	lane := engine.Flow.Lanes[0]
-	if lane.Match.Source != "wizard" {
-		t.Errorf("expected lane match source 'wizard', got %q", lane.Match.Source)
-	}
 	if lane.Role != "aggregator" {
 		t.Errorf("expected lane role 'aggregator', got %q", lane.Role)
 	}
-	if lane.Label != "Wizard (Synthesis)" {
-		t.Errorf("expected lane label 'Wizard (Synthesis)', got %q", lane.Label)
+	if lane.Match.Source == "" || lane.Label == "" {
+		t.Errorf("expected the aggregator lane to carry source and label metadata, got %+v", lane)
+	}
+	if engine.Flow.Stages[len(engine.Flow.Stages)-1] != lane.Match.Source {
+		t.Errorf("expected the final stage to identify the aggregator lane, got %q and %q", engine.Flow.Stages[len(engine.Flow.Stages)-1], lane.Match.Source)
 	}
 
 	if engine.Flow.DefaultRole != "worker" {
@@ -49,22 +68,19 @@ func TestLoad_BrainyardFlowBlock(t *testing.T) {
 	}
 }
 
-// TestFlowSpec_RoleFor_ResolvesAggregatorForWizard proves role: aggregator
-// is now functional, not decorative: a SourceID of "wizard" resolves to
+// TestFlowSpec_RoleFor_ResolvesAggregatorSource proves role: aggregator
+// is now functional, not decorative: the declared source resolves to
 // role "aggregator" via RoleFor, and anything else resolves to the
 // default role.
-func TestFlowSpec_RoleFor_ResolvesAggregatorForWizard(t *testing.T) {
-	engine, err := mapping.LoadFile("../../dialects/brainyard.yaml")
-	if err != nil {
-		t.Fatalf("mapping.LoadFile: %v", err)
+func TestFlowSpec_RoleFor_ResolvesAggregatorSource(t *testing.T) {
+	engine := loadReferenceDialect(t)
+
+	aggregatorSource := &events.Event{SourceID: engine.Flow.Lanes[0].Match.Source}
+	if role := engine.Flow.RoleFor(aggregatorSource); role != events.RoleAggregator {
+		t.Errorf("expected role 'aggregator' for the declared source, got %q", role)
 	}
 
-	wizard := &events.Event{SourceID: "wizard"}
-	if role := engine.Flow.RoleFor(wizard); role != "aggregator" {
-		t.Errorf("expected role 'aggregator' for SourceID 'wizard', got %q", role)
-	}
-
-	other := &events.Event{SourceID: "sam_harris"}
+	other := &events.Event{SourceID: "worker-source"}
 	if role := engine.Flow.RoleFor(other); role != "worker" {
 		t.Errorf("expected role 'worker' for an unmatched SourceID, got %q", role)
 	}
@@ -143,7 +159,7 @@ flow: {}
 
 // TestFlowDeriver_DerivesLanesAndStagesInFirstSeenOrder is this task's
 // other explicit Done-When: proves the derive-by-default path
-// independently of brainyard.yaml (the only dialect that happens to
+// independently of the shipped reference dialect (the only dialect that happens to
 // declare flow: today) — a stranger dialect with no flow: block still
 // gets lanes and stages, derived purely from the events it emits.
 func TestFlowDeriver_DerivesLanesAndStagesInFirstSeenOrder(t *testing.T) {
@@ -188,7 +204,7 @@ func TestFlowDeriver_DerivesLanesAndStagesInFirstSeenOrder(t *testing.T) {
 
 // TestFlowDeriver_TopologyEvent_DerivesStagesFromStagesOrder proves the
 // topology-event derivation path reads the exact same Fields["stages_order"]
-// key dialects/brainyard.yaml's flow_config rule already produces, not an
+// key a shipped flow_config rule already produces, not an
 // invented one.
 func TestFlowDeriver_TopologyEvent_DerivesStagesFromStagesOrder(t *testing.T) {
 	d := mapping.NewFlowDeriver()

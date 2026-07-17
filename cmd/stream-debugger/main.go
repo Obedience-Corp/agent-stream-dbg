@@ -123,7 +123,7 @@ func main() {
    extractions, 1 otherwise — usable as a CI check for a shipped dialect.
 
    Example:
-     $ stream-debugger explain --dialect dialects/brainyard.yaml --from testdata/fixtures/brainyard-session.jsonl`,
+     $ stream-debugger explain --dialect dialects/reference.yaml --from testdata/fixtures/session.jsonl`,
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: "dialect", Required: true, Usage: "Path to the dialect YAML file"},
 					&cli.StringFlag{Name: "from", Usage: "JSONL fixture to trace (mutually exclusive with --url)"},

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/lancekrogers/stream-debugger/internal/events"
 )
 
 // handleKeyMsg handles tea.KeyMsg within Update, extracted verbatim (pure
@@ -283,13 +284,11 @@ func (m InteractiveModel) handleKeyMsg(msg tea.KeyMsg) (InteractiveModel, tea.Cm
 				steps := m.dialectFlow.stages()
 				if m.selectedStepIndex < len(steps) {
 					step := steps[m.selectedStepIndex]
-					switch step {
-					case aggregatorStageName, "synthesis":
+					switch {
+					case m.dialectFlow.stageRole(step) == events.RoleAggregator:
 						m.appFocus = AppFocusAggregator
-					case "agent_exec":
-						m.appFocus = AppFocusAgents
 					default:
-						m.appFocus = AppFocusAggregator
+						m.appFocus = AppFocusAgents
 					}
 					m.activePane = PaneApp
 					m.contentDirty = true

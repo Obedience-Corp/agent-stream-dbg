@@ -17,10 +17,9 @@ func TestRenderEventExpandedPlainText(t *testing.T) {
 
 	var aggComplete, agentComplete *events.Event
 	for _, evt := range m.messages[0].Events {
-		switch evt.Name {
-		case aggregatorStreamCompleteEventName:
+		if evt.Kind == events.KindStreamEnd && m.dialectFlow.role(evt) == events.RoleAggregator {
 			aggComplete = evt
-		case "agent_stream_complete":
+		} else if evt.Name == "agent_stream_complete" {
 			if agentComplete == nil {
 				agentComplete = evt
 			}

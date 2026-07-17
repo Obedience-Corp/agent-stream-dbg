@@ -14,6 +14,23 @@ import (
 // Used for Ctrl+S export to file
 func (m InteractiveModel) renderEventExpandedPlainText(evt *events.Event, msg *Message) string {
 	var b strings.Builder
+	if evt.Kind == events.KindStreamStart && m.dialectFlow.role(evt) == events.RoleAggregator {
+		b.WriteString("Message ID: " + evt.StringField("message_id") + "\n")
+		return b.String()
+	}
+	if evt.Kind == events.KindStreamEnd && m.dialectFlow.role(evt) == events.RoleAggregator {
+		if msg != nil {
+			if agg := m.aggregatorResponse(*msg); agg != nil && agg.FullContent != "" {
+				b.WriteString("Aggregator Response:\n")
+				b.WriteString(agg.FullContent)
+				b.WriteString("\n")
+				if agg.TokenCount > 0 {
+					b.WriteString(fmt.Sprintf("\nTokens: %d\n", agg.TokenCount))
+				}
+			}
+		}
+		return b.String()
+	}
 
 	switch evt.Name {
 	case "filter_detail":
@@ -60,7 +77,7 @@ func (m InteractiveModel) renderEventExpandedPlainText(evt *events.Event, msg *M
 		b.WriteString("Stages Order: " + strings.Join(evt.StringSliceField("stages_order"), " → ") + "\n")
 		b.WriteString("Routing Mode: " + evt.StringField("routing_mode") + "\n")
 		b.WriteString(fmt.Sprintf("Agent Count: %d\n", evt.IntField("agent_count")))
-		b.WriteString(fmt.Sprintf("Non-Aggregator Count: %d\n", evt.IntField(nonAggregatorCountFieldKey)))
+		b.WriteString(fmt.Sprintf("Non-Aggregator Count: %d\n", evt.ParticipantCount()))
 		if stagesEnabled := evt.BoolMapField("stages_enabled"); len(stagesEnabled) > 0 {
 			b.WriteString("Stages Enabled:\n")
 			for stage, enabled := range stagesEnabled {
@@ -73,8 +90,8 @@ func (m InteractiveModel) renderEventExpandedPlainText(evt *events.Event, msg *M
 		if agentCount := evt.IntField("agent_count"); agentCount > 0 {
 			b.WriteString(fmt.Sprintf("Agent Count: %d\n", agentCount))
 		}
-		if nonAggregatorCount := evt.IntField(nonAggregatorCountFieldKey); nonAggregatorCount > 0 {
-			b.WriteString(fmt.Sprintf("Non-Aggregator Count: %d\n", nonAggregatorCount))
+		if participantCount := evt.ParticipantCount(); participantCount > 0 {
+			b.WriteString(fmt.Sprintf("Non-Aggregator Count: %d\n", participantCount))
 		}
 	case "flow_step_end":
 		b.WriteString("Step: " + evt.StringField("step") + "\n")
@@ -128,20 +145,6 @@ func (m InteractiveModel) renderEventExpandedPlainText(evt *events.Event, msg *M
 		}
 		if agents := evt.StringSliceField("agents"); len(agents) > 0 {
 			b.WriteString("\nAgents: " + strings.Join(agents, ", ") + "\n")
-		}
-	case aggregatorStreamStartEventName:
-		b.WriteString("Message ID: " + evt.StringField("message_id") + "\n")
-	case aggregatorStreamCompleteEventName:
-		// Show full aggregator response from AgentResponses
-		if msg != nil {
-			if agg := m.aggregatorResponse(*msg); agg != nil && agg.FullContent != "" {
-				b.WriteString("Aggregator Response:\n")
-				b.WriteString(agg.FullContent)
-				b.WriteString("\n")
-				if agg.TokenCount > 0 {
-					b.WriteString(fmt.Sprintf("\nTokens: %d\n", agg.TokenCount))
-				}
-			}
 		}
 	case "agent_stream_start":
 		b.WriteString("Agent: " + evt.SourceID + "\n")

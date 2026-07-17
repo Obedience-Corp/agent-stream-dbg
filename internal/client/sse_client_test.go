@@ -13,7 +13,11 @@ import (
 // the mock SSE server replaying the recorded demo fixture, proving the two
 // integrate correctly offline (no backend, key, or network required).
 func TestSSEClient_EndToEndAgainstMockServer(t *testing.T) {
-	srv, err := testutil.NewMockSSEServer("../../testdata/fixtures/brainyard-session.jsonl", 0)
+	fixture, err := testutil.ReferenceSessionFixturePath("../../testdata/fixtures")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, err := testutil.NewMockSSEServer(fixture, 0)
 	if err != nil {
 		t.Fatalf("NewMockSSEServer: %v", err)
 	}
@@ -73,7 +77,6 @@ collect:
 	wantTypes := []string{
 		"session_start",
 		"agent_content",
-		"wizard_content",
 		"error",
 		"session_complete",
 	}
@@ -83,10 +86,12 @@ collect:
 		}
 	}
 
-	wantAgents := []string{"sam_harris", "eckhart_tolle"}
-	for _, wa := range wantAgents {
-		if !seenAgents[wa] {
-			t.Errorf("expected to see agent %q, did not", wa)
+	if len(seenAgents) != 3 {
+		t.Errorf("expected three distinct event sources, got %v", seenAgents)
+	}
+	for agentID := range seenAgents {
+		if agentID == "" {
+			t.Error("expected every event source to be non-empty")
 		}
 	}
 }
@@ -95,7 +100,11 @@ collect:
 // (with a custom header_name) actually reaches the backend, against the
 // mock server, in place of the previously hardcoded Authorization: Bearer.
 func TestSSEClient_APIKeyAuthHeaderArrives(t *testing.T) {
-	srv, err := testutil.NewMockSSEServer("../../testdata/fixtures/brainyard-session.jsonl", 0)
+	fixture, err := testutil.ReferenceSessionFixturePath("../../testdata/fixtures")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, err := testutil.NewMockSSEServer(fixture, 0)
 	if err != nil {
 		t.Fatalf("NewMockSSEServer: %v", err)
 	}

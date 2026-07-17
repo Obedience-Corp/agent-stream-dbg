@@ -162,14 +162,14 @@ transport:
     auth:
       token_env: "API_KEY"
 dialect:
-  file: "dialects/brainyard.yaml"
+  file: "dialects/reference.yaml"
 `)
 
 	cfg, err := LoadConfigFile(path)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.Dialect.File != "dialects/brainyard.yaml" {
+	if cfg.Dialect.File != "dialects/reference.yaml" {
 		t.Errorf("expected dialect.file to be stored, got %q", cfg.Dialect.File)
 	}
 }

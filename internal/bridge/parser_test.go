@@ -2,11 +2,37 @@ package bridge
 
 import (
 	"bufio"
+	"encoding/json"
 	"os"
 	"testing"
 
 	"github.com/lancekrogers/stream-debugger/internal/events"
+	"github.com/lancekrogers/stream-debugger/internal/testutil"
 )
+
+func referenceFixturePath(t *testing.T) string {
+	t.Helper()
+	path, err := testutil.ReferenceSessionFixturePath("../../testdata/fixtures")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func referenceAggregatorSource(t *testing.T) string {
+	t.Helper()
+	flow := Flow()
+	if flow == nil {
+		t.Fatal("expected the selected dialect to declare flow metadata")
+	}
+	for _, lane := range flow.Lanes {
+		if lane.Role == events.RoleAggregator {
+			return lane.Match.Source
+		}
+	}
+	t.Fatal("expected the selected dialect to declare an aggregator lane")
+	return ""
+}
 
 // TestParser_FixtureCoverage feeds every line of the 002 demo fixture
 // through the bridge parser and checks the decoded Kind/SourceID/Content
@@ -14,7 +40,7 @@ import (
 // dialect covers every event type recorded in a real session, matching the
 // old hardcoded switch's behavior exactly.
 func TestParser_FixtureCoverage(t *testing.T) {
-	f, err := os.Open("../../testdata/fixtures/brainyard-session.jsonl")
+	f, err := os.Open(referenceFixturePath(t))
 	if err != nil {
 		t.Fatalf("failed to open fixture: %v", err)
 	}
@@ -69,11 +95,11 @@ func TestParser_FixtureCoverage(t *testing.T) {
 		}
 	}
 
-	wantSources := []string{"sam_harris", "eckhart_tolle", "wizard"}
-	for _, s := range wantSources {
-		if sawSources[s] == 0 {
-			t.Errorf("expected at least one event from source %q, saw none", s)
-		}
+	if len(sawSources) != 3 {
+		t.Errorf("expected three distinct event sources, got %v", sawSources)
+	}
+	if source := referenceAggregatorSource(t); sawSources[source] == 0 {
+		t.Errorf("expected at least one event from the declared aggregator source %q", source)
 	}
 }
 
@@ -83,43 +109,43 @@ func TestParser_FixtureCoverage(t *testing.T) {
 func TestParser_FixtureExactDecode(t *testing.T) {
 	type want struct {
 		kind    events.Kind
-		source  string
 		content string
 		seq     int
 	}
-	// Line order matches testdata/fixtures/brainyard-session.jsonl exactly.
+	// Line order matches the selected reference session fixture exactly.
 	expected := []want{
-		{events.KindSessionStart, "", "", 0},                                                                       // 1: session_start
-		{events.KindStepStart, "", "", 0},                                                                          // 2: flow_step_start (routing)
-		{events.KindStepEnd, "", "", 0},                                                                            // 3: flow_step_end (routing)
-		{events.KindStreamStart, "sam_harris", "", 0},                                                              // 4: agent_stream_start
-		{events.KindStreamStart, "eckhart_tolle", "", 0},                                                           // 5: agent_stream_start
-		{events.KindContent, "sam_harris", "Let's think about this together.", 1},                                  // 6: agent_content
-		{events.KindContent, "eckhart_tolle", "Here's another angle worth considering.", 1},                        // 7: agent_content
-		{events.KindContent, "sam_harris", " There are a few threads worth pulling on.", 2},                        // 8: agent_content
-		{events.KindContent, "eckhart_tolle", " It helps to slow down and notice what's present.", 2},              // 9: agent_content
-		{events.KindError, "", "", 0},                                                                              // 10: error (dialect doesn't declare source: for error rule)
-		{events.KindContent, "eckhart_tolle", " Continuing from where we left off, the same idea still holds.", 3}, // 11: agent_content
-		{events.KindContent, "sam_harris", " Taken together, this points toward a clear next step.", 3},            // 12: agent_content
-		{events.KindStreamEnd, "sam_harris", "", 0},                                                                // 13: agent_stream_complete
-		{events.KindStreamEnd, "eckhart_tolle", "", 0},                                                             // 14: agent_stream_complete
-		{events.KindStepStart, "", "", 0},                                                                          // 15: flow_step_start (synthesis)
-		{events.KindDetail, "", "", 0},                                                                             // 16: flow_step_detail
-		{events.KindStreamStart, "wizard", "", 0},                                                                  // 17: wizard_stream_start
-		{events.KindContent, "wizard", "Bringing both viewpoints together,", 1},                                    // 18: wizard_content
-		{events.KindContent, "wizard", " the synthesis suggests a balanced, grounded next step.", 2},               // 19: wizard_content
-		{events.KindStreamEnd, "wizard", "", 0},                                                                    // 20: wizard_stream_complete
-		{events.KindStepEnd, "", "", 0},                                                                            // 21: flow_step_end (synthesis)
-		{events.KindSessionEnd, "", "", 0},                                                                         // 22: session_complete
+		{events.KindSessionStart, "", 0},
+		{events.KindStepStart, "", 0},
+		{events.KindStepEnd, "", 0},
+		{events.KindStreamStart, "", 0},
+		{events.KindStreamStart, "", 0},
+		{events.KindContent, "Let's think about this together.", 1},
+		{events.KindContent, "Here's another angle worth considering.", 1},
+		{events.KindContent, " There are a few threads worth pulling on.", 2},
+		{events.KindContent, " It helps to slow down and notice what's present.", 2},
+		{events.KindError, "", 0},
+		{events.KindContent, " Continuing from where we left off, the same idea still holds.", 3},
+		{events.KindContent, " Taken together, this points toward a clear next step.", 3},
+		{events.KindStreamEnd, "", 0},
+		{events.KindStreamEnd, "", 0},
+		{events.KindStepStart, "", 0},
+		{events.KindDetail, "", 0},
+		{events.KindStreamStart, "", 0},
+		{events.KindContent, "Bringing both viewpoints together,", 1},
+		{events.KindContent, " the synthesis suggests a balanced, grounded next step.", 2},
+		{events.KindStreamEnd, "", 0},
+		{events.KindStepEnd, "", 0},
+		{events.KindSessionEnd, "", 0},
 	}
 
-	f, err := os.Open("../../testdata/fixtures/brainyard-session.jsonl")
+	f, err := os.Open(referenceFixturePath(t))
 	if err != nil {
 		t.Fatalf("failed to open fixture: %v", err)
 	}
 	defer func() { _ = f.Close() }()
 
 	parser := NewParser()
+	aggregatorSource := referenceAggregatorSource(t)
 	var lineNum int
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
@@ -139,8 +165,20 @@ func TestParser_FixtureExactDecode(t *testing.T) {
 		if evt.Kind != w.kind {
 			t.Errorf("line %d: expected kind %v, got %v", lineNum+1, w.kind, evt.Kind)
 		}
-		if evt.SourceID != w.source {
-			t.Errorf("line %d: expected source %q, got %q", lineNum+1, w.source, evt.SourceID)
+		var wire struct {
+			AgentID string `json:"agent_id"`
+		}
+		_ = json.Unmarshal(line, &wire)
+		wantSource := ""
+		switch evt.Kind {
+		case events.KindStreamStart, events.KindStreamEnd, events.KindContent:
+			wantSource = wire.AgentID
+			if wantSource == "" {
+				wantSource = aggregatorSource
+			}
+		}
+		if evt.SourceID != wantSource {
+			t.Errorf("line %d: expected source %q, got %q", lineNum+1, wantSource, evt.SourceID)
 		}
 		if evt.Content != w.content {
 			t.Errorf("line %d: expected content %q, got %q", lineNum+1, w.content, evt.Content)
@@ -201,17 +239,43 @@ func TestParser_NeverErrorsOnMalformedJSON(t *testing.T) {
 	}
 }
 
-func TestParser_WizardIsConstDeclaredPseudoAgent(t *testing.T) {
+func TestParser_DeclaredConstantSourceIsPreserved(t *testing.T) {
 	parser := NewParser()
 
-	evt, err := parser.Parse("wizard_content", []byte(`{"type":"wizard_content","content":"synthesis text","sequence":1}`))
+	path := referenceFixturePath(t)
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	var eventName string
+	var data []byte
+	var expectedContent string
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		var probe struct {
+			Type    string `json:"type"`
+			AgentID string `json:"agent_id"`
+			Content string `json:"content"`
+		}
+		line := append([]byte(nil), scanner.Bytes()...)
+		if json.Unmarshal(line, &probe) == nil && probe.Content != "" && probe.AgentID == "" {
+			eventName, data, expectedContent = probe.Type, line, probe.Content
+			break
+		}
+	}
+	if eventName == "" {
+		t.Fatal("expected a content frame with a declared constant source")
+	}
+
+	evt, err := parser.Parse(eventName, data)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if evt.SourceID != "wizard" {
-		t.Errorf("expected wizard events to have SourceID 'wizard' (const-declared pseudo-agent), got %q", evt.SourceID)
+	if evt.SourceID != referenceAggregatorSource(t) {
+		t.Errorf("expected the declared constant source %q, got %q", referenceAggregatorSource(t), evt.SourceID)
 	}
-	if evt.Content != "synthesis text" {
-		t.Errorf("expected content extracted, got %q", evt.Content)
+	if evt.Content != expectedContent {
+		t.Errorf("expected content %q, got %q", expectedContent, evt.Content)
 	}
 }

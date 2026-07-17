@@ -9,17 +9,17 @@ import (
 	"github.com/lancekrogers/stream-debugger/internal/config"
 )
 
-// TestApplyParsedEvent_BrainyardFixture_AggregatorMetricsMatchOriginal is
+// TestApplyParsedEvent_ReferenceFixture_AggregatorMetricsMatchOriginal is
 // this task's required before/after fixture proof: the real
-// testdata/fixtures/brainyard-session.jsonl session, fed through
+// reference session fixture, fed through
 // applyParsedEvent exactly as a live stream would, must still produce
 // the aggregator lane's exclusive metrics (StartTime/FirstTokenMs/
 // DurationMs/TokenCount) — this task changed HOW the aggregator lane is
 // identified (Kind+role instead of a wire event-name switch), not WHAT
 // gets computed for it. Comparable, deterministic fields only (not
 // wall-clock timestamps, which necessarily differ between runs).
-func TestApplyParsedEvent_BrainyardFixture_AggregatorMetricsMatchOriginal(t *testing.T) {
-	f, err := os.Open("../../testdata/fixtures/brainyard-session.jsonl")
+func TestApplyParsedEvent_ReferenceFixture_AggregatorMetricsMatchOriginal(t *testing.T) {
+	f, err := os.Open(referenceFixturePath(t))
 	if err != nil {
 		t.Fatalf("open fixture: %v", err)
 	}

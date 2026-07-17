@@ -212,7 +212,7 @@ func TestDiscriminator_Oneof_DecodesThroughUnmodifiedMappingEngine(t *testing.T)
 	}
 
 	// A dialect that has never heard of gRPC — discriminator: event is
-	// exactly what dialects/brainyard.yaml uses for SSE.
+	// exactly what the shipped SSE dialect uses.
 	engine, err := mapping.Load([]byte(`
 version: 1
 name: test

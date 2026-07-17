@@ -42,6 +42,27 @@ const (
 	AppFocusAgents
 )
 
+// FlowLane is a dialect-declared or observed lane in the flow projection.
+// Role is semantic metadata supplied by flow.lanes, not a wire-name guess.
+type FlowLane struct {
+	SourceID string
+	Role     events.Role
+	Label    string
+}
+
+// FlowStage is a stage in the flow projection. A stage role is resolved from
+// the matching lane source when the dialect declares one.
+type FlowStage struct {
+	Name string
+	Role events.Role
+}
+
+// FlowModel is the renderer-facing flow projection shared by both TUI models.
+type FlowModel struct {
+	Lanes  []FlowLane
+	Stages []FlowStage
+}
+
 // FlowNode represents a flow step's state for rendering
 type FlowNode struct {
 	Step          string
@@ -60,6 +81,7 @@ type FlowNode struct {
 // AgentResponse tracks a single agent's response
 type AgentResponse struct {
 	AgentID       string
+	Role          events.Role
 	ContentChunks []string
 	FullContent   string
 	TokenCount    int

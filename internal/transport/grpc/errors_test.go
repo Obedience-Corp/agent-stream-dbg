@@ -16,7 +16,7 @@ import (
 // requires: a real rule declared entirely as data, proving grpc_status
 // is just another named event a dialect can match — not a special case
 // internal/mapping knows about. Kept local to this test file rather than
-// dialects/brainyard.yaml, which stays production-only.
+// the shipped dialect, which stays production-only.
 const statusDialect = `
 version: 1
 name: test-grpc-status

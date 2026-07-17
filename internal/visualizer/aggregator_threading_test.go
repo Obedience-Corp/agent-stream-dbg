@@ -117,15 +117,17 @@ func TestDeriveAgentsFromEvents_ExcludesAggregator(t *testing.T) {
 
 // testFlowStateWithAggregator builds a flowState directly from a
 // hand-constructed FlowSpec, bypassing bridge.Flow()'s single global
-// (brainyard-loaded) dialect entirely — the only way to prove role
+// loaded reference dialect entirely — the only way to prove role
 // resolution generalizes to a DIFFERENT aggregator source name than the
 // default dialect's own, rather than merely regression-testing against
 // the one string every other test in this file happens to use.
 func testFlowStateWithAggregator(aggregatorSource string) flowState {
-	return flowState{spec: &mapping.FlowSpec{
+	flow := flowState{spec: &mapping.FlowSpec{
 		Lanes:       []mapping.LaneRule{{Match: mapping.LaneMatchSpec{Source: aggregatorSource}, Role: "aggregator"}},
 		DefaultRole: "worker",
 	}}
+	flow.refreshModel()
+	return flow
 }
 
 // TestApplyParsedEvent_AggregatorRoleGeneralizesBeyondDefaultSource is
@@ -162,6 +164,9 @@ func TestApplyParsedEvent_AggregatorRoleGeneralizesBeyondDefaultSource(t *testin
 	if !otherLane.StartTime.IsZero() {
 		t.Errorf("expected that lane's StartTime to stay zero (it is NOT the declared aggregator here), got %v", otherLane.StartTime)
 	}
+	if otherLane.Role != events.RoleWorker {
+		t.Errorf("expected the undeclared lane to carry worker role, got %q", otherLane.Role)
+	}
 
 	aggregator := m.aggregatorResponse(m.messages[0])
 	if aggregator == nil {
@@ -172,6 +177,9 @@ func TestApplyParsedEvent_AggregatorRoleGeneralizesBeyondDefaultSource(t *testin
 	}
 	if aggregator.StartTime.IsZero() {
 		t.Error("expected the 'supervisor' lane's StartTime to be tracked (it IS the declared aggregator)")
+	}
+	if aggregator.Role != events.RoleAggregator {
+		t.Errorf("expected the declared lane role to be aggregator, got %q", aggregator.Role)
 	}
 
 	nonAggregators := m.deriveAgentsFromEvents(m.messages[0].Events)

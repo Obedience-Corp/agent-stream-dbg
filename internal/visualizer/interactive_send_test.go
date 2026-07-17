@@ -12,7 +12,7 @@ import (
 // and successfully connects to a real HTTP server with it — no hardcoded
 // request body involved.
 func TestStartStreamingCmd_SendsViaDialectTemplate(t *testing.T) {
-	srv, err := testutil.NewMockSSEServer("../../testdata/fixtures/brainyard-session.jsonl", 0)
+	srv, err := testutil.NewMockSSEServer(referenceFixturePath(t), 0)
 	if err != nil {
 		t.Fatalf("NewMockSSEServer: %v", err)
 	}

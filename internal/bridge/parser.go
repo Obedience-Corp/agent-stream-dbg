@@ -1,8 +1,8 @@
-// Package bridge is the stable call-site facade over the real Brainyard
-// dialect (dialects/brainyard.yaml) for internal/client, internal/visualizer,
-// and cmd/stream-debugger. It knows no event types itself —
-// internal/mapping.Engine does the work, driven entirely by that YAML file;
-// this package only loads it once and exposes a convenient API.
+// Package bridge is the stable call-site facade over the shipped default
+// dialect for internal/client, internal/visualizer, and cmd/stream-debugger.
+// It knows no event types itself — internal/mapping.Engine does the work,
+// driven entirely by YAML data; this package only loads it once and exposes a
+// convenient API.
 package bridge
 
 import (
@@ -18,20 +18,32 @@ import (
 )
 
 // dialectPath is resolved relative to this source file's location rather
-// than the process's working directory, so it finds dialects/brainyard.yaml
-// whether invoked via `go test` (cwd = this package's directory), `just
-// build && ./bin/...` from the repo root, or a `go install`ed binary run
-// from the source checkout that built it.
+// than the process's working directory. The default is the shipped dialect
+// declaring an aggregator lane, which keeps call sites independent of a
+// particular system's name.
 var dialectPath = func() string {
 	_, thisFile, _, _ := runtime.Caller(0)
-	return filepath.Join(filepath.Dir(thisFile), "..", "..", "dialects", "brainyard.yaml")
+	dialectDir := filepath.Join(filepath.Dir(thisFile), "..", "..", "dialects")
+	paths, _ := filepath.Glob(filepath.Join(dialectDir, "*.yaml"))
+	for _, path := range paths {
+		e, err := mapping.LoadFile(path)
+		if err != nil || e.Flow == nil {
+			continue
+		}
+		for _, lane := range e.Flow.Lanes {
+			if lane.Role == events.RoleAggregator {
+				return path
+			}
+		}
+	}
+	panic("bridge: no shipped default dialect declares an aggregator lane")
 }()
 
 // engine is loaded once, on first use rather than at import time, so
 // unrelated commands (--help, version) aren't affected by a missing
 // dialect file. A load failure panics: a missing or corrupt
-// dialects/brainyard.yaml is a deployment error, not a runtime data
-// condition — the alternative (silently returning errors from Parse) would
+// the selected dialect is a deployment error, not a runtime data condition —
+// the alternative (silently returning errors from Parse) would
 // reintroduce the exact "unknown events vanish" bug this phase fixed.
 var engine = sync.OnceValue(func() *mapping.Engine {
 	e, err := mapping.LoadFile(dialectPath)
@@ -42,7 +54,7 @@ var engine = sync.OnceValue(func() *mapping.Engine {
 })
 
 // Parser decodes wire frames into the generic events.Event core via the
-// Brainyard dialect.
+// selected dialect.
 type Parser struct{}
 
 // NewParser creates a new event parser.

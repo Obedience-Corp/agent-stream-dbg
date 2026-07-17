@@ -12,7 +12,7 @@ import (
 // lane's role, since derivation has no way to recognize an aggregator
 // without a dialect telling it: "a stranger with no flow: block still
 // gets lanes" (architecture.md), just plain worker ones.
-const defaultRole = "worker"
+const defaultRole events.Role = events.RoleWorker
 
 // LaneMatchSpec matches against a DECODED events.Event — a different
 // match dimension than MatchSpec (match.go), which matches raw wire
@@ -43,7 +43,7 @@ func (m LaneMatchSpec) Matches(evt *events.Event) bool {
 // same evaluation order as mapping.Rule.
 type LaneRule struct {
 	Match LaneMatchSpec
-	Role  string
+	Role  events.Role
 	Label string
 }
 
@@ -64,7 +64,7 @@ type laneRuleYAML struct {
 type FlowSpec struct {
 	Stages      []string
 	Lanes       []LaneRule
-	DefaultRole string
+	DefaultRole events.Role
 }
 
 // flowYAML is the raw YAML shape of a flow: block.
@@ -105,25 +105,29 @@ func compileFlow(raw yaml.Node) (*FlowSpec, error) {
 		if l.Role == "" {
 			return nil, fmt.Errorf("flow.lanes[%d]: role is required", i)
 		}
-		lanes = append(lanes, LaneRule(l))
+		lanes = append(lanes, LaneRule{
+			Match: l.Match,
+			Role:  events.Role(l.Role),
+			Label: l.Label,
+		})
 	}
 
 	role := doc.DefaultRole
 	if role == "" {
-		role = defaultRole
+		role = string(defaultRole)
 	}
 
 	return &FlowSpec{
 		Stages:      doc.Stages,
 		Lanes:       lanes,
-		DefaultRole: role,
+		DefaultRole: events.Role(role),
 	}, nil
 }
 
 // RoleFor resolves the role evt's lane should render as: the first
 // declared lane rule that matches (document order, first match wins —
 // same evaluation discipline as mapping.Rule), or DefaultRole if none do.
-func (f *FlowSpec) RoleFor(evt *events.Event) string {
+func (f *FlowSpec) RoleFor(evt *events.Event) events.Role {
 	for _, l := range f.Lanes {
 		if l.Match.Matches(evt) {
 			return l.Role
@@ -163,8 +167,8 @@ func NewFlowDeriver() *FlowDeriver {
 // Observe feeds one decoded event into the deriver. Lanes accumulate
 // from distinct Event.SourceID values; stages accumulate from
 // step_start/step_end events' Fields["step"], or — if a topology event
-// arrives — its Fields["stages_order"] (the exact field name
-// dialects/brainyard.yaml's flow_config rule already produces; derivation
+// arrives — its Fields["stages_order"] (the exact field name a shipped
+// flow_config rule produces; derivation
 // reads the same key a real dialect already emits rather than inventing
 // a new one). Both accumulate in first-seen order, deduplicated.
 func (d *FlowDeriver) Observe(evt *events.Event) {
@@ -211,6 +215,6 @@ func (d *FlowDeriver) Stages() []string {
 // RoleFor always returns the default role: derivation has no aggregator
 // (or any other non-default role) concept without a dialect declaring
 // one — every derived lane is a plain worker.
-func (d *FlowDeriver) RoleFor(evt *events.Event) string {
+func (d *FlowDeriver) RoleFor(evt *events.Event) events.Role {
 	return defaultRole
 }

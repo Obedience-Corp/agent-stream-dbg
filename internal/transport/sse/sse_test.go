@@ -13,7 +13,11 @@ import (
 )
 
 func TestTransport_HappyPath_RealFixture(t *testing.T) {
-	srv, err := testutil.NewMockSSEServer("../../../testdata/fixtures/brainyard-session.jsonl", 0)
+	fixture, err := testutil.ReferenceSessionFixturePath("../../../testdata/fixtures")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, err := testutil.NewMockSSEServer(fixture, 0)
 	if err != nil {
 		t.Fatalf("failed to start mock server: %v", err)
 	}
@@ -110,7 +114,11 @@ func TestTransport_MalformedFrame_ErrAndRawSurfaced(t *testing.T) {
 }
 
 func TestTransport_ContextCancellation_CleanShutdown(t *testing.T) {
-	srv, err := testutil.NewMockSSEServer("../../../testdata/fixtures/brainyard-session.jsonl", 20*time.Millisecond)
+	fixture, err := testutil.ReferenceSessionFixturePath("../../../testdata/fixtures")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, err := testutil.NewMockSSEServer(fixture, 20*time.Millisecond)
 	if err != nil {
 		t.Fatalf("failed to start mock server: %v", err)
 	}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/lancekrogers/stream-debugger/internal/bridge"
 	"github.com/lancekrogers/stream-debugger/internal/events"
+	"github.com/lancekrogers/stream-debugger/internal/testutil"
 )
 
 func writeFixture(t *testing.T, lines ...string) string {
@@ -46,7 +47,11 @@ func TestNew_Errors(t *testing.T) {
 }
 
 func TestTransport_HappyPath_RealFixture(t *testing.T) {
-	tr, err := New("../../../testdata/fixtures/brainyard-session.jsonl", 0)
+	fixture, err := testutil.ReferenceSessionFixturePath("../../../testdata/fixtures")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := New(fixture, 0)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -85,10 +90,14 @@ func TestTransport_HappyPath_RealFixture(t *testing.T) {
 // TestTransport_DecodesThroughDialectEngine proves the Done-When claim
 // this transport exists to satisfy: a dialect decode test needs only a
 // fixture + this transport — no live network, no special-cased file
-// reader. Frames go straight into the same bridge.Parser (brainyard.yaml)
-// a live SSE stream would use.
+// reader. Frames go straight into the same bridge.Parser a live SSE stream
+// would use.
 func TestTransport_DecodesThroughDialectEngine(t *testing.T) {
-	tr, err := New("../../../testdata/fixtures/brainyard-session.jsonl", 0)
+	fixture, err := testutil.ReferenceSessionFixturePath("../../../testdata/fixtures")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := New(fixture, 0)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -123,7 +132,11 @@ func TestTransport_DecodesThroughDialectEngine(t *testing.T) {
 }
 
 func TestTransport_Send_ReturnsClearError(t *testing.T) {
-	tr, err := New("../../../testdata/fixtures/brainyard-session.jsonl", 0)
+	fixture, err := testutil.ReferenceSessionFixturePath("../../../testdata/fixtures")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := New(fixture, 0)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

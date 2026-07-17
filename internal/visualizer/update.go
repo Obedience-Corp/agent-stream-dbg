@@ -96,7 +96,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.messages[m.streamIndex].Events = parsed
 				// Ensure AgentResponses is fully built at end as well
 				if len(m.messages[m.streamIndex].AgentResponses) == 0 {
-					m.messages[m.streamIndex].AgentResponses = buildAgentResponses(parsed)
+					m.messages[m.streamIndex].AgentResponses = m.buildAgentResponses(parsed)
 				}
 				m.messages[m.streamIndex].Streaming = false
 			}
@@ -296,7 +296,7 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
 		m.messages[idx].AgentResponses = make(map[string]*AgentResponse)
 	}
 	aid := evt.SourceID
-	isAggregator := m.dialectFlow.role(evt) == "aggregator"
+	isAggregator := m.dialectFlow.role(evt) == events.RoleAggregator
 
 	switch evt.Kind {
 	case events.KindStreamStart:
@@ -305,9 +305,10 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
 		}
 		ar := m.messages[idx].AgentResponses[aid]
 		if ar == nil {
-			ar = &AgentResponse{AgentID: aid}
+			ar = &AgentResponse{AgentID: aid, Role: m.dialectFlow.role(evt)}
 			m.messages[idx].AgentResponses[aid] = ar
 		}
+		ar.Role = m.dialectFlow.role(evt)
 		if isAggregator {
 			ar.StartTime = time.Now()
 		}
@@ -317,12 +318,13 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
 		}
 		ar := m.messages[idx].AgentResponses[aid]
 		if ar == nil {
-			ar = &AgentResponse{AgentID: aid}
+			ar = &AgentResponse{AgentID: aid, Role: m.dialectFlow.role(evt)}
 			if isAggregator {
 				ar.StartTime = time.Now()
 			}
 			m.messages[idx].AgentResponses[aid] = ar
 		}
+		ar.Role = m.dialectFlow.role(evt)
 		if isAggregator && ar.TokenCount == 0 && !ar.StartTime.IsZero() {
 			ar.FirstTokenMs = time.Since(ar.StartTime).Milliseconds()
 		}
@@ -336,9 +338,10 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
 		}
 		ar := m.messages[idx].AgentResponses[aid]
 		if ar == nil {
-			ar = &AgentResponse{AgentID: aid}
+			ar = &AgentResponse{AgentID: aid, Role: m.dialectFlow.role(evt)}
 			m.messages[idx].AgentResponses[aid] = ar
 		}
+		ar.Role = m.dialectFlow.role(evt)
 		if !isAggregator {
 			ar.Completed = true
 			break
@@ -381,9 +384,10 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
 		}
 		ar := m.messages[idx].AgentResponses[aid]
 		if ar == nil {
-			ar = &AgentResponse{AgentID: aid}
+			ar = &AgentResponse{AgentID: aid, Role: m.dialectFlow.role(evt)}
 			m.messages[idx].AgentResponses[aid] = ar
 		}
+		ar.Role = m.dialectFlow.role(evt)
 		appendToolEventLine(ar, evt)
 	default:
 		// ignore others
@@ -405,7 +409,7 @@ func (m InteractiveModel) aggregatorResponse(msg Message) *AgentResponse {
 	}
 	sort.Strings(ids)
 	for _, id := range ids {
-		if m.dialectFlow.role(&events.Event{SourceID: id}) == "aggregator" {
+		if m.dialectFlow.role(&events.Event{SourceID: id}) == events.RoleAggregator {
 			return msg.AgentResponses[id]
 		}
 	}
@@ -414,6 +418,14 @@ func (m InteractiveModel) aggregatorResponse(msg Message) *AgentResponse {
 
 // buildAgentResponses builds agent response map from parsed events
 func buildAgentResponses(evts []*events.Event) map[string]*AgentResponse {
+	return buildAgentResponsesWithFlow(evts, newFlowState())
+}
+
+func (m InteractiveModel) buildAgentResponses(evts []*events.Event) map[string]*AgentResponse {
+	return buildAgentResponsesWithFlow(evts, m.dialectFlow)
+}
+
+func buildAgentResponsesWithFlow(evts []*events.Event, flow flowState) map[string]*AgentResponse {
 	responses := make(map[string]*AgentResponse)
 
 	for _, event := range evts {
@@ -426,6 +438,7 @@ func buildAgentResponses(evts []*events.Event) map[string]*AgentResponse {
 		if _, exists := responses[agentID]; !exists {
 			responses[agentID] = &AgentResponse{
 				AgentID:       agentID,
+				Role:          flow.role(event),
 				ContentChunks: make([]string, 0),
 			}
 		}

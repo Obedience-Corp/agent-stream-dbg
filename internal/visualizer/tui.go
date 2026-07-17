@@ -64,6 +64,7 @@ type Model struct {
 // AgentState tracks the state of a single agent
 type AgentState struct {
 	ID             string
+	Role           events.Role
 	Active         bool
 	Content        strings.Builder
 	TokenCount     int
@@ -76,6 +77,7 @@ type AgentState struct {
 
 // AggregatorState tracks the aggregator-role lane's synthesis state
 type AggregatorState struct {
+	Role           events.Role
 	Active         bool
 	Content        strings.Builder
 	TokenCount     int
@@ -88,6 +90,7 @@ type AggregatorState struct {
 // FlowStepStatus tracks the state of a flow step
 type FlowStepStatus struct {
 	Step        string
+	Role        events.Role
 	Enabled     bool
 	Started     bool
 	Ended       bool
@@ -463,11 +466,12 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 	// from every other lane (agents map). Kind-based is the generic
 	// equivalent with identical behavior for any dialect that declares
 	// one aggregator lane this way.
-	isAggregator := m.dialectFlow.role(event) == "aggregator"
+	isAggregator := m.dialectFlow.role(event) == events.RoleAggregator
 
 	switch event.Kind {
 	case events.KindStreamStart:
 		if isAggregator {
+			m.aggregatorState.Role = m.dialectFlow.role(event)
 			m.aggregatorState.Active = true
 			m.aggregatorState.StartTime = time.Now()
 			break
@@ -475,6 +479,7 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 		agentID := event.SourceID
 		m.agents[agentID] = &AgentState{
 			ID:             agentID,
+			Role:           m.dialectFlow.role(event),
 			Active:         true,
 			BufferedTokens: make(map[int]string),
 			StartTime:      time.Now(),
@@ -528,21 +533,21 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 		step := event.StringField("step")
 		st := m.flow[step]
 		if st == nil {
-			st = &FlowStepStatus{Step: step}
+			st = &FlowStepStatus{Step: step, Role: m.dialectFlow.stageRole(step)}
 			m.flow[step] = st
 		}
 		st.Enabled = event.BoolField("enabled")
 		st.Started = true
 		st.Ended = false
 		if step == "agent_exec" {
-			st.AgentCount = event.IntField(nonAggregatorCountFieldKey)
+			st.AgentCount = event.ParticipantCount()
 		}
 
 	case "flow_step_end":
 		step := event.StringField("step")
 		st := m.flow[step]
 		if st == nil {
-			st = &FlowStepStatus{Step: step}
+			st = &FlowStepStatus{Step: step, Role: m.dialectFlow.stageRole(step)}
 			m.flow[step] = st
 		}
 		st.Enabled = event.BoolField("enabled")
@@ -550,7 +555,7 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 		if agentCount := event.IntField("agent_count"); agentCount > 0 {
 			st.AgentCount = agentCount
 		}
-		if step == "routing" {
+		if event.StringField("route_taken") != "" || event.StringField("route_reason") != "" || len(event.StringSliceField("route_agents")) > 0 {
 			st.RoutingMode = event.StringField("routing_mode")
 			st.RouteTaken = event.StringField("route_taken")
 			st.RouteReason = event.StringField("route_reason")
@@ -593,7 +598,7 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 			StagesEnabled:      event.BoolMapField("stages_enabled"),
 			RoutingMode:        event.StringField("routing_mode"),
 			AgentCount:         event.IntField("agent_count"),
-			NonAggregatorCount: event.IntField(nonAggregatorCountFieldKey),
+			NonAggregatorCount: event.ParticipantCount(),
 		}
 		// Also set FlowID if not already set
 		if m.FlowID == "" && flowID != "" {
@@ -641,7 +646,7 @@ func (m *Model) renderFlowStatus() string {
 		text := fmt.Sprintf("%s %s", sym, label)
 
 		// Routing details
-		if step == "routing" && ok && st.Enabled {
+		if ok && st.Enabled && (st.RouteTaken != "" || st.RouteReason != "" || len(st.RouteAgents) > 0) {
 			det := st.RouteTaken
 			if det == "" {
 				det = "—"

@@ -27,7 +27,7 @@ func newTestModel(t *testing.T) *Model {
 // per-lane wire-event-shaped string cases): a role: aggregator lane's
 // stream lifecycle updates m.aggregatorState, while any other lane
 // updates m.agents — matching the original aggregator-lane-exclusive
-// behavior for the default (brainyard) dialect specifically.
+// behavior for the shipped reference dialect specifically.
 func TestModelHandleEvent_AggregatorGetsExclusiveState(t *testing.T) {
 	m := newTestModel(t)
 

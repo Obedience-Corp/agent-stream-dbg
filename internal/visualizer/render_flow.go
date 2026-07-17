@@ -25,8 +25,8 @@ func (m InteractiveModel) buildFlowNodes(evts []*events.Event) map[string]*FlowN
 			}
 			n.Enabled = e.BoolField("enabled")
 			n.InProgress = true
-			if nonAggregatorCount := e.IntField(nonAggregatorCountFieldKey); step == "agent_exec" && nonAggregatorCount > 0 {
-				n.AgentCount = nonAggregatorCount
+			if participantCount := e.ParticipantCount(); participantCount > 0 {
+				n.AgentCount = participantCount
 			}
 			nodes[step] = n
 		}
@@ -142,7 +142,7 @@ func (m InteractiveModel) renderFlowPane() string {
 			}
 
 			// Routing info
-			if step == "routing" && n.RouteTaken != "" {
+			if n.RouteTaken != "" {
 				line.WriteString(fmt.Sprintf(" → %s", n.RouteTaken))
 				if len(n.RouteAgents) > 0 {
 					line.WriteString(fmt.Sprintf(" [%s]", strings.Join(n.RouteAgents, ", ")))
@@ -150,7 +150,7 @@ func (m InteractiveModel) renderFlowPane() string {
 			}
 
 			// Aggregator inline metrics (tokens, tokens/sec)
-			if step == aggregatorStageName && msg.AgentResponses != nil {
+			if m.dialectFlow.stageRole(step) == events.RoleAggregator && msg.AgentResponses != nil {
 				if aggResp := m.aggregatorResponse(msg); aggResp != nil {
 					line.WriteString(fmt.Sprintf(" tokens:%d", aggResp.TokenCount))
 					if aggResp.DurationMs > 0 && aggResp.TokenCount > 0 {
@@ -189,7 +189,7 @@ func (m InteractiveModel) renderFlowPane() string {
 			}
 			// Pass aggregator response for the aggregator step's metrics
 			var aggResp *AgentResponse
-			if step == aggregatorStageName && msg.AgentResponses != nil {
+			if m.dialectFlow.stageRole(step) == events.RoleAggregator && msg.AgentResponses != nil {
 				aggResp = m.aggregatorResponse(msg)
 			}
 			b.WriteString(m.renderFlowNodeDetails(n, aggResp))
@@ -247,7 +247,7 @@ func (m InteractiveModel) renderFlowAllPane() string {
 			// elsewhere rather than appearing in this worker-agent list.
 			uniq := map[string]struct{}{}
 			for _, e := range evts {
-				if e.Kind == events.KindStreamStart && e.SourceID != "" && m.dialectFlow.role(e) != "aggregator" {
+				if e.Kind == events.KindStreamStart && e.SourceID != "" && m.dialectFlow.role(e) != events.RoleAggregator {
 					uniq[e.SourceID] = struct{}{}
 				}
 			}
@@ -281,14 +281,14 @@ func (m InteractiveModel) renderFlowAllPane() string {
 			if step == "filter" && n.FilteredCount > 0 {
 				line.WriteString(fmt.Sprintf(" filtered:%d", n.FilteredCount))
 			}
-			if step == "routing" && n.RouteTaken != "" {
+			if n.RouteTaken != "" {
 				line.WriteString(fmt.Sprintf(" → %s", n.RouteTaken))
 				if len(n.RouteAgents) > 0 {
 					line.WriteString(fmt.Sprintf(" [%s]", strings.Join(n.RouteAgents, ", ")))
 				}
 			}
 			// Aggregator inline metrics (tokens, tokens/sec)
-			if step == aggregatorStageName && msg.AgentResponses != nil {
+			if m.dialectFlow.stageRole(step) == events.RoleAggregator && msg.AgentResponses != nil {
 				if aggResp := m.aggregatorResponse(msg); aggResp != nil {
 					line.WriteString(fmt.Sprintf(" tokens:%d", aggResp.TokenCount))
 					if aggResp.DurationMs > 0 && aggResp.TokenCount > 0 {
@@ -312,7 +312,7 @@ func (m InteractiveModel) renderFlowAllPane() string {
 				}
 				// Pass aggregator response for the aggregator step's metrics
 				var aggResp *AgentResponse
-				if step == aggregatorStageName && msg.AgentResponses != nil {
+				if m.dialectFlow.stageRole(step) == events.RoleAggregator && msg.AgentResponses != nil {
 					aggResp = m.aggregatorResponse(msg)
 				}
 				b.WriteString(m.renderFlowNodeDetails(n, aggResp))
@@ -333,7 +333,7 @@ func (m InteractiveModel) renderFlowAllPane() string {
 func (m InteractiveModel) deriveAgentsFromEvents(evts []*events.Event) []string {
 	uniq := map[string]struct{}{}
 	for _, e := range evts {
-		if e.Kind == events.KindStreamStart && e.SourceID != "" && m.dialectFlow.role(e) != "aggregator" {
+		if e.Kind == events.KindStreamStart && e.SourceID != "" && m.dialectFlow.role(e) != events.RoleAggregator {
 			uniq[e.SourceID] = struct{}{}
 		}
 	}
@@ -371,7 +371,7 @@ func (m InteractiveModel) renderFlowNodeDetails(n *FlowNode, aggResp *AgentRespo
 	}
 
 	// Aggregator-specific metrics (only for the aggregator step)
-	if n.Step == aggregatorStageName && aggResp != nil {
+	if m.dialectFlow.stageRole(n.Step) == events.RoleAggregator && aggResp != nil {
 		b.WriteString(aggregatorStyle.Render("── Aggregator Metrics ──"))
 		b.WriteString("\n")
 		b.WriteString(aggregatorStyle.Render(fmt.Sprintf("token_count: %d", aggResp.TokenCount)))
