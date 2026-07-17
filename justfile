@@ -109,7 +109,15 @@ vet:
 
 # Lint code (requires golangci-lint)
 lint:
+    just lint-seam
     golangci-lint run
+
+# Guard the dialect seam with fragments, not whole words: issue #2 finding 1
+# showed that a split literal such as "wiz" + "ard" can evade whole-word
+# checks, so these tokens must stay absent from executable Go under internal/
+# and cmd/. Dialect data and fixtures remain allowed to name their system.
+lint-seam:
+    ! grep -rniE 'wiz|brainyard|sam_harris' --include='*.go' internal/ cmd/
 
 # Run all code quality checks
 check:
