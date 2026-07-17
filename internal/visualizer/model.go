@@ -191,6 +191,13 @@ func NewInteractiveModelWithContext(cfg *config.EnhancedConfig, ctx context.Cont
 // NewInteractiveModelWithContextAndConfigPath creates an interactive model
 // that can save panel edits back to the config file used to launch it.
 func NewInteractiveModelWithContextAndConfigPath(cfg *config.EnhancedConfig, ctx context.Context, configPath string) InteractiveModel {
+	return NewInteractiveModelWithContextAndConfigPathAndOpenConfig(cfg, ctx, configPath, false)
+}
+
+// NewInteractiveModelWithContextAndConfigPathAndOpenConfig creates an
+// interactive model and optionally opens the configuration panel immediately.
+// The startup variant is used when the CLI has created a starter config.
+func NewInteractiveModelWithContextAndConfigPathAndOpenConfig(cfg *config.EnhancedConfig, ctx context.Context, configPath string, openConfigPanel bool) InteractiveModel {
 	if ctx == nil {
 		ctx = context.TODO()
 	}
@@ -247,6 +254,12 @@ func NewInteractiveModelWithContextAndConfigPath(cfg *config.EnhancedConfig, ctx
 	m.viewport.SetContent(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
 		"Press 1–5 to switch panes • i to type • Ctrl+T toggles RAW/PARSED in Events",
 	))
+	if openConfigPanel {
+		m.configPanel = newConfigPanel(cfg)
+		m.configPanel.open = true
+		m.configPanel.notice = "First run: enter your backend details, then press Ctrl+S to save."
+		m.textarea.Blur()
+	}
 	return m
 }
 

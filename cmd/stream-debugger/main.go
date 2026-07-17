@@ -22,10 +22,13 @@ func main() {
    1. Interactive Mode: Multi-turn chat with real-time visualization (default)
    2. Stream Mode: Single message for CI/CD and scripting
 
+   Running without --config starts first-run setup in the TUI and creates a
+   starter config when no existing config can be found.
+
    Press Ctrl+T in interactive mode to toggle between RAW (SSE) and PARSED (agent-organized) views.`,
 		Version: "1.0.0",
 		Flags: []cli.Flag{
-			&cli.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "Path to YAML configuration file"},
+			&cli.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "Path to YAML configuration file (optional for interactive mode)"},
 			&cli.StringFlag{Name: "dialect", Usage: "Embedded dialect name or path to a dialect YAML file (overrides config)"},
 		},
 		Commands: []*cli.Command{
@@ -107,11 +110,15 @@ func main() {
 }
 
 func defaultAction(c *cli.Context) error {
-	configPath := c.String("config")
-	if configPath == "" {
-		return fmt.Errorf("--config flag is required for interactive mode")
+	configPath, created, err := resolveInteractiveConfig(c.String("config"))
+	if err != nil {
+		return err
 	}
-	return runInteractive(configPath, c.String("dialect"))
+	if created {
+		fmt.Printf("No config found. Created a starter config at: %s\n", configPath)
+		fmt.Println("Opening the setup panel. Fill in your backend details, then press Ctrl+S to save.")
+	}
+	return runInteractiveWithOptions(configPath, c.String("dialect"), created)
 }
 
 func streamAction(c *cli.Context) error {

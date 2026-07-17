@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "name": "stream-debugger",
+  "theme": "theme.json",
+  "publishTapes": ["first-run-config"]
+}

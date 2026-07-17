@@ -1,0 +1,26 @@
+{
+  "name": "stream-debugger",
+  "terminal": {
+    "name": "stream-debugger",
+    "background": "#10131a",
+    "foreground": "#f4f7fb",
+    "cursor": "#67e8f9",
+    "selection": "#283548",
+    "black": "#111827",
+    "red": "#fb7185",
+    "green": "#86efac",
+    "yellow": "#fde68a",
+    "blue": "#93c5fd",
+    "magenta": "#d8b4fe",
+    "cyan": "#67e8f9",
+    "white": "#f4f7fb",
+    "brightBlack": "#64748b",
+    "brightRed": "#fda4af",
+    "brightGreen": "#bbf7d0",
+    "brightYellow": "#fef3c7",
+    "brightBlue": "#bfdbfe",
+    "brightMagenta": "#e9d5ff",
+    "brightCyan": "#a5f3fc",
+    "brightWhite": "#ffffff"
+  }
+}

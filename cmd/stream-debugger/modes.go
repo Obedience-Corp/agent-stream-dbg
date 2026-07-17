@@ -15,7 +15,7 @@ import (
 	"github.com/lancekrogers/stream-debugger/internal/visualizer"
 )
 
-func runInteractive(configPath, dialectOverride string) error {
+func runInteractiveWithOptions(configPath, dialectOverride string, openConfigPanel bool) error {
 	fmt.Printf("🚀 Stream Debugger - Interactive Mode\n\n")
 	cfg, err := config.LoadConfigFile(configPath)
 	if err != nil {
@@ -45,7 +45,7 @@ func runInteractive(configPath, dialectOverride string) error {
 	}
 
 	fmt.Printf("✅ Starting interactive TUI...\n\n")
-	model := visualizer.NewInteractiveModelWithContextAndConfigPath(cfg, programCtx, configPath)
+	model := visualizer.NewInteractiveModelWithContextAndConfigPathAndOpenConfig(cfg, programCtx, configPath, openConfigPanel)
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithContext(programCtx))
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("TUI error: %w", err)
