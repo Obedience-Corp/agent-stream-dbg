@@ -31,6 +31,7 @@ type configPanel struct {
 	open    bool
 	focused int
 	fields  []configFieldState
+	notice  string
 	status  string
 }
 
@@ -50,11 +51,20 @@ func newConfigPanel(cfg *config.EnhancedConfig) configPanel {
 			formatConfigVars(cfg.Vars),
 		}
 	}
-	labels := []string{"Dialect", "Transport", "Base URL", "SSE endpoint", "gRPC target", "Vars (key=value,...)"}
+	labels := []string{"Dialect", "Transport", "Base URL", "SSE endpoint", "gRPC target", "Vars"}
+	placeholders := []string{
+		"embedded name or path to dialect YAML",
+		"sse, grpc, or replay",
+		"https://api.example.com",
+		"/v1/stream",
+		"localhost:50051",
+		"key=value,other=value",
+	}
 	fields := make([]configFieldState, len(labels))
 	for i, label := range labels {
 		input := textinput.New()
 		input.Prompt = ""
+		input.Placeholder = placeholders[i]
 		input.CharLimit = 2000
 		input.Width = 64
 		input.SetValue(values[i])

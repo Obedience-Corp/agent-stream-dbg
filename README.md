@@ -80,6 +80,11 @@ EOF
 stream-debugger --config my-config.yaml
 ```
 
+If you run `stream-debugger` without a config, it creates a private starter
+config in your user config directory and opens the TUI configuration panel so
+you can enter the connection details without first hand-editing YAML. Press
+`Ctrl+S` in the panel to save the config for future launches.
+
 This opens an **interactive chat interface** where you can:
 - Type messages and press Enter
 - Press **Ctrl+T** to toggle between RAW (SSE) and PARSED (agent-organized) views

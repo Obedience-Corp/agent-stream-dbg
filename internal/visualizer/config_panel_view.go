@@ -13,7 +13,7 @@ func (m InteractiveModel) renderConfigPanel() string {
 		width = 64
 	}
 	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Width(20)
-	focusedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
+	focusedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true).Width(20)
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	panelStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -26,6 +26,10 @@ func (m InteractiveModel) renderConfigPanel() string {
 	b.WriteString("\n")
 	b.WriteString(dimStyle.Render("Edit runtime settings. Enter applies and reconnects the latest message."))
 	b.WriteString("\n\n")
+	if m.configPanel.notice != "" {
+		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true).Render(m.configPanel.notice))
+		b.WriteString("\n\n")
+	}
 	for i, field := range m.configPanel.fields {
 		label := labelStyle.Render(field.label)
 		if i == m.configPanel.focused {
