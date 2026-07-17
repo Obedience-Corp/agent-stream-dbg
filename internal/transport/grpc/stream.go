@@ -83,7 +83,7 @@ func (t *Transport) startStream(ctx context.Context, resolved *desc.MethodDescri
 		t.sendMethod = md
 		t.sendStream = bidi
 		t.wg.Add(1)
-		go t.readLoop(md, bidi)
+		go t.readLoop(ctx, md, bidi)
 		return nil
 	}
 
@@ -104,7 +104,7 @@ func (t *Transport) startStream(ctx context.Context, resolved *desc.MethodDescri
 	}
 
 	t.wg.Add(1)
-	go t.readLoop(md, stream)
+	go t.readLoop(ctx, md, stream)
 	return nil
 }
 
@@ -151,9 +151,9 @@ func (t *Transport) Send(ctx context.Context, payload []byte) error {
 // buffer would otherwise deadlock Close forever waiting on this
 // goroutine, since closing the conn only unblocks a goroutine blocked on
 // network I/O, not one blocked on an unconsumed channel).
-func (t *Transport) readLoop(md *desc.MethodDescriptor, stream recvStream) {
+func (t *Transport) readLoop(ctx context.Context, md *desc.MethodDescriptor, stream recvStream) {
 	defer t.wg.Done()
-	defer close(t.frames)
+	defer t.closeFrames()
 
 	// Used only for error frames, where there's no successfully-decoded
 	// message to resolve a discriminator-mode name from.
@@ -163,6 +163,8 @@ func (t *Transport) readLoop(md *desc.MethodDescriptor, stream recvStream) {
 		select {
 		case t.frames <- f:
 			return true
+		case <-ctx.Done():
+			return false
 		case <-t.closed:
 			return false
 		}

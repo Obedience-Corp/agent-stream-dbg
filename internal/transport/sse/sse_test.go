@@ -1,16 +1,103 @@
 package sse
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/lancekrogers/stream-debugger/internal/testutil"
+	"github.com/lancekrogers/stream-debugger/internal/transport"
 )
+
+func waitForGoroutines(t *testing.T, baseline int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if runtime.NumGoroutine() <= baseline+8 {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("goroutines did not settle near baseline: baseline=%d current=%d", baseline, runtime.NumGoroutine())
+}
+
+func framesFromBytes(t *testing.T, fixture string) []transport.Frame {
+	t.Helper()
+	tr := &Transport{
+		resp:   &http.Response{Body: io.NopCloser(bytes.NewBufferString(fixture))},
+		frames: make(chan transport.Frame, 32),
+		closed: make(chan struct{}),
+	}
+	tr.wg.Add(1)
+	tr.readLoop(context.Background())
+
+	var frames []transport.Frame
+	for frame := range tr.Frames() {
+		frames = append(frames, frame)
+	}
+	return frames
+}
+
+func TestTransport_FinalSingleLineWithoutTrailingNewline(t *testing.T) {
+	const fixture = "data: tail"
+	frames := framesFromBytes(t, fixture)
+
+	if len(frames) != 1 {
+		t.Fatalf("expected one final frame, got %d: %+v", len(frames), frames)
+	}
+	if string(frames[0].Data) != "tail" {
+		t.Errorf("expected final data to be parsed, got %q", frames[0].Data)
+	}
+	if string(frames[0].Raw) != fixture {
+		t.Errorf("expected Raw to preserve the final line, got %q", frames[0].Raw)
+	}
+	if frames[0].Err == nil {
+		t.Error("expected EOF mid-frame error")
+	}
+}
+
+func TestTransport_FinalMultilineFrameWithoutTrailingNewline(t *testing.T) {
+	const fixture = "event: content\ndata: first\ndata: final"
+	frames := framesFromBytes(t, fixture)
+
+	if len(frames) != 1 {
+		t.Fatalf("expected one final frame, got %d: %+v", len(frames), frames)
+	}
+	if frames[0].Name != "content" {
+		t.Errorf("expected event name content, got %q", frames[0].Name)
+	}
+	if string(frames[0].Data) != "first\nfinal" {
+		t.Errorf("expected both data lines, got %q", frames[0].Data)
+	}
+	if string(frames[0].Raw) != fixture {
+		t.Errorf("expected Raw to preserve both lines, got %q", frames[0].Raw)
+	}
+	if frames[0].Err == nil {
+		t.Error("expected EOF mid-frame error")
+	}
+}
+
+func TestTransport_FinalFrameWithTrailingNewline(t *testing.T) {
+	const fixture = "event: content\ndata: complete\n\n"
+	frames := framesFromBytes(t, fixture)
+
+	if len(frames) != 1 {
+		t.Fatalf("expected one complete frame, got %d: %+v", len(frames), frames)
+	}
+	if frames[0].Name != "content" || string(frames[0].Data) != "complete" {
+		t.Errorf("expected complete content frame, got name=%q data=%q", frames[0].Name, frames[0].Data)
+	}
+	if frames[0].Err != nil {
+		t.Errorf("expected no error for trailing-newline frame, got %v", frames[0].Err)
+	}
+}
 
 func TestTransport_HappyPath_RealFixture(t *testing.T) {
 	fixture, err := testutil.ReferenceSessionFixturePath("../../../testdata/fixtures")
@@ -156,6 +243,76 @@ func TestTransport_ContextCancellation_CleanShutdown(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Close() did not return — readLoop goroutine may have leaked")
 	}
+}
+
+func TestTransport_StreamContextCancelWithoutClose(t *testing.T) {
+	baseline := runtime.NumGoroutine()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher := w.(http.Flusher)
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		for i := 0; ; i++ {
+			if _, err := fmt.Fprintf(w, "event: tick\ndata: %d\n\n", i); err != nil {
+				return
+			}
+			flusher.Flush()
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(5 * time.Millisecond):
+			}
+		}
+	}))
+
+	tr := New(http.MethodGet, srv.URL, nil, nil)
+	if err := tr.Connect(context.Background()); err != nil {
+		srv.Close()
+		t.Fatalf("connect failed: %v", err)
+	}
+	if _, ok := <-tr.Frames(); !ok {
+		srv.Close()
+		t.Fatal("stream ended before the cancellation test started")
+	}
+
+	// Connect owns a private stream context under the Transport contract;
+	// cancel it directly here to exercise the producer's ctx.Done path
+	// without calling the public Close method.
+	tr.streamCancel()
+	done := make(chan struct{})
+	go func() {
+		for range tr.Frames() {
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		srv.Close()
+		t.Fatal("Frames() did not close after stream context cancellation")
+	}
+	srv.Close()
+	waitForGoroutines(t, baseline)
+}
+
+func TestTransport_ConnectError_ClosesFrames(t *testing.T) {
+	baseline := runtime.NumGoroutine()
+	tr := New(http.MethodGet, "://invalid-url", nil, nil)
+	if err := tr.Connect(context.Background()); err == nil {
+		t.Fatal("expected Connect to fail")
+	}
+
+	done := make(chan struct{})
+	go func() {
+		for range tr.Frames() {
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Frames() remained open after Connect error")
+	}
+	waitForGoroutines(t, baseline)
 }
 
 // TestTransport_Close_UndrainedFullBuffer_DoesNotDeadlock reproduces a

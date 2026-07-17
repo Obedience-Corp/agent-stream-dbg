@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"runtime"
 	"testing"
 	"time"
 
@@ -250,6 +251,59 @@ func TestTransport_Close_StopsReadLoopAndClosesFrames(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("Frames() channel was not closed after Close()")
 	}
+}
+
+func TestTransport_StreamContextCancelWithoutClose(t *testing.T) {
+	baseline := runtime.NumGoroutine()
+	events := make([]*agentstreampb.StreamEvent, 0, 1000)
+	for i := range 1000 {
+		events = append(events, &agentstreampb.StreamEvent{Payload: &agentstreampb.StreamEvent_AgentContent{
+			AgentContent: &agentstreampb.AgentContent{AgentId: "agent_a", Content: "x", Sequence: int32(i)},
+		}})
+	}
+	srv, err := mockgrpc.New(events)
+	if err != nil {
+		t.Fatalf("mockgrpc.New: %v", err)
+	}
+
+	tr := New(Config{
+		Target:    srv.Addr(),
+		Plaintext: true,
+		Method:    "/agentstream.v1.AgentStream/Stream",
+		Request:   map[string]any{"session_id": "s1"},
+	})
+	if err := tr.Connect(context.Background()); err != nil {
+		srv.Close()
+		t.Fatalf("Connect: %v", err)
+	}
+	select {
+	case <-tr.Frames():
+	case <-time.After(2 * time.Second):
+		srv.Close()
+		_ = tr.conn.Close()
+		t.Fatal("stream did not produce a frame")
+	}
+
+	// Cancel the private stream context without calling Transport.Close. This
+	// exercises the read-loop ctx.Done path; close the underlying connection
+	// afterward only to release the dialer's own resources for the test.
+	tr.streamCancel()
+	done := make(chan struct{})
+	go func() {
+		for range tr.Frames() {
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		srv.Close()
+		_ = tr.conn.Close()
+		t.Fatal("Frames() did not close after stream context cancellation")
+	}
+	_ = tr.conn.Close()
+	srv.Close()
+	waitForGoroutines(t, baseline)
 }
 
 func TestTransport_Send_ErrorsWithoutABidiStream(t *testing.T) {

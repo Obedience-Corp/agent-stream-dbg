@@ -23,6 +23,10 @@ type Frame struct {
 
 // Transport yields raw frames from one wire shape. Implementations must
 // never silently reconnect or drop malformed input — see Frame.Err.
+// Connect's context governs dialing and initial stream setup only. After
+// Connect returns successfully, the stream lifetime is governed by Close;
+// implementations derive an internal stream context so a short-lived
+// dialing timeout cannot terminate an otherwise healthy stream.
 type Transport interface {
 	Name() string
 	Connect(ctx context.Context) error

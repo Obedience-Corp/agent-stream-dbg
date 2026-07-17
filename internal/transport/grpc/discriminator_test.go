@@ -11,11 +11,9 @@ import (
 	"github.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc/agentstreampb"
 )
 
-// connectStreamingTransport connects with a context that outlives this
-// call — a server-streaming RPC's context governs the stream for its
-// whole lifetime (like internal/transport/sse's Connect), not just the
-// initial handshake, so the ctx used here must stay live until the
-// caller is done draining Frames() and calls Close.
+// connectStreamingTransport uses a context that outlives setup. The
+// transport itself derives an internal stream context; Close owns the
+// stream lifetime after Connect returns.
 func connectStreamingTransport(t *testing.T, addr string, cfg Config) *Transport {
 	t.Helper()
 	cfg.Target = addr

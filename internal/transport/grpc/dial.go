@@ -144,9 +144,11 @@ type Transport struct {
 	// unblocks immediately — closing the conn alone only unblocks a
 	// goroutine blocked on network I/O, not one blocked on a channel
 	// send with nobody consuming Frames().
-	closed    chan struct{}
-	wg        sync.WaitGroup
-	closeOnce sync.Once
+	closed       chan struct{}
+	wg           sync.WaitGroup
+	closeOnce    sync.Once
+	framesOnce   sync.Once
+	streamCancel context.CancelFunc
 
 	// sendMethod/sendStream are set (non-nil) only when Connect discovers
 	// cfg.Method is bidi-streaming — the method descriptor already knows
@@ -207,7 +209,13 @@ func (t *Transport) Name() string { return "grpc" }
 // meaningful combination — silently picking one would let a stale
 // descriptor set shadow every edit to a proto file the caller thinks is
 // the one in effect.
-func (t *Transport) Connect(ctx context.Context) error {
+func (t *Transport) Connect(ctx context.Context) (err error) {
+	defer func() {
+		if err != nil {
+			t.closeFrames()
+		}
+	}()
+
 	if t.cfg.DescriptorSetPath != "" && t.cfg.ProtoFilePath != "" {
 		return fmt.Errorf("grpc: DescriptorSetPath and ProtoFilePath are both set — pick one schema-acquisition tier, not both")
 	}
@@ -260,9 +268,13 @@ func (t *Transport) Connect(ctx context.Context) error {
 	t.conn = conn
 
 	if t.cfg.Method == "" {
+		t.closeFrames()
 		return nil
 	}
-	if err := t.startStream(ctx, md); err != nil {
+	streamCtx, streamCancel := context.WithCancel(context.Background())
+	t.streamCancel = streamCancel
+	if err := t.startStream(streamCtx, md); err != nil {
+		streamCancel()
 		_ = conn.Close()
 		t.conn = nil
 		return err
@@ -270,9 +282,9 @@ func (t *Transport) Connect(ctx context.Context) error {
 	return nil
 }
 
-// Frames returns the channel of decoded frames. Closed once the stream
-// ends, errors, or ctx is canceled. Empty (never yields) if cfg.Method
-// was unset.
+// Frames returns the channel of decoded frames. It is closed once the stream
+// ends, the internal stream context is canceled, or Close is called. Empty
+// (never yields) if cfg.Method was unset.
 func (t *Transport) Frames() <-chan transport.Frame {
 	return t.frames
 }
@@ -305,7 +317,15 @@ func (t *Transport) Close() error {
 		if t.conn != nil {
 			closeErr = t.conn.Close()
 		}
+		if t.streamCancel != nil {
+			t.streamCancel()
+		}
 		t.wg.Wait()
+		t.closeFrames()
 	})
 	return closeErr
+}
+
+func (t *Transport) closeFrames() {
+	t.framesOnce.Do(func() { close(t.frames) })
 }
