@@ -106,6 +106,33 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.streaming = false
 		m.contentDirty = true
+
+	case sessionSetupMsg:
+		m.closeActiveStream()
+		m.streaming = false
+		if msg.sessionID != "" {
+			m.cfg.Session.ID = msg.sessionID
+		}
+		if m.slog != nil {
+			_ = m.slog.Close()
+		}
+		if l, err := dblogger.NewStructuredLogger(m.cfg); err == nil {
+			m.slog = l
+		}
+
+		// Reset UI state for the newly requested session, retaining any setup
+		// error as a visible model error instead of swallowing it.
+		m.messages = make([]Message, 0)
+		m.err = msg.err
+		m.flowTurnIndex = 0
+		m.flowContinuous = true
+		m.selectedStepIndex = 0
+		m.flowExpanded = make(map[string]bool)
+		m.showTokens = false
+		m.eventsAggregatorOnly = false
+		m.appFocus = AppFocusAgents
+		m.viewport.SetContent("")
+		m.contentDirty = true
 	}
 
 	// For non-key messages (stream chunks, completions, window size),

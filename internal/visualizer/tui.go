@@ -21,6 +21,7 @@ type Model struct {
 	config  *config.EnhancedConfig
 	client  *client.SSEClient
 	logger  *logger.StructuredLogger
+	parent  context.Context
 	ctx     context.Context
 	cancel  context.CancelFunc
 	message string
@@ -139,13 +140,23 @@ type tickMsg time.Time
 
 // NewModel creates a new TUI model
 func NewModel(cfg *config.EnhancedConfig, sseClient *client.SSEClient, structuredLogger *logger.StructuredLogger, message string) *Model {
-	ctx, cancel := context.WithCancel(context.Background())
+	return NewModelWithContext(cfg, sseClient, structuredLogger, message, context.TODO())
+}
+
+// NewModelWithContext creates the legacy event-pane model with a parent
+// lifecycle context supplied by its Bubble Tea program.
+func NewModelWithContext(cfg *config.EnhancedConfig, sseClient *client.SSEClient, structuredLogger *logger.StructuredLogger, message string, parent context.Context) *Model {
+	if parent == nil {
+		parent = context.TODO()
+	}
+	ctx, cancel := context.WithCancel(parent)
 	parser := bridge.NewParser(cfg.Dialect.File)
 
 	return &Model{
 		config:          cfg,
 		client:          sseClient,
 		logger:          structuredLogger,
+		parent:          parent,
 		ctx:             ctx,
 		cancel:          cancel,
 		message:         message,
@@ -427,7 +438,7 @@ func (m *Model) reconnect() tea.Cmd {
 			m.cancel()
 		}
 		// Create new context and connect
-		m.ctx, m.cancel = context.WithCancel(context.Background())
+		m.ctx, m.cancel = context.WithCancel(m.parent)
 		// Reset UI state so new stream doesn't append to previous content
 		m.agents = make(map[string]*AgentState)
 		m.aggregatorState = &AggregatorState{BufferedTokens: make(map[int]string)}

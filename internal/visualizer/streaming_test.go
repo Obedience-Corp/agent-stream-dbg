@@ -62,9 +62,18 @@ func TestNewSessionCmd_ResetsStateWithoutBackend(t *testing.T) {
 	m.appFocus = AppFocusAggregator
 
 	cmd := m.newSessionCmd()
-	cmd() // side effects land on the closure's own model copy, not m
+	msg := cmd()
+	setupMsg, ok := msg.(sessionSetupMsg)
+	if !ok {
+		t.Fatalf("expected sessionSetupMsg, got %T", msg)
+	}
+	updated, _ := m.Update(setupMsg)
+	im := updated.(InteractiveModel)
 
 	if cfg.Session.ID == "old-session" {
 		t.Error("expected a fresh session id to be generated even without backend confirmation")
+	}
+	if im.err == nil {
+		t.Fatal("expected failed session setup to be surfaced in the model error state")
 	}
 }

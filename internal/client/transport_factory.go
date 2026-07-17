@@ -46,14 +46,10 @@ func newSSETransport(cfg *config.EnhancedConfig, parser *bridge.Parser, vars map
 		return nil, fmt.Errorf("failed to render send request: %w", err)
 	}
 	if cfg.Debug.Level != "" {
-		u, err := url.Parse(renderedURL)
+		renderedURL, err = withDebugQuery(renderedURL, cfg.Debug.Level)
 		if err != nil {
-			return nil, fmt.Errorf("invalid endpoint URL: %w", err)
+			return nil, err
 		}
-		q := u.Query()
-		q.Set("debug", cfg.Debug.Level)
-		u.RawQuery = q.Encode()
-		renderedURL = u.String()
 	}
 	headers := cfg.Transport.ResolvedHeaders()
 	headers["Accept"] = "text/event-stream"
@@ -61,6 +57,17 @@ func newSSETransport(cfg *config.EnhancedConfig, parser *bridge.Parser, vars map
 		headers["Content-Type"] = "application/json"
 	}
 	return sse.New(method, renderedURL, body, headers), nil
+}
+
+func withDebugQuery(rawURL, level string) (string, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid endpoint URL: %w", err)
+	}
+	q := u.Query()
+	q.Set("debug", level)
+	u.RawQuery = q.Encode()
+	return u.String(), nil
 }
 
 func newGRPCTransport(cfg *config.EnhancedConfig) transport.Transport {

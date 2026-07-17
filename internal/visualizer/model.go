@@ -1,6 +1,7 @@
 package visualizer
 
 import (
+	"context"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textarea"
@@ -137,6 +138,7 @@ type InteractiveModel struct {
 	// Streaming (incremental) state
 	streamTransport transport.Transport
 	streamIndex     int
+	streamContext   context.Context
 
 	// Flow pane state
 	flowTurnIndex  int  // which message index is displayed in Flow (default latest)
@@ -173,6 +175,15 @@ type Message struct {
 
 // NewInteractiveModel creates a new interactive TUI model
 func NewInteractiveModel(cfg *config.EnhancedConfig) InteractiveModel {
+	return NewInteractiveModelWithContext(cfg, context.TODO())
+}
+
+// NewInteractiveModelWithContext creates an interactive model whose network
+// commands share the Bubble Tea program's lifecycle context.
+func NewInteractiveModelWithContext(cfg *config.EnhancedConfig, ctx context.Context) InteractiveModel {
+	if ctx == nil {
+		ctx = context.TODO()
+	}
 	parser := bridge.NewParser(cfg.Dialect.File)
 	ta := textarea.New()
 	ta.Placeholder = "Type your message and press Enter to send (Ctrl+C to quit)..."
@@ -219,6 +230,7 @@ func NewInteractiveModel(cfg *config.EnhancedConfig) InteractiveModel {
 		selectedEventIdx: 0,
 		dialectFlow:      newFlowStateWithParser(parser),
 		parser:           parser,
+		streamContext:    ctx,
 	}
 	// Set an initial placeholder so the viewport isn't blank before first refresh
 	m.viewport.SetContent(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(

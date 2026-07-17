@@ -261,6 +261,8 @@ func runInteractive(configPath, dialectOverride string) error {
 	if err != nil {
 		return fmt.Errorf("failed to load dialect: %w", err)
 	}
+	programCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
 
 	fmt.Printf("🔧 Configuration loaded from: %s\n", configPath)
 	fmt.Printf("   Backend: %s\n", cfg.Transport.BaseURL)
@@ -272,7 +274,7 @@ func runInteractive(configPath, dialectOverride string) error {
 		fmt.Printf("🔄 Auto-setting up session...\n")
 
 		vars := config.InterpolationVarsFromConfig(cfg)
-		sessionID, err := parser.RunSetup(context.Background(), vars, cfg.Transport.ResolvedHeaders(), nil)
+		sessionID, err := parser.RunSetup(programCtx, vars, cfg.Transport.ResolvedHeaders(), nil)
 		if err != nil {
 			return fmt.Errorf("failed to setup session: %w", err)
 		}
@@ -286,10 +288,10 @@ func runInteractive(configPath, dialectOverride string) error {
 	fmt.Printf("✅ Starting interactive TUI...\n\n")
 
 	// Create interactive TUI model
-	model := visualizer.NewInteractiveModel(cfg)
+	model := visualizer.NewInteractiveModelWithContext(cfg, programCtx)
 
 	// Start bubbletea program
-	p := tea.NewProgram(model, tea.WithAltScreen())
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithContext(programCtx))
 
 	// Run the program
 	if _, err := p.Run(); err != nil {

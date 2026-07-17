@@ -1,7 +1,6 @@
 package visualizer
 
 import (
-	"context"
 	"fmt"
 	neturl "net/url"
 	"time"
@@ -10,7 +9,6 @@ import (
 	"github.com/lancekrogers/stream-debugger/internal/client"
 	"github.com/lancekrogers/stream-debugger/internal/config"
 	"github.com/lancekrogers/stream-debugger/internal/events"
-	dblogger "github.com/lancekrogers/stream-debugger/internal/logger"
 	"github.com/lancekrogers/stream-debugger/internal/transport"
 )
 
@@ -26,7 +24,7 @@ func (m InteractiveModel) startStreamingCmd(message string, index int) tea.Cmd {
 		if err != nil {
 			return streamErrorMsg{err: fmt.Errorf("failed to build stream transport: %w", err)}
 		}
-		if err := tr.Connect(context.Background()); err != nil {
+		if err := tr.Connect(m.streamContext); err != nil {
 			_ = tr.Close()
 			return streamErrorMsg{err: fmt.Errorf("failed to connect stream transport: %w", err)}
 		}
@@ -87,41 +85,29 @@ type streamFrameMsg struct {
 	eof   bool
 }
 
-// newSessionCmd generates a fresh session id, sets it, calls setup, and resets state
+// newSessionCmd generates a fresh session id and performs setup. The returned
+// message lets Update apply both the reset and any setup error to the live
+// model instead of mutating a command's value-receiver copy.
 func (m InteractiveModel) newSessionCmd() tea.Cmd {
 	return func() tea.Msg {
 		// Generate new session id
 		newID := fmt.Sprintf("debug-session-%s", time.Now().Format("20060102-150405"))
 		m.cfg.Session.ID = newID
 
-		// Recreate logger for new session
-		if m.slog != nil {
-			_ = m.slog.Close()
-		}
-		if l, err := dblogger.NewStructuredLogger(m.cfg); err == nil {
-			m.slog = l
-		}
-
 		// Call session setup (auto create)
 		vars := config.InterpolationVarsFromConfig(m.cfg)
-		if sessionID, err := m.parser.RunSetup(context.Background(), vars, m.cfg.Transport.ResolvedHeaders(), nil); err == nil {
-			// Ensure we track the actual backend session id
-			m.cfg.Session.ID = sessionID
+		sessionID, err := m.parser.RunSetup(m.streamContext, vars, m.cfg.Transport.ResolvedHeaders(), nil)
+		if err != nil {
+			return sessionSetupMsg{
+				sessionID: newID,
+				err:       fmt.Errorf("session setup failed: %w", err),
+			}
 		}
-
-		// Reset UI state (clear all prior content and counters)
-		m.messages = make([]Message, 0)
-		m.err = nil
-		m.flowTurnIndex = 0
-		m.flowContinuous = true
-		m.selectedStepIndex = 0
-		m.flowExpanded = make(map[string]bool)
-		m.showTokens = false
-		m.eventsAggregatorOnly = false
-		m.appFocus = AppFocusAgents
-		m.viewport.SetContent("")
-		m.contentDirty = true
-		m.refreshViewportContent()
-		return nil
+		return sessionSetupMsg{sessionID: sessionID}
 	}
+}
+
+type sessionSetupMsg struct {
+	sessionID string
+	err       error
 }
