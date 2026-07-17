@@ -43,9 +43,25 @@ func SaveConfigFile(path string, cfg *EnhancedConfig) error {
 
 	streamEndpoint := ensureMap(transport, "stream_endpoint")
 	streamEndpoint["url"] = cfg.Transport.StreamEndpoint
+	if cfg.Transport.Auth.TokenEnv != "" {
+		authParent := streamEndpoint
+		if cfg.Transport.Type == "grpc" || cfg.Transport.Type == "replay" {
+			authParent = transport
+		}
+		auth := ensureMap(authParent, "auth")
+		auth["type"] = cfg.Transport.Auth.Type
+		auth["token_env"] = cfg.Transport.Auth.TokenEnv
+	} else if cfg.Transport.Type == "sse" && cfg.Transport.Auth.Type == "none" {
+		auth := ensureMap(streamEndpoint, "auth")
+		auth["type"] = cfg.Transport.Auth.Type
+		delete(auth, "token_env")
+	}
 
 	dialect := ensureMap(root, "dialect")
 	dialect["file"] = cfg.Dialect.File
+	session := ensureMap(root, "session")
+	session["auto_setup"] = cfg.Session.AutoSetup
+	session["default_agents"] = copyStrings(cfg.Session.DefaultAgents)
 	root["vars"] = copyVars(cfg.Vars)
 
 	updated, err := yaml.Marshal(root)
@@ -102,4 +118,11 @@ func copyVars(vars map[string]string) map[string]string {
 		copy[key] = value
 	}
 	return copy
+}
+
+func copyStrings(values []string) []string {
+	if len(values) == 0 {
+		return []string{}
+	}
+	return append([]string(nil), values...)
 }

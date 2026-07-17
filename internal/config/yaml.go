@@ -255,6 +255,7 @@ func resolveAuth(y authYAML, defaultType string) (AuthConfig, string, error) {
 	auth := AuthConfig{
 		Type:       authType,
 		HeaderName: y.HeaderName,
+		TokenEnv:   tokenEnv,
 		Token:      apiKey,
 	}
 
@@ -369,6 +370,7 @@ type DialectConfig struct {
 type AuthConfig struct {
 	Type       string // bearer, api_key, basic, metadata, or none
 	HeaderName string // custom header name for api_key (default X-API-Key), or the metadata key for type "metadata"
+	TokenEnv   string // environment variable name used to resolve Token
 	Token      string // resolved token for bearer/api_key/metadata
 	Username   string // resolved username for basic
 	Password   string // resolved password for basic

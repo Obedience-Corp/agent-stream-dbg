@@ -10,6 +10,8 @@ import (
 // first interactive launch into the TUI configuration panel.
 const StarterConfig = `# Stream Debugger starter configuration.
 # Fill in the connection details in the TUI, then press Ctrl+S to save.
+# If the backend requires bearer auth, set API_KEY in .env; the TUI can save
+# that environment-variable reference without storing the secret.
 transport:
   type: sse
   base_url: ""
@@ -25,7 +27,7 @@ dialect:
 vars: {}
 
 session:
-  auto_setup: false
+  auto_setup: true
 
 logging:
   dir: ./logs

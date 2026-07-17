@@ -24,6 +24,113 @@ func TestConfigVarsRoundTripIsDeterministic(t *testing.T) {
 	}
 }
 
+func TestConfigAgentsRoundTripIsDeterministic(t *testing.T) {
+	got := formatConfigAgents([]string{" sam_harris ", "eckhart_tolle", "wizard"})
+	if got != "sam_harris,eckhart_tolle,wizard" {
+		t.Fatalf("unexpected formatted agents %q", got)
+	}
+	agents, err := parseConfigAgents(got)
+	if err != nil {
+		t.Fatalf("parseConfigAgents: %v", err)
+	}
+	if strings.Join(agents, ",") != got {
+		t.Errorf("unexpected parsed agents %#v", agents)
+	}
+}
+
+func TestConfigPanelTransportFieldsAreScoped(t *testing.T) {
+	sse := newConfigPanel(&config.EnhancedConfig{Transport: config.TransportConfig{Type: "sse"}})
+	if !sse.fields[configFieldBaseURL].active || !sse.fields[configFieldStreamEndpoint].active {
+		t.Fatal("expected SSE fields to be active for SSE transport")
+	}
+	if sse.fields[configFieldGRPCTarget].active {
+		t.Fatal("expected gRPC target to be hidden for SSE transport")
+	}
+
+	sse.fields[configFieldTransport].input.SetValue("grpc")
+	sse.refreshFieldVisibility()
+	if !sse.fields[configFieldGRPCTarget].active {
+		t.Fatal("expected gRPC target to be active for gRPC transport")
+	}
+	if sse.fields[configFieldBaseURL].active || sse.fields[configFieldStreamEndpoint].active {
+		t.Fatal("expected SSE fields to be hidden for gRPC transport")
+	}
+
+	sse.fields[configFieldTransport].input.SetValue("replay")
+	sse.refreshFieldVisibility()
+	if !sse.fields[configFieldBaseURL].active || sse.fields[configFieldStreamEndpoint].active || sse.fields[configFieldGRPCTarget].active {
+		t.Fatal("expected replay to show only the replay file field")
+	}
+}
+
+func TestConfigPanelAuthEnvConfiguresBearerWithoutStoringSecretInConfig(t *testing.T) {
+	t.Setenv("STREAM_DEBUGGER_TEST_API_KEY", "test-secret")
+	m := NewInteractiveModel(&config.EnhancedConfig{LogDir: t.TempDir()})
+	m.openConfigPanel()
+	setConfigField(&m, configFieldDialect, "brainyard")
+	setConfigField(&m, configFieldAuthEnv, "STREAM_DEBUGGER_TEST_API_KEY")
+	setConfigField(&m, configFieldAgents, "sam_harris,eckhart_tolle,wizard")
+
+	if _, err := m.applyConfigPanel(false); err != nil {
+		t.Fatalf("applyConfigPanel: %v", err)
+	}
+	if got := m.cfg.Transport.Auth.Type; got != "bearer" {
+		t.Fatalf("auth type = %q, want bearer", got)
+	}
+	if got := m.cfg.Transport.Auth.TokenEnv; got != "STREAM_DEBUGGER_TEST_API_KEY" {
+		t.Fatalf("token env = %q, want STREAM_DEBUGGER_TEST_API_KEY", got)
+	}
+	if got := m.cfg.Transport.Auth.Token; got != "test-secret" {
+		t.Fatalf("resolved token = %q, want test-secret", got)
+	}
+	if got := strings.Join(m.cfg.Session.DefaultAgents, ","); got != "sam_harris,eckhart_tolle,wizard" {
+		t.Fatalf("default agents = %q", got)
+	}
+}
+
+func TestConfigPanelSavePersistsAuthReferenceNotSecret(t *testing.T) {
+	t.Setenv("STREAM_DEBUGGER_TEST_API_KEY", "test-secret")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	contents := "transport:\n  type: sse\n  stream_endpoint:\n    auth:\n      type: none\ndialect:\n  file: brainyard\n"
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	m := NewInteractiveModelWithContextAndConfigPath(&config.EnhancedConfig{LogDir: t.TempDir()}, nil, path)
+	m.openConfigPanel()
+	setConfigField(&m, configFieldAuthEnv, "STREAM_DEBUGGER_TEST_API_KEY")
+	setConfigField(&m, configFieldAgents, "sam_harris,eckhart_tolle,wizard")
+	if _, _, handled := m.handleConfigKeyMsg(tea.KeyMsg{Type: tea.KeyCtrlS}); !handled {
+		t.Fatal("expected Ctrl+S to be handled")
+	}
+
+	saved, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read saved config: %v", err)
+	}
+	text := string(saved)
+	if !strings.Contains(text, "type: bearer") || !strings.Contains(text, "token_env: STREAM_DEBUGGER_TEST_API_KEY") {
+		t.Fatalf("saved config did not contain the auth reference:\n%s", text)
+	}
+	if !strings.Contains(text, "- sam_harris") || !strings.Contains(text, "- wizard") {
+		t.Fatalf("saved config did not contain default agents:\n%s", text)
+	}
+	if strings.Contains(text, "test-secret") {
+		t.Fatal("saved config contained the resolved secret")
+	}
+}
+
+func TestConfigPanelFocusSkipsInactiveTransportFields(t *testing.T) {
+	m := NewInteractiveModel(&config.EnhancedConfig{Transport: config.TransportConfig{Type: "sse"}})
+	m.openConfigPanel()
+	m.configPanel.focused = int(configFieldStreamEndpoint)
+	m.focusConfigField(1)
+	if m.configPanel.focused != int(configFieldAgents) {
+		t.Fatalf("focus moved to field %d, want Agents", m.configPanel.focused)
+	}
+}
+
 func TestConfigPanel_ApplyReconnectUpdatesRuntimeConfig(t *testing.T) {
 	cfg := &config.EnhancedConfig{LogDir: t.TempDir()}
 	m := NewInteractiveModel(cfg)

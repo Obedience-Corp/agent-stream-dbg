@@ -23,10 +23,12 @@ Sleep 2s
 Type "openai" Sleep 150ms
 Tab
 Tab
+Tab
 Type "https://api.example.com" Sleep 150ms
 Tab
 Type "/v1/stream" Sleep 150ms
 Tab
+Type "sam_harris,eckhart_tolle,wizard" Sleep 150ms
 Tab
 Type "region=demo" Sleep 500ms
 Ctrl+S

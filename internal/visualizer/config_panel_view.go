@@ -30,7 +30,13 @@ func (m InteractiveModel) renderConfigPanel() string {
 		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true).Render(m.configPanel.notice))
 		b.WriteString("\n\n")
 	}
+	transportType := strings.ToLower(strings.TrimSpace(m.configPanel.fields[configFieldTransport].input.Value()))
+	b.WriteString(dimStyle.Render(configTransportHint(transportType)))
+	b.WriteString("\n\n")
 	for i, field := range m.configPanel.fields {
+		if !field.active {
+			continue
+		}
 		label := labelStyle.Render(field.label)
 		if i == m.configPanel.focused {
 			label = focusedStyle.Render("▸ " + field.label)
@@ -52,4 +58,17 @@ func (m InteractiveModel) renderConfigPanel() string {
 		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true).Render(m.configPanel.status))
 	}
 	return panelStyle.Render(b.String())
+}
+
+func configTransportHint(transportType string) string {
+	switch transportType {
+	case "grpc":
+		return "gRPC selected: fill the gRPC target. SSE fields are hidden and preserved."
+	case "replay":
+		return "Replay selected: fill the replay file path. Network fields are hidden."
+	case "sse":
+		return "SSE selected: fill Base URL + endpoint. Auth env is optional (for example API_KEY). gRPC target is not used."
+	default:
+		return "Choose sse, grpc, or replay; only the selected transport's fields are used."
+	}
 }

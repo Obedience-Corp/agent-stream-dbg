@@ -33,7 +33,10 @@ func runInteractiveWithOptions(configPath, dialectOverride string, openConfigPan
 	fmt.Printf("   Backend: %s\n", cfg.Transport.BaseURL)
 	fmt.Printf("   Session: %s\n", cfg.Session.ID)
 	fmt.Printf("   Log Dir: %s\n\n", cfg.LogDir)
-	if cfg.Session.AutoSetup {
+	// A newly-created starter config has no endpoint yet. Defer its setup
+	// handshake until the user saves the first-run panel and sends a message.
+	// Existing configs keep the historical eager setup behavior.
+	if cfg.Session.AutoSetup && !openConfigPanel {
 		fmt.Printf("🔄 Auto-setting up session...\n")
 		vars := config.InterpolationVarsFromConfig(cfg)
 		sessionID, err := parser.RunSetup(programCtx, vars, cfg.Transport.ResolvedHeaders(), nil)
