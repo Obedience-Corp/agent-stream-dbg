@@ -34,6 +34,12 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.viewport.Width = msg.Width - 4
 		m.viewport.Height = viewportHeight
+		for i := range m.configPanel.fields {
+			m.configPanel.fields[i].input.Width = msg.Width - 28
+			if m.configPanel.fields[i].input.Width < 30 {
+				m.configPanel.fields[i].input.Width = 30
+			}
+		}
 		m.contentDirty = true
 
 	case streamCompleteMsg:
