@@ -13,3 +13,6 @@ logs/
 
 # Go
 vendor/
+
+# Local TUI recordings
+out/

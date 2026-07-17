@@ -2,6 +2,7 @@ package visualizer
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -129,7 +130,7 @@ func (m InteractiveModel) handleConfigKeyMsg(msg tea.KeyMsg) (InteractiveModel, 
 		if err := config.SaveConfigFile(m.configPath, m.cfg); err != nil {
 			m.saveStatus = fmt.Sprintf("Config save failed: %v", err)
 		} else {
-			m.saveStatus = fmt.Sprintf("Config saved to %s", m.configPath)
+			m.saveStatus = fmt.Sprintf("Config saved to %s", filepath.Base(m.configPath))
 		}
 		return m, nil, true
 	}
