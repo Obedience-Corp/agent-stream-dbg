@@ -1,9 +1,6 @@
 package visualizer
 
 import (
-	"context"
-	"io"
-	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textarea"
@@ -14,6 +11,7 @@ import (
 	"github.com/lancekrogers/stream-debugger/internal/config"
 	"github.com/lancekrogers/stream-debugger/internal/events"
 	dblogger "github.com/lancekrogers/stream-debugger/internal/logger"
+	"github.com/lancekrogers/stream-debugger/internal/transport"
 )
 
 // ViewMode represents the display mode for responses
@@ -137,12 +135,8 @@ type InteractiveModel struct {
 	agentCollapsed map[string]bool // per-agent collapsed state
 
 	// Streaming (incremental) state
-	streamBody   io.ReadCloser
-	streamIndex  int
-	sseBuf       string          // carryover between chunks
-	sseEvent     string          // current event type being assembled
-	sseDataBuf   strings.Builder // current event data buffer
-	streamCancel context.CancelFunc
+	streamTransport transport.Transport
+	streamIndex     int
 
 	// Flow pane state
 	flowTurnIndex  int  // which message index is displayed in Flow (default latest)

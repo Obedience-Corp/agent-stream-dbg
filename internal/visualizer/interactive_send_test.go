@@ -41,15 +41,12 @@ func TestStartStreamingCmd_SendsViaDialectTemplate(t *testing.T) {
 		t.Fatalf("expected streamStartMsg, got %T: %+v", msg, msg)
 	}
 	defer func() {
-		if start.body != nil {
-			_ = start.body.Close()
+		if start.stream != nil {
+			_ = start.stream.Close()
 		}
 	}()
-	if start.cancel != nil {
-		defer start.cancel()
-	}
-	if start.body == nil {
-		t.Error("expected a non-nil response body to stream from")
+	if start.stream == nil {
+		t.Error("expected a non-nil transport to stream from")
 	}
 
 	// Verify the request actually reached the mock server (proves the

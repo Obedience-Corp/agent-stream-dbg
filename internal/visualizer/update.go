@@ -50,51 +50,20 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case streamStartMsg:
-		// Initialize incremental streaming state
-		m.streamBody = msg.body
+		// Initialize frame-level streaming state. The shared transport owns
+		// HTTP/SSE setup and wire parsing; the model owns only UI adaptation.
+		m.streamTransport = msg.stream
 		m.streamIndex = msg.index
-		m.streamCancel = msg.cancel
-		m.sseBuf = ""
-		m.sseEvent = ""
-		m.sseDataBuf.Reset()
-		// Kick off first read
-		return m, m.readStreamChunkCmd()
+		return m, m.readStreamFrameCmd()
 
-	case streamChunkMsg:
-		if msg.err != nil {
-			// Treat as completion with error
-			if m.streamBody != nil {
-				_ = m.streamBody.Close()
-				m.streamBody = nil
-			}
-			if m.streamCancel != nil {
-				m.streamCancel()
-				m.streamCancel = nil
-			}
-			m.err = msg.err
-			m.streaming = false
-			if m.streamIndex < len(m.messages) {
-				m.messages[m.streamIndex].Streaming = false
-			}
-			m.contentDirty = true
-			break
-		}
+	case streamFrameMsg:
 		if msg.eof {
-			// Finalize
-			if m.streamBody != nil {
-				_ = m.streamBody.Close()
-				m.streamBody = nil
-			}
-			if m.streamCancel != nil {
-				m.streamCancel()
-				m.streamCancel = nil
-			}
-			// Build parsed events once at end to fill Events if needed
+			// Finalize after the shared transport has closed its frame channel.
+			m.closeActiveStream()
 			if m.streamIndex < len(m.messages) {
 				raw := m.messages[m.streamIndex].RawSSE
 				parsed, _ := parseSSEStreamWithParser(raw, m.parser)
 				m.messages[m.streamIndex].Events = parsed
-				// Ensure AgentResponses is fully built at end as well
 				if len(m.messages[m.streamIndex].AgentResponses) == 0 {
 					m.messages[m.streamIndex].AgentResponses = m.buildAgentResponses(parsed)
 				}
@@ -108,16 +77,27 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			break
 		}
 
-		// Append raw and incrementally parse
+		// Append the exact raw frame and decode through the same bridge parser
+		// used by every noninteractive transport path.
 		if m.streamIndex < len(m.messages) {
-			if len(msg.chunk) > 0 {
-				m.messages[m.streamIndex].RawSSE += string(msg.chunk)
-				m.incrementalParseSSE(msg.chunk)
-				m.contentDirty = true
+			if len(msg.frame.Raw) > 0 {
+				m.messages[m.streamIndex].RawSSE += string(msg.frame.Raw)
 			}
+			if msg.frame.Err != nil {
+				m.closeActiveStream()
+				m.err = msg.frame.Err
+				m.streaming = false
+				m.messages[m.streamIndex].Streaming = false
+				m.contentDirty = true
+				break
+			}
+			if evt, err := m.parser.Parse(msg.frame.Name, msg.frame.Data); err == nil && evt != nil {
+				m.messages[m.streamIndex].Events = append(m.messages[m.streamIndex].Events, evt)
+				m.applyParsedEvent(evt)
+			}
+			m.contentDirty = true
 		}
-		// Schedule next read
-		return m, m.readStreamChunkCmd()
+		return m, m.readStreamFrameCmd()
 
 	case streamErrorMsg:
 		m.err = msg.err
@@ -226,54 +206,6 @@ func parseSSEStreamWithParser(rawSSE string, parser *bridge.Parser) ([]*events.E
 	}
 
 	return parsedEvents, nil
-}
-
-// incrementalParseSSE parses SSE incrementally from chunks to update AgentResponses as tokens arrive
-func (m *InteractiveModel) incrementalParseSSE(chunk []byte) {
-	if m.streamIndex >= len(m.messages) {
-		return
-	}
-	data := m.sseBuf + string(chunk)
-	lines := strings.Split(data, "\n")
-	// If the chunk doesn't end with a newline, keep last partial for next time
-	carry := ""
-	if !strings.HasSuffix(data, "\n") {
-		carry = lines[len(lines)-1]
-		lines = lines[:len(lines)-1]
-	}
-	parser := m.parser
-	for _, line := range lines {
-		s := strings.TrimRight(line, "\r")
-		if strings.HasPrefix(s, "event:") {
-			// Finish previous event if any
-			if m.sseEvent != "" && m.sseDataBuf.Len() > 0 {
-				evt, err := parser.Parse(m.sseEvent, []byte(m.sseDataBuf.String()))
-				if err == nil && evt != nil {
-					m.applyParsedEvent(evt)
-				}
-				m.sseDataBuf.Reset()
-			}
-			m.sseEvent = strings.TrimSpace(strings.TrimPrefix(s, "event:"))
-		} else if strings.HasPrefix(s, "data:") {
-			payload := strings.TrimSpace(strings.TrimPrefix(s, "data:"))
-			if m.sseDataBuf.Len() > 0 {
-				m.sseDataBuf.WriteString("\n")
-			}
-			m.sseDataBuf.WriteString(payload)
-		} else if s == "" {
-			// End of one event
-			if m.sseEvent != "" && m.sseDataBuf.Len() > 0 {
-				evt, err := parser.Parse(m.sseEvent, []byte(m.sseDataBuf.String()))
-				if err == nil && evt != nil {
-					m.applyParsedEvent(evt)
-				}
-			}
-			m.sseEvent = ""
-			m.sseDataBuf.Reset()
-		}
-		// Unknown lines are silently ignored
-	}
-	m.sseBuf = carry
 }
 
 // applyParsedEvent updates agent responses incrementally from a parsed

@@ -19,6 +19,7 @@ import (
 func (m InteractiveModel) handleKeyMsg(msg tea.KeyMsg) (InteractiveModel, tea.Cmd, bool) {
 	// Global ctrl bindings
 	if msg.Type == tea.KeyCtrlC {
+		m.closeActiveStream()
 		return m, tea.Quit, true
 	}
 	if msg.Type == tea.KeyCtrlT {

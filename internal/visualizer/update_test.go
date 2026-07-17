@@ -31,16 +31,15 @@ func TestUpdate_WindowSizeMsg(t *testing.T) {
 }
 
 // TestUpdate_StreamLifecycle drives Update through the streamStartMsg ->
-// streamChunkMsg (non-EOF) -> streamChunkMsg (EOF) sequence a real
-// streaming turn goes through, without a network connection (a nil body
-// stream reads as immediate EOF via readStreamChunkCmd).
+// streamFrameMsg (EOF) sequence a real streaming turn goes through, without a
+// network connection (a nil transport reads as immediate EOF).
 func TestUpdate_StreamLifecycle(t *testing.T) {
 	cfg := &config.EnhancedConfig{LogDir: t.TempDir()}
 	cfg.Session.ID = "stream-lifecycle-test"
 	m := NewInteractiveModel(cfg)
 	m.messages = append(m.messages, Message{Text: "hi", Streaming: true})
 
-	updated, cmd := m.Update(streamStartMsg{index: 0, body: nil, cancel: func() {}})
+	updated, cmd := m.Update(streamStartMsg{index: 0, stream: nil})
 	m2 := updated.(InteractiveModel)
 	if m2.streamIndex != 0 {
 		t.Errorf("expected streamIndex 0, got %d", m2.streamIndex)
@@ -50,15 +49,15 @@ func TestUpdate_StreamLifecycle(t *testing.T) {
 	}
 
 	msg := cmd()
-	chunkMsg, ok := msg.(streamChunkMsg)
+	frameMsg, ok := msg.(streamFrameMsg)
 	if !ok {
-		t.Fatalf("expected streamChunkMsg from readStreamChunkCmd, got %T", msg)
+		t.Fatalf("expected streamFrameMsg from readStreamFrameCmd, got %T", msg)
 	}
-	if !chunkMsg.eof {
-		t.Fatal("expected a nil stream body to read as immediate EOF")
+	if !frameMsg.eof {
+		t.Fatal("expected a nil stream transport to read as immediate EOF")
 	}
 
-	final, _ := m2.Update(chunkMsg)
+	final, _ := m2.Update(frameMsg)
 	m3 := final.(InteractiveModel)
 	if m3.streaming {
 		t.Error("expected streaming to be false after EOF")

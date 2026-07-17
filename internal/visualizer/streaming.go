@@ -1,90 +1,64 @@
 package visualizer
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io"
-	"net/http"
 	neturl "net/url"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/lancekrogers/stream-debugger/internal/client"
 	"github.com/lancekrogers/stream-debugger/internal/config"
 	"github.com/lancekrogers/stream-debugger/internal/events"
 	dblogger "github.com/lancekrogers/stream-debugger/internal/logger"
+	"github.com/lancekrogers/stream-debugger/internal/transport"
 )
 
 // urlQueryEscape safely escapes a message for URL query use
 func urlQueryEscape(s string) string { return neturl.QueryEscape(s) }
 
-// startStreamingCmd initiates the streaming request and hands off to chunk reader
+// startStreamingCmd initiates the shared configured transport and hands off to
+// the frame reader. The dialect send template is rendered by client.NewTransport;
+// this model only adapts raw transport frames into Bubble Tea messages.
 func (m InteractiveModel) startStreamingCmd(message string, index int) tea.Cmd {
 	return func() tea.Msg {
-		vars := config.InterpolationVarsFromConfig(m.cfg)
-		vars.Message = message
-		method, sendURL, sendBody, err := m.parser.RenderSend(vars)
+		tr, err := client.NewTransport(m.cfg, m.parser, message)
 		if err != nil {
-			return streamErrorMsg{err: fmt.Errorf("failed to render send request: %w", err)}
+			return streamErrorMsg{err: fmt.Errorf("failed to build stream transport: %w", err)}
 		}
-		// Pass through stream debug level if set (enables flow_step_detail synthesis output)
-		if lvl := m.cfg.Debug.Level; lvl != "" {
-			sendURL += "&debug=" + urlQueryEscape(lvl)
+		if err := tr.Connect(context.Background()); err != nil {
+			_ = tr.Close()
+			return streamErrorMsg{err: fmt.Errorf("failed to connect stream transport: %w", err)}
 		}
-
-		var bodyReader io.Reader
-		if sendBody != nil {
-			bodyReader = bytes.NewReader(sendBody)
-		}
-		req, err := http.NewRequest(method, sendURL, bodyReader)
-		if err != nil {
-			return streamErrorMsg{err: fmt.Errorf("failed to create request: %w", err)}
-		}
-		if sendBody != nil {
-			req.Header.Set("Content-Type", "application/json")
-		}
-		for k, v := range m.cfg.Transport.ResolvedHeaders() {
-			req.Header.Set(k, v)
-		}
-		req.Header.Set("Accept", "text/event-stream")
-
-		clientHTTP := &http.Client{} // no timeout; SSE is long-lived
-		ctx, cancel := context.WithCancel(context.Background())
-		req = req.WithContext(ctx)
-
-		resp, err := clientHTTP.Do(req)
-		if err != nil {
-			cancel() // Cancel context on error to avoid leak
-			return streamErrorMsg{err: fmt.Errorf("failed to send request: %w", err)}
-		}
-		if resp.StatusCode != http.StatusOK {
-			cancel() // Cancel context on error to avoid leak
-			body, _ := io.ReadAll(resp.Body)
-			_ = resp.Body.Close()
-			return streamErrorMsg{err: fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))}
-		}
-		return streamStartMsg{index: index, body: resp.Body, cancel: cancel}
+		return streamStartMsg{index: index, stream: tr}
 	}
 }
 
-// readStreamChunkCmd reads the next chunk from the active stream and returns a chunk message
-func (m InteractiveModel) readStreamChunkCmd() tea.Cmd {
-	// capture the current ReadCloser
-	r := m.streamBody
+// readStreamFrameCmd reads one complete raw frame from the active transport.
+// The transport owns wire parsing and lifecycle; the TUI only schedules one
+// frame at a time so its existing tea.Cmd update pattern remains intact.
+func (m InteractiveModel) readStreamFrameCmd() tea.Cmd {
+	tr := m.streamTransport
 	idx := m.streamIndex
 	return func() tea.Msg {
-		if r == nil {
-			return streamChunkMsg{index: idx, eof: true}
+		if tr == nil {
+			return streamFrameMsg{index: idx, eof: true}
 		}
-		buf := make([]byte, 4096)
-		n, err := r.Read(buf)
-		if err != nil {
-			if err == io.EOF {
-				return streamChunkMsg{index: idx, chunk: buf[:n], eof: true}
-			}
-			return streamChunkMsg{index: idx, err: err}
+		frame, ok := <-tr.Frames()
+		if !ok {
+			return streamFrameMsg{index: idx, eof: true}
 		}
-		return streamChunkMsg{index: idx, chunk: buf[:n]}
+		return streamFrameMsg{index: idx, frame: frame}
+	}
+}
+
+// closeActiveStream is safe to call from normal completion, error handling,
+// and the quit path. Transport.Close guarantees the frame channel is closed
+// and its reader has stopped before returning.
+func (m *InteractiveModel) closeActiveStream() {
+	if m.streamTransport != nil {
+		_ = m.streamTransport.Close()
+		m.streamTransport = nil
 	}
 }
 
@@ -103,16 +77,14 @@ type streamErrorMsg struct {
 // streamStartMsg signals beginning of incremental streaming
 type streamStartMsg struct {
 	index  int
-	body   io.ReadCloser
-	cancel context.CancelFunc
+	stream transport.Transport
 }
 
-// streamChunkMsg carries data chunk from the streaming response
-type streamChunkMsg struct {
+// streamFrameMsg carries one transport frame from the streaming response.
+type streamFrameMsg struct {
 	index int
-	chunk []byte
+	frame transport.Frame
 	eof   bool
-	err   error
 }
 
 // newSessionCmd generates a fresh session id, sets it, calls setup, and resets state

@@ -30,13 +30,20 @@ func newTransport(cfg *config.EnhancedConfig, parser *bridge.Parser, vars mappin
 	}
 }
 
+// NewTransport builds the configured raw transport for one rendered message.
+// Callers that need frame-level access (rather than the parsed Events channel
+// exposed by Client) use this shared factory so every product path executes
+// the same dialect send template and transport selection.
+func NewTransport(cfg *config.EnhancedConfig, parser *bridge.Parser, message string) (transport.Transport, error) {
+	vars := config.InterpolationVarsFromConfig(cfg)
+	vars.Message = message
+	return newTransport(cfg, parser, vars)
+}
+
 func newSSETransport(cfg *config.EnhancedConfig, parser *bridge.Parser, vars mapping.InterpolationVars) (transport.Transport, error) {
 	method, renderedURL, body, err := parser.RenderSend(vars)
 	if err != nil {
 		return nil, fmt.Errorf("failed to render send request: %w", err)
-	}
-	if method != "GET" || body != nil {
-		return nil, fmt.Errorf("stream mode can only execute a GET-style send (no body) today; dialect declared %s with a body — needs a POST-capable transport", method)
 	}
 	if cfg.Debug.Level != "" {
 		u, err := url.Parse(renderedURL)
@@ -50,7 +57,10 @@ func newSSETransport(cfg *config.EnhancedConfig, parser *bridge.Parser, vars map
 	}
 	headers := cfg.Transport.ResolvedHeaders()
 	headers["Accept"] = "text/event-stream"
-	return sse.New(method, renderedURL, nil, headers), nil
+	if body != nil {
+		headers["Content-Type"] = "application/json"
+	}
+	return sse.New(method, renderedURL, body, headers), nil
 }
 
 func newGRPCTransport(cfg *config.EnhancedConfig) transport.Transport {
