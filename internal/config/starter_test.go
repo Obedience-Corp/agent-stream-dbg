@@ -23,6 +23,9 @@ func TestWriteStarterConfigCreatesPrivateBackendNeutralFile(t *testing.T) {
 	if !strings.Contains(string(contents), "dialect:\n  file: \"\"") {
 		t.Fatalf("starter config did not leave dialect selection open:\n%s", contents)
 	}
+	if !strings.Contains(string(contents), "auto_setup: true") {
+		t.Fatalf("starter config did not enable dialect setup:\n%s", contents)
+	}
 	info, err := os.Stat(path)
 	if err != nil {
 		t.Fatalf("stat starter config: %v", err)

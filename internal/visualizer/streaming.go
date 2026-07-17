@@ -20,6 +20,18 @@ func urlQueryEscape(s string) string { return neturl.QueryEscape(s) }
 // this model only adapts raw transport frames into Bubble Tea messages.
 func (m InteractiveModel) startStreamingCmd(message string, index int) tea.Cmd {
 	return func() tea.Msg {
+		setupCompleted := false
+		if m.cfg.Session.AutoSetup && !m.sessionReady {
+			vars := config.InterpolationVarsFromConfig(m.cfg)
+			sessionID, err := m.parser.RunSetup(m.streamContext, vars, m.cfg.Transport.ResolvedHeaders(), nil)
+			if err != nil {
+				return streamErrorMsg{err: fmt.Errorf("failed to setup session: %w", err)}
+			}
+			if sessionID != "" {
+				m.cfg.Session.ID = sessionID
+			}
+			setupCompleted = true
+		}
 		tr, err := client.NewTransport(m.cfg, m.parser, message)
 		if err != nil {
 			return streamErrorMsg{err: fmt.Errorf("failed to build stream transport: %w", err)}
@@ -28,7 +40,7 @@ func (m InteractiveModel) startStreamingCmd(message string, index int) tea.Cmd {
 			_ = tr.Close()
 			return streamErrorMsg{err: fmt.Errorf("failed to connect stream transport: %w", err)}
 		}
-		return streamStartMsg{index: index, stream: tr}
+		return streamStartMsg{index: index, stream: tr, sessionReady: setupCompleted}
 	}
 }
 
@@ -74,8 +86,9 @@ type streamErrorMsg struct {
 
 // streamStartMsg signals beginning of incremental streaming
 type streamStartMsg struct {
-	index  int
-	stream transport.Transport
+	index        int
+	stream       transport.Transport
+	sessionReady bool
 }
 
 // streamFrameMsg carries one transport frame from the streaming response.

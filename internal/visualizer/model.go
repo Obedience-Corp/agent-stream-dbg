@@ -139,6 +139,7 @@ type InteractiveModel struct {
 	streamTransport transport.Transport
 	streamIndex     int
 	streamContext   context.Context
+	sessionReady    bool
 
 	// Flow pane state
 	flowTurnIndex  int  // which message index is displayed in Flow (default latest)
@@ -248,7 +249,11 @@ func NewInteractiveModelWithContextAndConfigPathAndOpenConfig(cfg *config.Enhanc
 		dialectFlow:      newFlowStateWithParser(parser),
 		parser:           parser,
 		streamContext:    ctx,
-		configPath:       configPath,
+		// Normal interactive startup performs auto-setup before constructing
+		// the model. A first-run model defers it until the first send, after
+		// the user has filled and saved the configuration panel.
+		sessionReady: !cfg.Session.AutoSetup || !openConfigPanel,
+		configPath:   configPath,
 	}
 	// Set an initial placeholder so the viewport isn't blank before first refresh
 	m.viewport.SetContent(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(

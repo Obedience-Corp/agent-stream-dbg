@@ -2,6 +2,7 @@ package visualizer
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -17,15 +18,18 @@ type configField int
 const (
 	configFieldDialect configField = iota
 	configFieldTransport
+	configFieldAuthEnv
 	configFieldBaseURL
 	configFieldStreamEndpoint
 	configFieldGRPCTarget
+	configFieldAgents
 	configFieldVars
 )
 
 type configFieldState struct {
-	label string
-	input textinput.Model
+	label  string
+	input  textinput.Model
+	active bool
 }
 
 type configPanel struct {
@@ -37,28 +41,36 @@ type configPanel struct {
 }
 
 func newConfigPanel(cfg *config.EnhancedConfig) configPanel {
-	values := []string{"", "sse", "", "", "", ""}
+	values := []string{"", "sse", "", "", "", "", "", ""}
 	if cfg != nil {
 		transportType := cfg.Transport.Type
 		if transportType == "" {
 			transportType = "sse"
 		}
+		authEnv := cfg.Transport.Auth.TokenEnv
+		if authEnv == "" && (cfg.Transport.Auth.Type == "" || cfg.Transport.Auth.Type == "none") && os.Getenv("API_KEY") != "" {
+			authEnv = "API_KEY"
+		}
 		values = []string{
 			cfg.Dialect.File,
 			transportType,
+			authEnv,
 			cfg.Transport.BaseURL,
 			cfg.Transport.StreamEndpoint,
 			cfg.Transport.Target,
+			formatConfigAgents(cfg.Session.DefaultAgents),
 			formatConfigVars(cfg.Vars),
 		}
 	}
-	labels := []string{"Dialect", "Transport", "Base URL", "SSE endpoint", "gRPC target", "Vars"}
+	labels := []string{"Dialect", "Transport", "Auth env", "Base URL", "SSE endpoint", "gRPC target", "Agents", "Vars"}
 	placeholders := []string{
 		"embedded name or path to dialect YAML",
 		"sse, grpc, or replay",
+		"API_KEY (optional bearer auth)",
 		"https://api.example.com",
 		"/v1/stream",
 		"localhost:50051",
+		"sam_harris,eckhart_tolle,wizard (comma-separated)",
 		"key=value,other=value",
 	}
 	fields := make([]configFieldState, len(labels))
@@ -71,8 +83,36 @@ func newConfigPanel(cfg *config.EnhancedConfig) configPanel {
 		input.SetValue(values[i])
 		fields[i] = configFieldState{label: label, input: input}
 	}
+	panel := configPanel{focused: 0, fields: fields}
+	panel.refreshFieldVisibility()
 	fields[0].input.Focus()
-	return configPanel{focused: 0, fields: fields}
+	return panel
+}
+
+func (p *configPanel) refreshFieldVisibility() {
+	transportType := strings.ToLower(strings.TrimSpace(p.fields[configFieldTransport].input.Value()))
+	for i := range p.fields {
+		p.fields[i].active = configFieldIsActive(configField(i), transportType)
+	}
+}
+
+func configFieldIsActive(field configField, transportType string) bool {
+	switch field {
+	case configFieldDialect, configFieldTransport, configFieldVars:
+		return true
+	case configFieldAuthEnv:
+		return transportType == "sse"
+	case configFieldBaseURL:
+		return transportType == "sse" || transportType == "replay"
+	case configFieldStreamEndpoint:
+		return transportType == "sse"
+	case configFieldGRPCTarget:
+		return transportType == "grpc"
+	case configFieldAgents:
+		return transportType == "sse" || transportType == "grpc"
+	default:
+		return false
+	}
 }
 
 func (m *InteractiveModel) openConfigPanel() tea.Cmd {
@@ -108,8 +148,10 @@ func (m InteractiveModel) handleConfigKeyMsg(msg tea.KeyMsg) (InteractiveModel, 
 
 	switch msg.Type {
 	case tea.KeyTab:
+		m.configPanel.refreshFieldVisibility()
 		return m, m.focusConfigField(1), true
 	case tea.KeyShiftTab:
+		m.configPanel.refreshFieldVisibility()
 		return m, m.focusConfigField(-1), true
 	case tea.KeyEnter:
 		cmd, err := m.applyConfigPanel(true)
@@ -137,6 +179,9 @@ func (m InteractiveModel) handleConfigKeyMsg(msg tea.KeyMsg) (InteractiveModel, 
 
 	var cmd tea.Cmd
 	m.configPanel.fields[m.configPanel.focused].input, cmd = m.configPanel.fields[m.configPanel.focused].input.Update(msg)
+	if m.configPanel.focused == int(configFieldTransport) {
+		m.configPanel.refreshFieldVisibility()
+	}
 	return m, cmd, true
 }
 
@@ -145,22 +190,29 @@ func (m *InteractiveModel) focusConfigField(delta int) tea.Cmd {
 		return nil
 	}
 	m.configPanel.fields[m.configPanel.focused].input.Blur()
-	m.configPanel.focused = (m.configPanel.focused + delta) % len(m.configPanel.fields)
-	if m.configPanel.focused < 0 {
-		m.configPanel.focused += len(m.configPanel.fields)
+	for step := 1; step <= len(m.configPanel.fields); step++ {
+		candidate := (m.configPanel.focused + delta*step) % len(m.configPanel.fields)
+		if candidate < 0 {
+			candidate += len(m.configPanel.fields)
+		}
+		if m.configPanel.fields[candidate].active {
+			m.configPanel.focused = candidate
+			return m.configPanel.fields[candidate].input.Focus()
+		}
 	}
-	return m.configPanel.fields[m.configPanel.focused].input.Focus()
+	return nil
 }
 
 func (m *InteractiveModel) applyConfigPanel(reconnect bool) (tea.Cmd, error) {
 	if m.cfg == nil {
 		return nil, fmt.Errorf("cannot apply configuration: config is nil")
 	}
+	m.configPanel.refreshFieldVisibility()
 	values := make([]string, len(m.configPanel.fields))
 	for i := range m.configPanel.fields {
 		values[i] = strings.TrimSpace(m.configPanel.fields[i].input.Value())
 	}
-	if len(values) != 6 {
+	if len(values) != len(m.configPanel.fields) {
 		return nil, fmt.Errorf("configuration panel is incomplete")
 	}
 	transportType := strings.ToLower(values[configFieldTransport])
@@ -178,9 +230,34 @@ func (m *InteractiveModel) applyConfigPanel(reconnect bool) (tea.Cmd, error) {
 	candidate := *m.cfg
 	candidate.Transport = m.cfg.Transport
 	candidate.Transport.Type = transportType
-	candidate.Transport.BaseURL = values[configFieldBaseURL]
-	candidate.Transport.StreamEndpoint = values[configFieldStreamEndpoint]
-	candidate.Transport.Target = values[configFieldGRPCTarget]
+	if m.configPanel.fields[configFieldAuthEnv].active {
+		authEnv := values[configFieldAuthEnv]
+		if authEnv == "" {
+			candidate.Transport.Auth = config.AuthConfig{Type: "none"}
+		} else {
+			token := os.Getenv(authEnv)
+			if token == "" {
+				return nil, fmt.Errorf("%s environment variable is not set; add it to .env before applying", authEnv)
+			}
+			candidate.Transport.Auth.Type = "bearer"
+			candidate.Transport.Auth.TokenEnv = authEnv
+			candidate.Transport.Auth.Token = token
+		}
+	}
+	if m.configPanel.fields[configFieldBaseURL].active {
+		candidate.Transport.BaseURL = values[configFieldBaseURL]
+	}
+	if m.configPanel.fields[configFieldStreamEndpoint].active {
+		candidate.Transport.StreamEndpoint = values[configFieldStreamEndpoint]
+	}
+	if m.configPanel.fields[configFieldGRPCTarget].active {
+		candidate.Transport.Target = values[configFieldGRPCTarget]
+	}
+	agents, err := parseConfigAgents(values[configFieldAgents])
+	if err != nil {
+		return nil, err
+	}
+	candidate.Session.DefaultAgents = agents
 	candidate.Dialect = m.cfg.Dialect
 	candidate.Dialect.File = values[configFieldDialect]
 	candidate.Vars = vars
@@ -192,6 +269,7 @@ func (m *InteractiveModel) applyConfigPanel(reconnect bool) (tea.Cmd, error) {
 
 	m.closeActiveStream()
 	m.cfg = &candidate
+	m.sessionReady = !candidate.Session.AutoSetup
 	m.parser = candidateParser
 	m.dialectFlow = newFlowStateWithParser(candidateParser)
 	m.err = nil
@@ -241,6 +319,21 @@ func parseConfigVars(raw string) (map[string]string, error) {
 	return vars, nil
 }
 
+func parseConfigAgents(raw string) ([]string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	agents := make([]string, 0)
+	for _, part := range strings.Split(raw, ",") {
+		agent := strings.TrimSpace(part)
+		if agent == "" {
+			return nil, fmt.Errorf("invalid agent list %q (use comma-separated agent IDs)", raw)
+		}
+		agents = append(agents, agent)
+	}
+	return agents, nil
+}
+
 func formatConfigVars(vars map[string]string) string {
 	keys := make([]string, 0, len(vars))
 	for key := range vars {
@@ -252,4 +345,14 @@ func formatConfigVars(vars map[string]string) string {
 		parts = append(parts, key+"="+vars[key])
 	}
 	return strings.Join(parts, ",")
+}
+
+func formatConfigAgents(agents []string) string {
+	trimmed := make([]string, 0, len(agents))
+	for _, agent := range agents {
+		if value := strings.TrimSpace(agent); value != "" {
+			trimmed = append(trimmed, value)
+		}
+	}
+	return strings.Join(trimmed, ",")
 }

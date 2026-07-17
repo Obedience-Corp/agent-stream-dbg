@@ -58,6 +58,9 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case streamStartMsg:
 		// Initialize frame-level streaming state. The shared transport owns
 		// HTTP/SSE setup and wire parsing; the model owns only UI adaptation.
+		if msg.sessionReady {
+			m.sessionReady = true
+		}
 		m.streamTransport = msg.stream
 		m.streamIndex = msg.index
 		return m, m.readStreamFrameCmd()
