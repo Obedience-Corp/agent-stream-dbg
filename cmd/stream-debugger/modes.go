@@ -45,7 +45,7 @@ func runInteractive(configPath, dialectOverride string) error {
 	}
 
 	fmt.Printf("✅ Starting interactive TUI...\n\n")
-	model := visualizer.NewInteractiveModelWithContext(cfg, programCtx)
+	model := visualizer.NewInteractiveModelWithContextAndConfigPath(cfg, programCtx, configPath)
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithContext(programCtx))
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("TUI error: %w", err)

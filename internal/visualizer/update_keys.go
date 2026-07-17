@@ -17,6 +17,10 @@ import (
 // should fall through to its own shared tail logic (e.g. forwarding
 // unhandled keystrokes to the textarea while in insert mode).
 func (m InteractiveModel) handleKeyMsg(msg tea.KeyMsg) (InteractiveModel, tea.Cmd, bool) {
+	if m.configPanel.open {
+		return m.handleConfigKeyMsg(msg)
+	}
+
 	// Global ctrl bindings
 	if msg.Type == tea.KeyCtrlC {
 		m.closeActiveStream()
@@ -139,6 +143,8 @@ func (m InteractiveModel) handleKeyMsg(msg tea.KeyMsg) (InteractiveModel, tea.Cm
 			m.contentDirty = true
 			m.refreshViewportContent()
 			return m, nil, true
+		case "c":
+			return m, m.openConfigPanel(), true
 		// Debug level toggles (F7=verbose, F8=full, F9=off)
 		case "f7":
 			m.cfg.Debug.Level = "verbose"

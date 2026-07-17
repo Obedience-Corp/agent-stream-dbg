@@ -10,6 +10,10 @@ import (
 )
 
 func (m InteractiveModel) View() string {
+	if m.configPanel.open {
+		return m.renderConfigPanel()
+	}
+
 	var b strings.Builder
 
 	// Header with pane indicator
@@ -116,7 +120,7 @@ func (m InteractiveModel) View() string {
 		wrapStr = "ON"
 	}
 	status := fmt.Sprintf(
-		"Mode:%s Pane:%s Msgs:%d | 1-6:panes %s w:wrap(%s) F7:verbose F8:full F9:off Ctrl+S:save",
+		"Mode:%s Pane:%s Msgs:%d | 1-5:panes %s c:config w:wrap(%s) F7:verbose F8:full F9:off Ctrl+S:export",
 		mode, m.currentPaneName(), len(m.messages), paneHints, wrapStr,
 	)
 	b.WriteString(statusStyle.Render(status))

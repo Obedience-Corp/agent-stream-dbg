@@ -151,6 +151,10 @@ type InteractiveModel struct {
 	// Save status message
 	saveStatus string
 
+	// Config panel state and the source file used by Ctrl+S in the panel.
+	configPanel configPanel
+	configPath  string
+
 	// dialectFlow resolves stage order (and, later, lane roles) from the
 	// loaded dialect's flow: spec, or derives them live from observed
 	// events when it declared none.
@@ -181,6 +185,12 @@ func NewInteractiveModel(cfg *config.EnhancedConfig) InteractiveModel {
 // NewInteractiveModelWithContext creates an interactive model whose network
 // commands share the Bubble Tea program's lifecycle context.
 func NewInteractiveModelWithContext(cfg *config.EnhancedConfig, ctx context.Context) InteractiveModel {
+	return NewInteractiveModelWithContextAndConfigPath(cfg, ctx, "")
+}
+
+// NewInteractiveModelWithContextAndConfigPath creates an interactive model
+// that can save panel edits back to the config file used to launch it.
+func NewInteractiveModelWithContextAndConfigPath(cfg *config.EnhancedConfig, ctx context.Context, configPath string) InteractiveModel {
 	if ctx == nil {
 		ctx = context.TODO()
 	}
@@ -231,6 +241,7 @@ func NewInteractiveModelWithContext(cfg *config.EnhancedConfig, ctx context.Cont
 		dialectFlow:      newFlowStateWithParser(parser),
 		parser:           parser,
 		streamContext:    ctx,
+		configPath:       configPath,
 	}
 	// Set an initial placeholder so the viewport isn't blank before first refresh
 	m.viewport.SetContent(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(
