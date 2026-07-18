@@ -272,12 +272,15 @@ obey serve --foreground
 stream-debugger --config configs/obey-grpc.yaml
 ```
 
-The TUI's `c` configuration panel exposes the same fields: choose `grpc`, set
-the Unix target, choose `plaintext`, enter the fully-qualified method and
-request JSON, and use `oneof` for Obey's `snapshot`/`update`/`heartbeat`
-response variants. Obey's
-local socket does not require authentication; a remote gRPC service can use
-the optional auth environment field for metadata credentials.
+The TUI's `c` configuration panel exposes the same fields. For a
+reflection-enabled daemon, choose `grpc`, enter the target and security, then
+press `Ctrl+G` to discover streaming RPCs. Select an RPC to fill its
+fully-qualified method, request JSON starter, and a sensible discriminator;
+review the request and press `Enter` to connect. The optional auth environment
+and metadata-key fields cover services that require gRPC metadata credentials.
+If reflection is disabled, the same panel still supports manual method and
+request entry, or the descriptor-set/`.proto` fallback fields in YAML. Obey's
+local socket does not require authentication.
 
 The checked-in example uses Obey's campaign-state stream and requests the
 initial snapshot:

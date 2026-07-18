@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/lancekrogers/stream-debugger/internal/client"
 	"github.com/lancekrogers/stream-debugger/internal/config"
 )
 
@@ -52,7 +53,7 @@ func TestConfigPanelTransportFieldsAreScoped(t *testing.T) {
 	if !sse.fields[configFieldGRPCTarget].active {
 		t.Fatal("expected gRPC target to be active for gRPC transport")
 	}
-	for _, field := range []configField{configFieldGRPCSecurity, configFieldGRPCMethod, configFieldGRPCRequest, configFieldGRPCDiscriminator, configFieldGRPCDiscriminatorField} {
+	for _, field := range []configField{configFieldGRPCSecurity, configFieldGRPCAuthKey, configFieldGRPCMethod, configFieldGRPCRequest, configFieldGRPCDiscriminator, configFieldGRPCDiscriminatorField} {
 		if !sse.fields[field].active {
 			t.Fatalf("expected gRPC field %d to be active for gRPC transport", field)
 		}
@@ -203,12 +204,15 @@ func TestConfigPanel_ApplyReconnectUpdatesRuntimeConfig(t *testing.T) {
 }
 
 func TestConfigPanel_ApplyGRPCRequest(t *testing.T) {
+	t.Setenv("STREAM_DEBUGGER_TEST_GRPC_TOKEN", "test-token")
 	m := NewInteractiveModel(&config.EnhancedConfig{LogDir: t.TempDir()})
 	m.openConfigPanel()
 	setConfigField(&m, configFieldDialect, "obey")
 	setConfigField(&m, configFieldTransport, "grpc")
+	setConfigField(&m, configFieldAuthEnv, "STREAM_DEBUGGER_TEST_GRPC_TOKEN")
 	setConfigField(&m, configFieldGRPCTarget, "unix:///tmp/obey.sock")
 	setConfigField(&m, configFieldGRPCSecurity, "plaintext")
+	setConfigField(&m, configFieldGRPCAuthKey, "x-obey-token")
 	setConfigField(&m, configFieldGRPCMethod, "/local.v1.LocalDaemonService/WatchCampaignState")
 	setConfigField(&m, configFieldGRPCRequest, `{"include_initial_snapshot":true}`)
 	setConfigField(&m, configFieldGRPCDiscriminator, "oneof")
@@ -222,8 +226,50 @@ func TestConfigPanel_ApplyGRPCRequest(t *testing.T) {
 	if !m.cfg.Transport.Plaintext {
 		t.Fatal("expected plaintext gRPC security")
 	}
+	if got := m.cfg.Transport.Auth.HeaderName; got != "x-obey-token" {
+		t.Fatalf("metadata key = %q, want x-obey-token", got)
+	}
 	if got, ok := m.cfg.Transport.Request["include_initial_snapshot"].(bool); !ok || !got {
 		t.Fatalf("unexpected gRPC request %#v", m.cfg.Transport.Request)
+	}
+}
+
+func TestConfigPanelGRPCPickerFillsMethodRequestAndDiscriminator(t *testing.T) {
+	m := NewInteractiveModel(&config.EnhancedConfig{LogDir: t.TempDir()})
+	m.openConfigPanel()
+	setConfigField(&m, configFieldTransport, "grpc")
+	setConfigField(&m, configFieldGRPCTarget, "127.0.0.1:50051")
+
+	updated, _ := m.Update(grpcMethodsMsg{methods: []client.GRPCStreamingMethod{
+		{
+			Path:          "/agent.v1.Agent/Watch",
+			Shape:         "server-streaming",
+			InputType:     "agent.v1.WatchRequest",
+			OutputType:    "agent.v1.Event",
+			RequestJSON:   `{"session_id":""}`,
+			Discriminator: "message_type",
+			Supported:     true,
+		}}})
+	m = updated.(InteractiveModel)
+	if !m.configPanel.grpcMethodPickerOpen {
+		t.Fatal("expected gRPC method picker to open after discovery")
+	}
+
+	m, _, handled := m.handleConfigKeyMsg(tea.KeyMsg{Type: tea.KeyEnter})
+	if !handled {
+		t.Fatal("expected method picker Enter to be handled")
+	}
+	if m.configPanel.grpcMethodPickerOpen {
+		t.Fatal("expected picker to close after selecting a method")
+	}
+	if got := m.configPanel.fields[configFieldGRPCMethod].input.Value(); got != "/agent.v1.Agent/Watch" {
+		t.Errorf("method field = %q", got)
+	}
+	if got := m.configPanel.fields[configFieldGRPCRequest].input.Value(); got != `{"session_id":""}` {
+		t.Errorf("request field = %q", got)
+	}
+	if got := m.configPanel.fields[configFieldGRPCDiscriminator].input.Value(); got != "message_type" {
+		t.Errorf("discriminator field = %q", got)
 	}
 }
 
