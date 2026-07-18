@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -14,6 +15,29 @@ import (
 	"github.com/lancekrogers/stream-debugger/internal/transport/replay"
 	"github.com/lancekrogers/stream-debugger/internal/transport/sse"
 )
+
+// GRPCStreamingMethod is the UI-facing alias for a reflection-discovered
+// streaming RPC. Keeping the alias here lets callers stay at the client
+// boundary instead of depending on transport implementation details.
+type GRPCStreamingMethod = grpctransport.StreamingMethod
+
+// DiscoverGRPCMethods exposes reflection discovery to interactive callers
+// without making them construct the transport package's lower-level Config.
+// It dials only long enough to enumerate streaming RPCs and build starter
+// request JSON; selecting a method still goes through NewTransport, so the
+// configured stream uses the same path as every other client.
+func DiscoverGRPCMethods(ctx context.Context, cfg *config.EnhancedConfig) ([]grpctransport.StreamingMethod, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("gRPC discovery requires a configuration")
+	}
+	metadataKey, metadataValue, _ := cfg.Transport.Auth.Metadata()
+	return grpctransport.DiscoverStreamingMethods(ctx, grpctransport.Config{
+		Target:        cfg.Transport.Target,
+		Plaintext:     cfg.Transport.Plaintext,
+		MetadataKey:   metadataKey,
+		MetadataValue: metadataValue,
+	})
+}
 
 func newTransport(cfg *config.EnhancedConfig, parser *bridge.Parser, vars mapping.InterpolationVars) (transport.Transport, error) {
 	switch cfg.Transport.Type {

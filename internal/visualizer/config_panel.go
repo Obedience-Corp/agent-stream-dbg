@@ -1,16 +1,19 @@
 package visualizer
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/lancekrogers/stream-debugger/internal/bridge"
+	"github.com/lancekrogers/stream-debugger/internal/client"
 	"github.com/lancekrogers/stream-debugger/internal/config"
 )
 
@@ -24,6 +27,7 @@ const (
 	configFieldStreamEndpoint
 	configFieldGRPCTarget
 	configFieldGRPCSecurity
+	configFieldGRPCAuthKey
 	configFieldGRPCMethod
 	configFieldGRPCRequest
 	configFieldGRPCDiscriminator
@@ -39,15 +43,24 @@ type configFieldState struct {
 }
 
 type configPanel struct {
-	open    bool
-	focused int
-	fields  []configFieldState
-	notice  string
-	status  string
+	open                  bool
+	focused               int
+	fields                []configFieldState
+	notice                string
+	status                string
+	grpcMethods           []client.GRPCStreamingMethod
+	grpcMethodPickerOpen  bool
+	grpcMethodPickerIndex int
+	grpcDiscoveryPending  bool
+}
+
+type grpcMethodsMsg struct {
+	methods []client.GRPCStreamingMethod
+	err     error
 }
 
 func newConfigPanel(cfg *config.EnhancedConfig) configPanel {
-	values := []string{"", "sse", "", "", "", "", "", "", "", "", "", "", ""}
+	values := []string{"", "sse", "", "", "", "", "", "", "", "", "", "", "", ""}
 	if cfg != nil {
 		transportType := cfg.Transport.Type
 		if transportType == "" {
@@ -64,6 +77,10 @@ func newConfigPanel(cfg *config.EnhancedConfig) configPanel {
 				grpcSecurity = "plaintext"
 			}
 		}
+		grpcAuthKey := cfg.Transport.Auth.HeaderName
+		if grpcAuthKey == "" {
+			grpcAuthKey = "authorization"
+		}
 		values = []string{
 			cfg.Dialect.File,
 			transportType,
@@ -72,6 +89,7 @@ func newConfigPanel(cfg *config.EnhancedConfig) configPanel {
 			cfg.Transport.StreamEndpoint,
 			cfg.Transport.Target,
 			grpcSecurity,
+			grpcAuthKey,
 			cfg.Transport.GRPCMethod,
 			formatConfigRequest(cfg.Transport.Request),
 			cfg.Transport.Discriminator,
@@ -80,7 +98,7 @@ func newConfigPanel(cfg *config.EnhancedConfig) configPanel {
 			formatConfigVars(cfg.Vars),
 		}
 	}
-	labels := []string{"Dialect", "Transport", "Auth env", "Base URL", "SSE endpoint", "gRPC target", "gRPC security", "gRPC method", "gRPC request", "Discriminator", "Discriminator field", "Agents", "Vars"}
+	labels := []string{"Dialect", "Transport", "Auth env", "Base URL", "SSE endpoint", "gRPC target", "gRPC security", "gRPC metadata key", "gRPC method", "gRPC request", "Discriminator", "Discriminator field", "Agents", "Vars"}
 	placeholders := []string{
 		"embedded name or path to dialect YAML",
 		"sse, grpc, or replay",
@@ -89,6 +107,7 @@ func newConfigPanel(cfg *config.EnhancedConfig) configPanel {
 		"/v1/stream",
 		"localhost:50051 or unix:///path/to/socket",
 		"plaintext or tls",
+		"authorization, x-api-key, or custom metadata key",
 		"/package.Service/StreamingMethod",
 		`{"field":"value"}`,
 		"oneof, field:type, message_type, or none",
@@ -131,7 +150,7 @@ func configFieldIsActive(field configField, transportType string) bool {
 		return transportType == "sse"
 	case configFieldGRPCTarget:
 		return transportType == "grpc"
-	case configFieldGRPCSecurity, configFieldGRPCMethod, configFieldGRPCRequest, configFieldGRPCDiscriminator, configFieldGRPCDiscriminatorField:
+	case configFieldGRPCSecurity, configFieldGRPCAuthKey, configFieldGRPCMethod, configFieldGRPCRequest, configFieldGRPCDiscriminator, configFieldGRPCDiscriminatorField:
 		return transportType == "grpc"
 	case configFieldAgents:
 		return transportType == "sse" || transportType == "grpc"
@@ -154,6 +173,8 @@ func (m *InteractiveModel) closeConfigPanel() {
 		m.configPanel.fields[m.configPanel.focused].input.Blur()
 	}
 	m.configPanel.open = false
+	m.configPanel.grpcMethodPickerOpen = false
+	m.configPanel.grpcDiscoveryPending = false
 	m.configPanel.status = ""
 	m.contentDirty = true
 }
@@ -164,11 +185,40 @@ func (m InteractiveModel) handleConfigKeyMsg(msg tea.KeyMsg) (InteractiveModel, 
 		return m, tea.Quit, true
 	}
 	if msg.Type == tea.KeyEsc {
+		if m.configPanel.grpcMethodPickerOpen {
+			m.configPanel.grpcMethodPickerOpen = false
+			m.configPanel.status = ""
+			m.contentDirty = true
+			return m, nil, true
+		}
 		m.closeConfigPanel()
 		return m, nil, true
 	}
 	if len(m.configPanel.fields) == 0 {
 		return m, nil, true
+	}
+	if m.configPanel.grpcMethodPickerOpen {
+		cmd, handled := m.handleGRPCMethodPickerKey(msg)
+		return m, cmd, handled
+	}
+	if msg.Type == tea.KeyCtrlG {
+		if m.configPanel.grpcDiscoveryPending {
+			m.configPanel.status = "gRPC discovery is already running…"
+			return m, nil, true
+		}
+		transportType := strings.ToLower(strings.TrimSpace(m.configPanel.fields[configFieldTransport].input.Value()))
+		if transportType != "grpc" {
+			m.configPanel.status = "gRPC discovery is available when Transport is grpc"
+			return m, nil, true
+		}
+		cmd := m.discoverGRPCMethodsCmd()
+		if cmd == nil {
+			return m, nil, true
+		}
+		m.configPanel.grpcDiscoveryPending = true
+		m.configPanel.status = "Discovering streaming RPCs via server reflection…"
+		m.contentDirty = true
+		return m, cmd, true
 	}
 
 	switch msg.Type {
@@ -217,6 +267,104 @@ func (m InteractiveModel) handleConfigKeyMsg(msg tea.KeyMsg) (InteractiveModel, 
 		m.configPanel.refreshFieldVisibility()
 	}
 	return m, cmd, true
+}
+
+func (m *InteractiveModel) discoverGRPCMethodsCmd() tea.Cmd {
+	target := strings.TrimSpace(m.configPanel.fields[configFieldGRPCTarget].input.Value())
+	if target == "" {
+		m.configPanel.status = "gRPC target is required before discovery (for example localhost:50051)"
+		return nil
+	}
+	security := strings.ToLower(strings.TrimSpace(m.configPanel.fields[configFieldGRPCSecurity].input.Value()))
+	if security != "" && security != "plaintext" && security != "tls" {
+		m.configPanel.status = "unsupported gRPC security %q (use plaintext or tls)"
+		return nil
+	}
+	authKey := strings.TrimSpace(m.configPanel.fields[configFieldGRPCAuthKey].input.Value())
+	if authKey == "" {
+		authKey = "authorization"
+	}
+
+	candidate := *m.cfg
+	candidate.Transport = m.cfg.Transport
+	candidate.Transport.Target = target
+	candidate.Transport.Plaintext = security == "plaintext"
+	authEnv := strings.TrimSpace(m.configPanel.fields[configFieldAuthEnv].input.Value())
+	if authEnv == "" {
+		candidate.Transport.Auth = config.AuthConfig{Type: "none"}
+	} else {
+		token := os.Getenv(authEnv)
+		if token == "" {
+			m.configPanel.status = fmt.Sprintf("%s environment variable is not set; add it before discovery", authEnv)
+			return nil
+		}
+		candidate.Transport.Auth = config.AuthConfig{
+			Type:       "metadata",
+			HeaderName: authKey,
+			TokenEnv:   authEnv,
+			Token:      token,
+		}
+	}
+
+	baseContext := m.streamContext
+	if baseContext == nil {
+		baseContext = context.Background()
+	}
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(baseContext, 10*time.Second)
+		defer cancel()
+		methods, err := client.DiscoverGRPCMethods(ctx, &candidate)
+		return grpcMethodsMsg{methods: methods, err: err}
+	}
+}
+
+func (m *InteractiveModel) handleGRPCMethodPickerKey(msg tea.KeyMsg) (tea.Cmd, bool) {
+	if len(m.configPanel.grpcMethods) == 0 {
+		m.configPanel.grpcMethodPickerOpen = false
+		return nil, true
+	}
+	move := func(delta int) {
+		m.configPanel.grpcMethodPickerIndex += delta
+		if m.configPanel.grpcMethodPickerIndex < 0 {
+			m.configPanel.grpcMethodPickerIndex = len(m.configPanel.grpcMethods) - 1
+		}
+		if m.configPanel.grpcMethodPickerIndex >= len(m.configPanel.grpcMethods) {
+			m.configPanel.grpcMethodPickerIndex = 0
+		}
+	}
+	switch msg.Type {
+	case tea.KeyUp:
+		move(-1)
+		return nil, true
+	case tea.KeyDown:
+		move(1)
+		return nil, true
+	case tea.KeyEnter:
+		method := m.configPanel.grpcMethods[m.configPanel.grpcMethodPickerIndex]
+		if !method.Supported {
+			m.configPanel.status = fmt.Sprintf("%s is not supported yet; choose a server-streaming or bidi-streaming RPC", method.Path)
+			return nil, true
+		}
+		m.configPanel.fields[configFieldGRPCMethod].input.SetValue(method.Path)
+		m.configPanel.fields[configFieldGRPCRequest].input.SetValue(method.RequestJSON)
+		m.configPanel.fields[configFieldGRPCDiscriminator].input.SetValue(method.Discriminator)
+		m.configPanel.grpcMethodPickerOpen = false
+		m.configPanel.status = fmt.Sprintf("Selected %s (%s). Review the request, then press Enter to connect.", method.Path, method.Shape)
+		m.contentDirty = true
+		return nil, true
+	case tea.KeyRunes:
+		if len(msg.Runes) == 1 {
+			switch msg.Runes[0] {
+			case 'k', 'K':
+				move(-1)
+				return nil, true
+			case 'j', 'J':
+				move(1)
+				return nil, true
+			}
+		}
+	}
+	return nil, true
 }
 
 func (m *InteractiveModel) focusConfigField(delta int) tea.Cmd {
@@ -303,7 +451,11 @@ func (m *InteractiveModel) applyConfigPanel(reconnect bool) (tea.Cmd, error) {
 	}
 	if transportType == "grpc" && values[configFieldAuthEnv] != "" {
 		candidate.Transport.Auth.Type = "metadata"
-		candidate.Transport.Auth.HeaderName = "authorization"
+		authKey := values[configFieldGRPCAuthKey]
+		if authKey == "" {
+			authKey = "authorization"
+		}
+		candidate.Transport.Auth.HeaderName = authKey
 	}
 	if m.configPanel.fields[configFieldBaseURL].active {
 		candidate.Transport.BaseURL = values[configFieldBaseURL]

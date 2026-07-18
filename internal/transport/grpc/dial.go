@@ -238,31 +238,9 @@ func (t *Transport) Connect(ctx context.Context) (err error) {
 		md = resolved
 	}
 
-	var creds credentials.TransportCredentials
-	if t.cfg.Plaintext {
-		creds = insecure.NewCredentials()
-	} else {
-		creds = credentials.NewTLS(&tls.Config{RootCAs: t.cfg.TLSRootCAs})
-	}
-
-	conn, err := grpc.NewClient(t.cfg.Target, grpc.WithTransportCredentials(creds))
+	conn, err := dial(ctx, t.cfg)
 	if err != nil {
-		return fmt.Errorf("grpc: build client for %s: %w", t.cfg.Target, err)
-	}
-
-	conn.Connect()
-	for {
-		state := conn.GetState()
-		if state == connectivity.Ready {
-			break
-		}
-		if !conn.WaitForStateChange(ctx, state) {
-			_ = conn.Close()
-			if err := ctx.Err(); err != nil {
-				return fmt.Errorf("grpc: connect to %s: %w", t.cfg.Target, err)
-			}
-			return fmt.Errorf("grpc: connect to %s: connection did not become ready (last state: %s)", t.cfg.Target, state)
-		}
+		return err
 	}
 
 	t.conn = conn
@@ -280,6 +258,38 @@ func (t *Transport) Connect(ctx context.Context) (err error) {
 		return err
 	}
 	return nil
+}
+
+// dial builds a client connection and waits for it to become ready. Keeping
+// this separate from Transport.Connect lets discovery use the exact same
+// target, TLS, and readiness behavior without opening a streaming RPC.
+func dial(ctx context.Context, cfg Config) (*grpc.ClientConn, error) {
+	var creds credentials.TransportCredentials
+	if cfg.Plaintext {
+		creds = insecure.NewCredentials()
+	} else {
+		creds = credentials.NewTLS(&tls.Config{RootCAs: cfg.TLSRootCAs})
+	}
+
+	conn, err := grpc.NewClient(cfg.Target, grpc.WithTransportCredentials(creds))
+	if err != nil {
+		return nil, fmt.Errorf("grpc: build client for %s: %w", cfg.Target, err)
+	}
+
+	conn.Connect()
+	for {
+		state := conn.GetState()
+		if state == connectivity.Ready {
+			return conn, nil
+		}
+		if !conn.WaitForStateChange(ctx, state) {
+			_ = conn.Close()
+			if err := ctx.Err(); err != nil {
+				return nil, fmt.Errorf("grpc: connect to %s: %w", cfg.Target, err)
+			}
+			return nil, fmt.Errorf("grpc: connect to %s: connection did not become ready (last state: %s)", cfg.Target, state)
+		}
+	}
 }
 
 // Frames returns the channel of decoded frames. It is closed once the stream

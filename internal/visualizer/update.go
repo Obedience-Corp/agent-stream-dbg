@@ -43,6 +43,24 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.contentDirty = true
 
+	case grpcMethodsMsg:
+		m.configPanel.grpcDiscoveryPending = false
+		if msg.err != nil {
+			m.configPanel.status = "gRPC discovery failed: " + msg.err.Error()
+			m.contentDirty = true
+			break
+		}
+		m.configPanel.grpcMethods = msg.methods
+		m.configPanel.grpcMethodPickerIndex = 0
+		if len(msg.methods) == 0 {
+			m.configPanel.status = "Reflection is available, but no streaming RPCs were found"
+			m.contentDirty = true
+			break
+		}
+		m.configPanel.grpcMethodPickerOpen = true
+		m.configPanel.status = "Choose a streaming RPC. Client-streaming-only methods are shown but cannot be selected yet."
+		m.contentDirty = true
+
 	case streamCompleteMsg:
 		if msg.index < len(m.messages) {
 			m.messages[msg.index].RawSSE = msg.rawSSE
