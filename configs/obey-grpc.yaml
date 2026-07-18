@@ -1,0 +1,28 @@
+# Obey local daemon gRPC example.
+# Replace /path/to/obey/daemon.sock with the socket used by `obey serve`.
+
+transport:
+  type: grpc
+  target: "unix:///path/to/obey/daemon.sock"
+  method: "/local.v1.LocalDaemonService/WatchCampaignState"
+  plaintext: true
+  discriminator: oneof
+  request:
+    include_initial_snapshot: true
+
+dialect:
+  file: "obey"
+
+session:
+  auto_setup: false
+
+logging:
+  dir: "./logs/obey"
+  dimensions:
+    by_event_type: true
+    by_agent: true
+    by_session: true
+    api_calls: true
+
+display:
+  colors: true

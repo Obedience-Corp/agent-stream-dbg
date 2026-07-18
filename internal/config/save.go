@@ -38,8 +38,13 @@ func SaveConfigFile(path string, cfg *EnhancedConfig) error {
 	transport["type"] = cfg.Transport.Type
 	transport["base_url"] = cfg.Transport.BaseURL
 	transport["target"] = cfg.Transport.Target
+	transport["method"] = cfg.Transport.GRPCMethod
 	transport["discriminator"] = cfg.Transport.Discriminator
 	transport["discriminator_field"] = cfg.Transport.DiscriminatorField
+	if cfg.Transport.Type == "grpc" {
+		transport["plaintext"] = cfg.Transport.Plaintext
+		transport["request"] = copyAnyMap(cfg.Transport.Request)
+	}
 
 	streamEndpoint := ensureMap(transport, "stream_endpoint")
 	streamEndpoint["url"] = cfg.Transport.StreamEndpoint
@@ -51,6 +56,9 @@ func SaveConfigFile(path string, cfg *EnhancedConfig) error {
 		auth := ensureMap(authParent, "auth")
 		auth["type"] = cfg.Transport.Auth.Type
 		auth["token_env"] = cfg.Transport.Auth.TokenEnv
+		if cfg.Transport.Type == "grpc" && cfg.Transport.Auth.HeaderName != "" {
+			auth["header_name"] = cfg.Transport.Auth.HeaderName
+		}
 	} else if cfg.Transport.Type == "sse" && cfg.Transport.Auth.Type == "none" {
 		auth := ensureMap(streamEndpoint, "auth")
 		auth["type"] = cfg.Transport.Auth.Type
@@ -125,4 +133,15 @@ func copyStrings(values []string) []string {
 		return []string{}
 	}
 	return append([]string(nil), values...)
+}
+
+func copyAnyMap(values map[string]any) map[string]any {
+	if len(values) == 0 {
+		return map[string]any{}
+	}
+	copy := make(map[string]any, len(values))
+	for key, value := range values {
+		copy[key] = value
+	}
+	return copy
 }

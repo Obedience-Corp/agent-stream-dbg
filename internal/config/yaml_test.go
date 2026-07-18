@@ -243,6 +243,8 @@ transport:
   descriptor_set: "testdata/agent.binpb"
   proto_file: "testdata/agent.proto"
   proto_import_path: ["testdata/proto", "testdata/vendor"]
+  request:
+    include_initial_snapshot: true
   auth:
     type: metadata
     header_name: authorization
@@ -279,6 +281,9 @@ transport:
 	}
 	if want := []string{"testdata/proto", "testdata/vendor"}; !slices.Equal(cfg.Transport.ProtoImportPath, want) {
 		t.Errorf("expected proto_import_path %v, got %v", want, cfg.Transport.ProtoImportPath)
+	}
+	if got, ok := cfg.Transport.Request["include_initial_snapshot"].(bool); !ok || !got {
+		t.Errorf("expected gRPC request include_initial_snapshot=true, got %#v", cfg.Transport.Request)
 	}
 	key, value, ok := cfg.Transport.Auth.Metadata()
 	if !ok {

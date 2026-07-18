@@ -1,0 +1,21 @@
+# Obey local-daemon state stream over reflection-discovered gRPC.
+# WatchCampaignState returns a oneof of snapshot, update, and heartbeat frames;
+# the gRPC transport unwraps that oneof before the generic dialect engine runs.
+version: 1
+name: obey
+description: Obey local daemon campaign state streaming dialect.
+discriminator: event
+
+rules:
+  - match: {event: snapshot}
+    kind: session_start
+
+  - match: {event: update}
+    kind: detail
+
+  - match: {event: heartbeat}
+    kind: detail
+
+  - match: {event: grpc_status}
+    kind: error
+    fields: {message: message}

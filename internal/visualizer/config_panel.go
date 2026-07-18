@@ -1,6 +1,7 @@
 package visualizer
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,6 +23,11 @@ const (
 	configFieldBaseURL
 	configFieldStreamEndpoint
 	configFieldGRPCTarget
+	configFieldGRPCSecurity
+	configFieldGRPCMethod
+	configFieldGRPCRequest
+	configFieldGRPCDiscriminator
+	configFieldGRPCDiscriminatorField
 	configFieldAgents
 	configFieldVars
 )
@@ -41,7 +47,7 @@ type configPanel struct {
 }
 
 func newConfigPanel(cfg *config.EnhancedConfig) configPanel {
-	values := []string{"", "sse", "", "", "", "", "", ""}
+	values := []string{"", "sse", "", "", "", "", "", "", "", "", "", "", ""}
 	if cfg != nil {
 		transportType := cfg.Transport.Type
 		if transportType == "" {
@@ -51,6 +57,13 @@ func newConfigPanel(cfg *config.EnhancedConfig) configPanel {
 		if authEnv == "" && (cfg.Transport.Auth.Type == "" || cfg.Transport.Auth.Type == "none") && os.Getenv("API_KEY") != "" {
 			authEnv = "API_KEY"
 		}
+		grpcSecurity := ""
+		if transportType == "grpc" {
+			grpcSecurity = "tls"
+			if cfg.Transport.Plaintext {
+				grpcSecurity = "plaintext"
+			}
+		}
 		values = []string{
 			cfg.Dialect.File,
 			transportType,
@@ -58,18 +71,28 @@ func newConfigPanel(cfg *config.EnhancedConfig) configPanel {
 			cfg.Transport.BaseURL,
 			cfg.Transport.StreamEndpoint,
 			cfg.Transport.Target,
+			grpcSecurity,
+			cfg.Transport.GRPCMethod,
+			formatConfigRequest(cfg.Transport.Request),
+			cfg.Transport.Discriminator,
+			cfg.Transport.DiscriminatorField,
 			formatConfigAgents(cfg.Session.DefaultAgents),
 			formatConfigVars(cfg.Vars),
 		}
 	}
-	labels := []string{"Dialect", "Transport", "Auth env", "Base URL", "SSE endpoint", "gRPC target", "Agents", "Vars"}
+	labels := []string{"Dialect", "Transport", "Auth env", "Base URL", "SSE endpoint", "gRPC target", "gRPC security", "gRPC method", "gRPC request", "Discriminator", "Discriminator field", "Agents", "Vars"}
 	placeholders := []string{
 		"embedded name or path to dialect YAML",
 		"sse, grpc, or replay",
-		"API_KEY (optional bearer auth)",
+		"TOKEN_ENV (optional auth)",
 		"https://api.example.com",
 		"/v1/stream",
-		"localhost:50051",
+		"localhost:50051 or unix:///path/to/socket",
+		"plaintext or tls",
+		"/package.Service/StreamingMethod",
+		`{"field":"value"}`,
+		"oneof, field:type, message_type, or none",
+		"type (only for field:type)",
 		"sam_harris,eckhart_tolle,wizard (comma-separated)",
 		"key=value,other=value",
 	}
@@ -101,12 +124,14 @@ func configFieldIsActive(field configField, transportType string) bool {
 	case configFieldDialect, configFieldTransport, configFieldVars:
 		return true
 	case configFieldAuthEnv:
-		return transportType == "sse"
+		return transportType == "sse" || transportType == "grpc"
 	case configFieldBaseURL:
 		return transportType == "sse" || transportType == "replay"
 	case configFieldStreamEndpoint:
 		return transportType == "sse"
 	case configFieldGRPCTarget:
+		return transportType == "grpc"
+	case configFieldGRPCSecurity, configFieldGRPCMethod, configFieldGRPCRequest, configFieldGRPCDiscriminator, configFieldGRPCDiscriminatorField:
 		return transportType == "grpc"
 	case configFieldAgents:
 		return transportType == "sse" || transportType == "grpc"
@@ -178,6 +203,15 @@ func (m InteractiveModel) handleConfigKeyMsg(msg tea.KeyMsg) (InteractiveModel, 
 	}
 
 	var cmd tea.Cmd
+	if m.configPanel.focused == int(configFieldTransport) && strings.EqualFold(strings.TrimSpace(m.configPanel.fields[configFieldTransport].input.Value()), "sse") && msg.Type == tea.KeyRunes && len(msg.Runes) > 0 {
+		// The starter config intentionally shows the common SSE default. When
+		// a user starts typing another transport, replace that default instead
+		// of making them discover a text-editor select-all gesture first.
+		first := msg.Runes[0]
+		if first == 'g' || first == 'G' || first == 'r' || first == 'R' {
+			m.configPanel.fields[configFieldTransport].input.SetValue("")
+		}
+	}
 	m.configPanel.fields[m.configPanel.focused].input, cmd = m.configPanel.fields[m.configPanel.focused].input.Update(msg)
 	if m.configPanel.focused == int(configFieldTransport) {
 		m.configPanel.refreshFieldVisibility()
@@ -222,6 +256,29 @@ func (m *InteractiveModel) applyConfigPanel(reconnect bool) (tea.Cmd, error) {
 	if transportType != "sse" && transportType != "grpc" && transportType != "replay" {
 		return nil, fmt.Errorf("unsupported transport %q (use sse, grpc, or replay)", transportType)
 	}
+	if transportType == "grpc" {
+		if values[configFieldGRPCTarget] == "" {
+			return nil, fmt.Errorf("gRPC target is required (for example unix:///path/to/obey/daemon.sock)")
+		}
+		if values[configFieldGRPCMethod] == "" {
+			return nil, fmt.Errorf("gRPC method is required (for example /package.Service/StreamingMethod)")
+		}
+		security := strings.ToLower(values[configFieldGRPCSecurity])
+		if security != "" && security != "plaintext" && security != "tls" {
+			return nil, fmt.Errorf("unsupported gRPC security %q (use plaintext or tls)", values[configFieldGRPCSecurity])
+		}
+	}
+	request := map[string]any{}
+	if transportType == "grpc" {
+		var requestErr error
+		request, requestErr = parseConfigRequest(values[configFieldGRPCRequest])
+		if requestErr != nil {
+			return nil, requestErr
+		}
+	}
+	if transportType == "grpc" && values[configFieldGRPCDiscriminator] == "field:type" && values[configFieldGRPCDiscriminatorField] == "" {
+		return nil, fmt.Errorf("discriminator field is required when discriminator is field:type")
+	}
 	vars, err := parseConfigVars(values[configFieldVars])
 	if err != nil {
 		return nil, err
@@ -244,6 +301,10 @@ func (m *InteractiveModel) applyConfigPanel(reconnect bool) (tea.Cmd, error) {
 			candidate.Transport.Auth.Token = token
 		}
 	}
+	if transportType == "grpc" && values[configFieldAuthEnv] != "" {
+		candidate.Transport.Auth.Type = "metadata"
+		candidate.Transport.Auth.HeaderName = "authorization"
+	}
 	if m.configPanel.fields[configFieldBaseURL].active {
 		candidate.Transport.BaseURL = values[configFieldBaseURL]
 	}
@@ -252,6 +313,15 @@ func (m *InteractiveModel) applyConfigPanel(reconnect bool) (tea.Cmd, error) {
 	}
 	if m.configPanel.fields[configFieldGRPCTarget].active {
 		candidate.Transport.Target = values[configFieldGRPCTarget]
+	}
+	if m.configPanel.fields[configFieldGRPCSecurity].active {
+		candidate.Transport.Plaintext = strings.EqualFold(values[configFieldGRPCSecurity], "plaintext")
+	}
+	if m.configPanel.fields[configFieldGRPCMethod].active {
+		candidate.Transport.GRPCMethod = values[configFieldGRPCMethod]
+		candidate.Transport.Request = request
+		candidate.Transport.Discriminator = values[configFieldGRPCDiscriminator]
+		candidate.Transport.DiscriminatorField = values[configFieldGRPCDiscriminatorField]
 	}
 	agents, err := parseConfigAgents(values[configFieldAgents])
 	if err != nil {
@@ -355,4 +425,29 @@ func formatConfigAgents(agents []string) string {
 		}
 	}
 	return strings.Join(trimmed, ",")
+}
+
+func parseConfigRequest(raw string) (map[string]any, error) {
+	if strings.TrimSpace(raw) == "" {
+		return map[string]any{}, nil
+	}
+	var request map[string]any
+	if err := json.Unmarshal([]byte(raw), &request); err != nil {
+		return nil, fmt.Errorf("invalid gRPC request JSON: %w", err)
+	}
+	if request == nil {
+		return map[string]any{}, nil
+	}
+	return request, nil
+}
+
+func formatConfigRequest(request map[string]any) string {
+	if len(request) == 0 {
+		return ""
+	}
+	data, err := json.Marshal(request)
+	if err != nil {
+		return "{}"
+	}
+	return string(data)
 }

@@ -78,6 +78,7 @@ func newGRPCTransport(cfg *config.EnhancedConfig) transport.Transport {
 		MetadataKey:        metadataKey,
 		MetadataValue:      metadataValue,
 		Method:             cfg.Transport.GRPCMethod,
+		Request:            cfg.Transport.Request,
 		Discriminator:      cfg.Transport.Discriminator,
 		DiscriminatorField: cfg.Transport.DiscriminatorField,
 		PreserveFieldNames: cfg.Transport.PreserveFieldNames,

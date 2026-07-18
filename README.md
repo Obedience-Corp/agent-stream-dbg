@@ -7,11 +7,15 @@ Real-time TUI for watching streams + timeline analysis for understanding paralle
 [![Go Version](https://img.shields.io/badge/go-1.25+-blue.svg)](https://golang.org/dl/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
+<p align="center">
+  <img src="docs/assets/tui-brainyard-live.gif" alt="Live Brainyard TUI setup and streaming" width="900">
+</p>
+
 ---
 
 ## Features
 
-🎬 **Real-Time TUI** - Watch SSE streams live in your terminal
+🎬 **Real-Time TUI** - Watch SSE and gRPC streams live in your terminal
 📊 **Timeline Visualization** - Analyze parallel execution from logs
 ⚙️ **Configuration-Driven** - Select a wire dialect and SSE, gRPC, or replay transport via YAML config
 📝 **Multi-Dimensional Logging** - Events logged by type, agent, session, and API calls
@@ -87,7 +91,7 @@ you can enter the connection details without first hand-editing YAML. Press
 
 This opens an **interactive chat interface** where you can:
 - Type messages and press Enter
-- Press **Ctrl+T** to toggle between RAW (SSE) and PARSED (agent-organized) views
+- Press **Ctrl+T** to toggle between RAW (wire) and PARSED (agent-organized) views
 - Use arrow keys to scroll
 - Press **Ctrl+C** to exit
 
@@ -138,7 +142,7 @@ stream-debugger --help
 
 The interactive mode provides a **full-screen chat interface** with:
 
-### RAW View (Pretty-Printed SSE)
+### RAW View (Pretty-Printed Wire Payload)
 ```
 event: agent_content
 data:
@@ -170,7 +174,7 @@ Integrating both perspectives, consciousness can be understood...
 | Key | Action |
 |-----|--------|
 | **Type & Enter** | Send message |
-| **Ctrl+T** | Toggle RAW (SSE) ↔ PARSED (agent responses) |
+| **Ctrl+T** | Toggle RAW (wire) ↔ PARSED (agent responses) |
 | **↑ ↓** | Scroll line by line |
 | **PgUp / PgDn** | Scroll page by page |
 | **Home / End** | Jump to top/bottom |
@@ -226,7 +230,8 @@ Set `transport.type` in a run config:
   dialect's `send:` request template.
 - `grpc` — discover the configured streaming method through reflection, a
   descriptor set, or a `.proto` fallback, then decode frames with the same
-  dialect engine.
+  dialect engine. The optional `transport.request` map fills the protobuf
+  request before a server stream opens.
 - `replay` — read a JSONL fixture from `transport.base_url` through the same
   client/event pipeline without a live backend.
 
@@ -234,26 +239,18 @@ Set `transport.type` in a run config:
 
 ```yaml
 # configs/my-api.yaml
-backend:
+transport:
+  type: sse
   base_url: "http://localhost:5003"
-
   stream_endpoint:
     url: "/api/stream"
     method: "POST"
-
-    message_format:
-      type: "json_body"
-      body_template: '{"prompt": "{message}", "stream": true}'
-
     auth:
-      type: "bearer"
-      token_env: "API_KEY"
+      type: bearer
+      token_env: API_KEY
 
-events:
-  types:
-    - "session_start"
-    - "agent_content"
-    - "error"
+dialect:
+  file: openai
 
 logging:
   dir: "./logs"
@@ -264,11 +261,49 @@ logging:
     api_calls: true
 ```
 
+### Obey daemon (Unix-socket gRPC)
+
+Obey exposes its local daemon API over a Unix socket. Start the daemon, copy
+[`configs/obey-grpc.yaml`](configs/obey-grpc.yaml), and replace its socket
+target with the path used by your Obey setup:
+
+```sh
+obey serve --foreground
+stream-debugger --config configs/obey-grpc.yaml
+```
+
+The TUI's `c` configuration panel exposes the same fields: choose `grpc`, set
+the Unix target, choose `plaintext`, enter the fully-qualified method and
+request JSON, and use `oneof` for Obey's `snapshot`/`update`/`heartbeat`
+response variants. Obey's
+local socket does not require authentication; a remote gRPC service can use
+the optional auth environment field for metadata credentials.
+
+The checked-in example uses Obey's campaign-state stream and requests the
+initial snapshot:
+
+```yaml
+transport:
+  type: grpc
+  target: "unix:///path/to/obey/daemon.sock"
+  method: "/local.v1.LocalDaemonService/WatchCampaignState"
+  plaintext: true
+  discriminator: oneof
+  request:
+    include_initial_snapshot: true
+dialect:
+  file: obey
+```
+
+<p align="center">
+  <img src="docs/assets/tui-obey-grpc.gif" alt="Live Obey gRPC TUI setup and streaming" width="900">
+</p>
+
 Authentication is opt-in. Omitting `auth:` sends no credential and does not
 read `API_KEY`; set an explicit `auth.type` and `token_env` to attach a
-credential. Review the configured URL carefully because the resulting header
-is sent wherever that config points. This is a breaking change for configs
-that relied on the former implicit `API_KEY` bearer default.
+credential. SSE sends the credential as an HTTP header, while gRPC sends
+metadata to the configured target. This is a breaking change for configs that
+relied on the former implicit `API_KEY` bearer default.
 
 See [`config.yaml.example`](config.yaml.example) for all options.
 
@@ -284,6 +319,7 @@ fails before a request is sent.
 
 - `configs/brainyard-v3.yaml` - BrainyardV3 multi-agent system
 - `configs/generic-sse.yaml` - Generic SSE API template
+- `configs/obey-grpc.yaml` - Obey local daemon campaign-state stream
 
 ---
 
@@ -422,7 +458,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Credits
 
-Built for debugging complex SSE streaming systems. Originally created for a private multi-agent backend but designed to be generic and reusable.
+Built for debugging complex SSE and gRPC streaming systems. Originally created for a private multi-agent backend but designed to be generic and reusable.
 
 **Technologies:**
 - [Bubbletea](https://github.com/charmbracelet/bubbletea) - Terminal UI framework
@@ -432,6 +468,6 @@ Built for debugging complex SSE streaming systems. Originally created for a priv
 
 ---
 
-**Made for debugging SSE streaming systems** 🚀
+**Made for debugging SSE and gRPC streaming systems** 🚀
 
 Visualize parallel execution • Real-time monitoring • Configuration-driven • Log analysis

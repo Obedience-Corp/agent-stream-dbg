@@ -52,6 +52,11 @@ func TestConfigPanelTransportFieldsAreScoped(t *testing.T) {
 	if !sse.fields[configFieldGRPCTarget].active {
 		t.Fatal("expected gRPC target to be active for gRPC transport")
 	}
+	for _, field := range []configField{configFieldGRPCSecurity, configFieldGRPCMethod, configFieldGRPCRequest, configFieldGRPCDiscriminator, configFieldGRPCDiscriminatorField} {
+		if !sse.fields[field].active {
+			t.Fatalf("expected gRPC field %d to be active for gRPC transport", field)
+		}
+	}
 	if sse.fields[configFieldBaseURL].active || sse.fields[configFieldStreamEndpoint].active {
 		t.Fatal("expected SSE fields to be hidden for gRPC transport")
 	}
@@ -60,6 +65,33 @@ func TestConfigPanelTransportFieldsAreScoped(t *testing.T) {
 	sse.refreshFieldVisibility()
 	if !sse.fields[configFieldBaseURL].active || sse.fields[configFieldStreamEndpoint].active || sse.fields[configFieldGRPCTarget].active {
 		t.Fatal("expected replay to show only the replay file field")
+	}
+}
+
+func TestConfigPanelTypingGRPCReplacesStarterSSEDefault(t *testing.T) {
+	m := NewInteractiveModel(&config.EnhancedConfig{Transport: config.TransportConfig{Type: "sse"}})
+	m.openConfigPanel()
+	m.configPanel.focused = int(configFieldTransport)
+	m.configPanel.fields[configFieldTransport].input.Focus()
+	if _, _, handled := m.handleConfigKeyMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")}); !handled {
+		t.Fatal("expected transport typing to be handled")
+	}
+	if got := m.configPanel.fields[configFieldTransport].input.Value(); got != "g" {
+		t.Fatalf("transport value = %q, want starter default replaced by g", got)
+	}
+}
+
+func TestConfigRequestRoundTrip(t *testing.T) {
+	request, err := parseConfigRequest(`{"include_initial_snapshot":true,"campaign_id":"demo"}`)
+	if err != nil {
+		t.Fatalf("parseConfigRequest: %v", err)
+	}
+	if got, ok := request["include_initial_snapshot"].(bool); !ok || !got {
+		t.Fatalf("unexpected request %#v", request)
+	}
+	formatted := formatConfigRequest(request)
+	if formatted != `{"campaign_id":"demo","include_initial_snapshot":true}` {
+		t.Fatalf("unexpected deterministic JSON %q", formatted)
 	}
 }
 
@@ -167,6 +199,31 @@ func TestConfigPanel_ApplyReconnectUpdatesRuntimeConfig(t *testing.T) {
 	}
 	if !updated.streaming || !updated.messages[0].Streaming {
 		t.Error("expected Apply & Reconnect to mark the latest message streaming")
+	}
+}
+
+func TestConfigPanel_ApplyGRPCRequest(t *testing.T) {
+	m := NewInteractiveModel(&config.EnhancedConfig{LogDir: t.TempDir()})
+	m.openConfigPanel()
+	setConfigField(&m, configFieldDialect, "obey")
+	setConfigField(&m, configFieldTransport, "grpc")
+	setConfigField(&m, configFieldGRPCTarget, "unix:///tmp/obey.sock")
+	setConfigField(&m, configFieldGRPCSecurity, "plaintext")
+	setConfigField(&m, configFieldGRPCMethod, "/local.v1.LocalDaemonService/WatchCampaignState")
+	setConfigField(&m, configFieldGRPCRequest, `{"include_initial_snapshot":true}`)
+	setConfigField(&m, configFieldGRPCDiscriminator, "oneof")
+
+	if _, err := m.applyConfigPanel(false); err != nil {
+		t.Fatalf("applyConfigPanel: %v", err)
+	}
+	if m.cfg.Transport.GRPCMethod != "/local.v1.LocalDaemonService/WatchCampaignState" {
+		t.Fatalf("unexpected gRPC method %q", m.cfg.Transport.GRPCMethod)
+	}
+	if !m.cfg.Transport.Plaintext {
+		t.Fatal("expected plaintext gRPC security")
+	}
+	if got, ok := m.cfg.Transport.Request["include_initial_snapshot"].(bool); !ok || !got {
+		t.Fatalf("unexpected gRPC request %#v", m.cfg.Transport.Request)
 	}
 }
 

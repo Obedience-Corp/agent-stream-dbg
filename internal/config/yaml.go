@@ -53,12 +53,13 @@ type YAMLConfig struct {
 		// so a run config that predates this field can't be silently
 		// flipped to camelCase. See grpc.Config.PreserveFieldNames's doc
 		// comment for the full reasoning.
-		PreserveFieldNames *bool    `yaml:"preserve_field_names"`
-		Plaintext          bool     `yaml:"plaintext"`
-		DescriptorSet      string   `yaml:"descriptor_set"`    // path to a compiled FileDescriptorSet — fallback when the target has reflection disabled
-		ProtoFile          string   `yaml:"proto_file"`        // path to a raw .proto — lowest-priority fallback, compiled at runtime
-		ProtoImportPath    []string `yaml:"proto_import_path"` // import roots for ProtoFile and its own imports, mirroring protoc's -I/--proto_path
-		Auth               authYAML `yaml:"auth"`
+		PreserveFieldNames *bool          `yaml:"preserve_field_names"`
+		Plaintext          bool           `yaml:"plaintext"`
+		DescriptorSet      string         `yaml:"descriptor_set"`    // path to a compiled FileDescriptorSet — fallback when the target has reflection disabled
+		ProtoFile          string         `yaml:"proto_file"`        // path to a raw .proto — lowest-priority fallback, compiled at runtime
+		ProtoImportPath    []string       `yaml:"proto_import_path"` // import roots for ProtoFile and its own imports, mirroring protoc's -I/--proto_path
+		Request            map[string]any `yaml:"request"`
+		Auth               authYAML       `yaml:"auth"`
 	} `yaml:"transport"`
 
 	// Dialect declares which mapping file or embedded dialect name interprets
@@ -150,6 +151,7 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 			DescriptorSet:      yamlCfg.Transport.DescriptorSet,
 			ProtoFile:          yamlCfg.Transport.ProtoFile,
 			ProtoImportPath:    yamlCfg.Transport.ProtoImportPath,
+			Request:            yamlCfg.Transport.Request,
 			Auth:               auth,
 		}
 	case "replay":
@@ -341,9 +343,10 @@ type TransportConfig struct {
 	// grpc.Config.PreserveFieldNames.
 	PreserveFieldNames *bool
 	Plaintext          bool
-	DescriptorSet      string   // path to a compiled FileDescriptorSet — fallback when reflection is disabled
-	ProtoFile          string   // path to a raw .proto — lowest-priority fallback, compiled at runtime
-	ProtoImportPath    []string // import roots for ProtoFile and its own imports
+	DescriptorSet      string         // path to a compiled FileDescriptorSet — fallback when reflection is disabled
+	ProtoFile          string         // path to a raw .proto — lowest-priority fallback, compiled at runtime
+	ProtoImportPath    []string       // import roots for ProtoFile and its own imports
+	Request            map[string]any // gRPC request fields set before a server stream opens
 
 	// Shared: one auth vocabulary for both transports.
 	Auth AuthConfig

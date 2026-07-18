@@ -15,6 +15,8 @@ transport:
   # discriminator: field:type   # oneof | field:type | message_type | none
   # discriminator_field: type   # required when discriminator is field:type
   # plaintext: true
+  # request:
+  #   session_id: "demo-session"  # protobuf request fields, when needed
 
   # How to initiate streaming
   stream_endpoint:
