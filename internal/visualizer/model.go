@@ -168,14 +168,36 @@ type Message struct {
 	Timestamp time.Time
 	Streaming bool
 
-	// Store complete raw SSE (no truncation)
+	// TransportName identifies the wire transport that produced this turn.
+	// It lets the raw pane render protocol-specific wire data without making
+	// the event model transport-specific.
+	TransportName string
+
+	// RawSSE stores complete raw SSE (no truncation) for the legacy SSE view.
 	RawSSE string
+
+	// Frames stores lossless captured frames for the latest transport. SSE also
+	// retains RawSSE for compatibility; structured transports use Data for the
+	// decoded JSON representation and Raw for the original payload (protobuf
+	// wire bytes for gRPC).
+	Frames []CapturedFrame
 
 	// Store parsed events
 	Events []*events.Event
 
 	// Store per-agent responses
 	AgentResponses map[string]*AgentResponse
+}
+
+// CapturedFrame is the UI's lossless record of one transport frame. The
+// transport package remains unaware of presentation concerns; this type only
+// exists so the TUI can show decoded data and wire bytes side by side.
+type CapturedFrame struct {
+	Name      string
+	Data      []byte
+	Raw       []byte
+	Timestamp time.Time
+	Err       string
 }
 
 // NewInteractiveModel creates a new interactive TUI model

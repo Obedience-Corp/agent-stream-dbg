@@ -363,6 +363,8 @@ func (m *InteractiveModel) reconnectLatestMessage() tea.Cmd {
 		return nil
 	}
 	m.messages[index].RawSSE = ""
+	m.messages[index].Frames = nil
+	m.messages[index].TransportName = ""
 	m.messages[index].Events = nil
 	m.messages[index].AgentResponses = make(map[string]*AgentResponse)
 	m.messages[index].Streaming = true

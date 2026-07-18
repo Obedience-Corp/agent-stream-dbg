@@ -1,0 +1,165 @@
+# Obey agent activity over the generic gRPC transport.
+#
+# WatchAllActivity wraps SessionActivityEvent inside a multiplexed event. The
+# transport remains unaware of Obey: this dialect uses nested JSON paths to
+# promote the activity type, agent, content, turn, and delivery counters into
+# the generic Event core.
+version: 1
+name: obey-activity
+description: Obey multi-agent activity stream dialect.
+discriminator:
+  path: event.activity.type
+
+rules:
+  - match: {event: grpc_status}
+    kind: error
+    fields:
+      code: code
+      message: message
+      trailers: trailers
+
+  - match: {path: event.activity.type, equals: AGENT_TURN_STARTED}
+    kind: stream_start
+    source: event.agent_name
+    timestamp: event.activity.timestamp
+    seq: event.durable_sequence
+    fields:
+      activity_type: event.activity.type
+      session_id: event.session_id
+      turn_id: event.activity.turn_id
+      client_ref: event.activity.turn_started.client_ref
+      dropped_count: event.dropped_count
+
+  - match: {path: event.activity.type, equals: AGENT_TURN_FINISHED}
+    kind: stream_end
+    source: event.agent_name
+    timestamp: event.activity.timestamp
+    seq: event.durable_sequence
+    fields:
+      activity_type: event.activity.type
+      session_id: event.session_id
+      turn_id: event.activity.turn_id
+      status: event.activity.turn_finished.status
+      error: event.activity.turn_finished.error
+      dropped_count: event.dropped_count
+
+  - match: {path: event.activity.type, equals: AGENT_MESSAGE_DELTA}
+    kind: content
+    source: event.agent_name
+    content: event.activity.message_delta.content
+    timestamp: event.activity.timestamp
+    seq: event.durable_sequence
+    fields:
+      activity_type: event.activity.type
+      session_id: event.session_id
+      turn_id: event.activity.turn_id
+      dropped_count: event.dropped_count
+
+  - match: {path: event.activity.type, equals: AGENT_THINKING}
+    kind: reasoning
+    source: event.agent_name
+    content: event.activity.thinking.content
+    timestamp: event.activity.timestamp
+    seq: event.durable_sequence
+    fields:
+      activity_type: event.activity.type
+      session_id: event.session_id
+      turn_id: event.activity.turn_id
+      is_final: event.activity.thinking.is_final
+      dropped_count: event.dropped_count
+
+  - match: {path: event.activity.type, equals: AGENT_TOOL_CALL}
+    kind: tool_call
+    source: event.agent_name
+    timestamp: event.activity.timestamp
+    seq: event.durable_sequence
+    fields:
+      activity_type: event.activity.type
+      session_id: event.session_id
+      turn_id: event.activity.turn_id
+      tool_name: event.activity.tool_call.tool_name
+      call_id: event.activity.tool_call.call_id
+      arguments: event.activity.tool_call.arguments
+      dropped_count: event.dropped_count
+
+  - match: {path: event.activity.type, equals: AGENT_TOOL_RESULT}
+    kind: tool_result
+    source: event.agent_name
+    timestamp: event.activity.timestamp
+    seq: event.durable_sequence
+    fields:
+      activity_type: event.activity.type
+      session_id: event.session_id
+      turn_id: event.activity.turn_id
+      call_id: event.activity.tool_result.call_id
+      success: event.activity.tool_result.success
+      result: event.activity.tool_result.result
+      error: event.activity.tool_result.error
+      dropped_count: event.dropped_count
+
+  - match: {path: event.activity.type, equals: AGENT_COMPLETION}
+    kind: content
+    source: event.agent_name
+    content: event.activity.completion.content
+    timestamp: event.activity.timestamp
+    seq: event.durable_sequence
+    fields:
+      activity_type: event.activity.type
+      session_id: event.session_id
+      turn_id: event.activity.turn_id
+      model: event.activity.completion.model
+      stop_reason: event.activity.completion.stop_reason
+      tokens_input: event.activity.completion.tokens_input
+      tokens_output: event.activity.completion.tokens_output
+      latency_ms: event.activity.completion.latency_ms
+      dropped_count: event.dropped_count
+
+  - match: {path: event.activity.type, equals: AGENT_ERROR}
+    kind: error
+    source: event.agent_name
+    timestamp: event.activity.timestamp
+    seq: event.durable_sequence
+    fields:
+      activity_type: event.activity.type
+      session_id: event.session_id
+      turn_id: event.activity.turn_id
+      message: event.activity.error.message
+      code: event.activity.error.code
+      dropped_count: event.dropped_count
+
+  - match: {path: event.activity.type, equals: AGENT_OPERATOR_PROMPT}
+    kind: detail
+    source: event.agent_name
+    content: event.activity.operator_prompt.content
+    timestamp: event.activity.timestamp
+    seq: event.durable_sequence
+    fields:
+      activity_type: event.activity.type
+      session_id: event.session_id
+      turn_id: event.activity.turn_id
+      dropped_count: event.dropped_count
+
+  # The multiplexed stream can emit hello/keepalive and join/leave metadata
+  # without a SessionActivityEvent. Keep those frames visible instead of
+  # treating them as malformed or silently dropping them.
+  - match: {exists: event.meta_event}
+    kind: detail
+    fields:
+      meta_event: event.meta_event
+      session_id: event.session_id
+      agent_name: event.agent_name
+      dropped_count: event.dropped_count
+      durable_sequence: event.durable_sequence
+
+  # Preserve future activity variants as useful generic detail events until a
+  # dialect update assigns them a more specific normalized kind.
+  - match: {exists: event.activity}
+    kind: detail
+    source: event.agent_name
+    timestamp: event.activity.timestamp
+    seq: event.durable_sequence
+    fields:
+      activity_type: event.activity.type
+      session_id: event.session_id
+      turn_id: event.activity.turn_id
+      dropped_count: event.dropped_count

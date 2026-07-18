@@ -18,4 +18,7 @@ rules:
 
   - match: {event: grpc_status}
     kind: error
-    fields: {message: message}
+    fields:
+      code: code
+      message: message
+      trailers: trailers
