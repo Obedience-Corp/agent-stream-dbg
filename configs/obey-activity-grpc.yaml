@@ -1,0 +1,30 @@
+# Obey multi-agent agent-activity stream over the generic gRPC transport.
+# Replace the socket and campaign ID with values from your local daemon.
+
+transport:
+  type: grpc
+  target: "unix:///path/to/obey/daemon.sock"
+  method: "/local.v1.LocalDaemonService/WatchAllActivity"
+  plaintext: true
+  # The response is a regular message containing event.activity; the dialect
+  # discriminator selects the nested SessionActivityEvent type.
+  discriminator: message_type
+  request:
+    campaign_id: "your-campaign-id"
+
+dialect:
+  file: "obey-activity"
+
+session:
+  auto_setup: false
+
+logging:
+  dir: "./logs/obey-activity"
+  dimensions:
+    by_event_type: true
+    by_agent: true
+    by_session: true
+    api_calls: true
+
+display:
+  colors: true

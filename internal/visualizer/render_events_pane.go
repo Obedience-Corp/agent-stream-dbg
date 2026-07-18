@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lancekrogers/stream-debugger/internal/events"
 )
 
-// renderEventsPane renders the Events pane (F4) showing SSE events
+// renderEventsPane renders the Events pane (F4) showing normalized events
 func (m InteractiveModel) renderEventsPane() string {
 	var b strings.Builder
 
@@ -83,8 +84,8 @@ func (m InteractiveModel) renderEventsPane() string {
 
 	// RAW view: pretty-print the raw SSE of the last message
 	if m.viewMode == ViewModeRaw {
-		if msg.RawSSE == "" {
-			b.WriteString(dimStyle.Render("No raw SSE captured for latest message."))
+		if msg.RawSSE == "" && len(msg.Frames) == 0 {
+			b.WriteString(dimStyle.Render("No raw frames captured for latest message."))
 			return b.String()
 		}
 		b.WriteString(m.renderRawView(msg))
@@ -174,12 +175,15 @@ func (m InteractiveModel) renderEventsPane() string {
 		}
 
 		// Add relevant details (compact summary on main line)
+		sourceShown := false
+		contentShown := false
 		if evt.Kind == events.KindContent && m.dialectFlow.role(evt) == events.RoleAggregator {
 			content := evt.Content
 			if len(content) > 30 {
 				content = content[:30] + "..."
 			}
 			line += fmt.Sprintf(" content=%q", content)
+			contentShown = true
 		} else {
 			switch evt.Name {
 			case "flow_step_start":
@@ -188,33 +192,43 @@ func (m InteractiveModel) renderEventsPane() string {
 				line += fmt.Sprintf(" step=%s duration=%dms", evt.StringField("step"), evt.IntField("duration_ms"))
 			case "agent_stream_start":
 				line += fmt.Sprintf(" agent=%s", evt.SourceID)
+				sourceShown = true
 			case "agent_stream_complete":
 				line += fmt.Sprintf(" agent=%s tokens=%d", evt.SourceID, evt.IntField("token_count"))
+				sourceShown = true
 			case "agent_content":
 				content := evt.Content
 				if len(content) > 30 {
 					content = content[:30] + "..."
 				}
 				line += fmt.Sprintf(" agent=%s content=%q", evt.SourceID, content)
+				sourceShown = true
+				contentShown = true
 			// New debug event types - show compact summary
 			case "filter_detail":
 				line += fmt.Sprintf(" agent=%s thinking=%d filtered=%d", evt.StringField("agent_id"), evt.IntField("original_length"), evt.IntField("filtered_length"))
+				sourceShown = true
 			case "perspective_detail":
 				line += fmt.Sprintf(" agent=%s relevance=%.2f", evt.StringField("agent_id"), evt.Float64Field("relevance_score"))
+				sourceShown = true
 			case "synthesis_detail":
 				line += fmt.Sprintf(" plan=%s method=%s sources=%d", evt.StringField("plan_id"), evt.StringField("synthesis_method"), evt.IntField("sources_combined"))
 			case "agent_metadata":
 				line += fmt.Sprintf(" agent=%s model=%s tokens=%d latency=%dms", evt.StringField("agent_id"), evt.StringField("model"), evt.IntField("total_tokens"), evt.IntField("latency_ms"))
+				sourceShown = true
 			case "prompt_info":
 				line += fmt.Sprintf(" agent=%s file=%s len=%d", evt.StringField("agent_id"), evt.StringField("prompt_file"), evt.IntField("prompt_length"))
+				sourceShown = true
 			case "prompt_full":
 				line += fmt.Sprintf(" agent=%s len=%d", evt.StringField("agent_id"), len(evt.StringField("system_prompt")))
+				sourceShown = true
 			case "flow_config":
 				line += fmt.Sprintf(" flow=%s agents=%d stages=%d", evt.StringField("flow_id"), evt.IntField("agent_count"), len(evt.StringSliceField("stages_order")))
 			case "flow_step_detail":
 				line += fmt.Sprintf(" step=%s", evt.StringField("step"))
 			}
 		}
+		line += genericEventSummary(evt, sourceShown, contentShown)
 
 		// Apply appropriate styling
 		var styledLine string
@@ -362,4 +376,74 @@ func (m InteractiveModel) renderEventsPane() string {
 	}
 
 	return b.String()
+}
+
+// genericEventSummary gives an unfamiliar dialect useful one-line output
+// without teaching the renderer the system's event names. Dialects promote
+// important nested values into Event.SourceID, Event.Content, and Fields;
+// this function renders those normalized values and a small scalar field
+// sample while leaving the expanded body available for everything else.
+func genericEventSummary(evt *events.Event, sourceShown, contentShown bool) string {
+	if evt == nil {
+		return ""
+	}
+	parts := make([]string, 0, 6)
+	if !sourceShown && evt.SourceID != "" {
+		parts = append(parts, "source="+evt.SourceID)
+	}
+	if !contentShown && evt.Content != "" {
+		content := evt.Content
+		if len(content) > 40 {
+			content = content[:40] + "..."
+		}
+		parts = append(parts, fmt.Sprintf("content=%q", content))
+	}
+
+	keys := make([]string, 0, len(evt.Fields))
+	for key := range evt.Fields {
+		if key == "agent_id" || key == "agent_name" || key == "content" || key == "source" {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		value, ok := compactScalar(evt.Fields[key])
+		if !ok {
+			continue
+		}
+		parts = append(parts, key+"="+value)
+		if len(parts) >= 6 {
+			break
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " " + strings.Join(parts, " ")
+}
+
+func compactScalar(value any) (string, bool) {
+	switch v := value.(type) {
+	case string:
+		if v == "" {
+			return "", false
+		}
+		if len(v) > 48 {
+			v = v[:48] + "..."
+		}
+		return fmt.Sprintf("%q", v), true
+	case bool:
+		return fmt.Sprintf("%t", v), true
+	case int:
+		return fmt.Sprintf("%d", v), true
+	case int32:
+		return fmt.Sprintf("%d", v), true
+	case int64:
+		return fmt.Sprintf("%d", v), true
+	case float64:
+		return fmt.Sprintf("%g", v), true
+	default:
+		return "", false
+	}
 }

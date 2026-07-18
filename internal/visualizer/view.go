@@ -1,6 +1,8 @@
 package visualizer
 
 import (
+	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -137,6 +139,9 @@ func (m InteractiveModel) View() string {
 
 // renderRawView renders the raw SSE stream
 func (m InteractiveModel) renderRawView(msg Message) string {
+	if msg.TransportName == "grpc" {
+		return m.renderGRPCFrames(msg)
+	}
 	if msg.RawSSE == "" {
 		return ""
 	}
@@ -216,6 +221,63 @@ func (m InteractiveModel) renderRawView(msg Message) string {
 	}
 
 	b.WriteString("\n")
+	return b.String()
+}
+
+// renderGRPCFrames keeps protobuf wire bytes and their decoded ProtoJSON
+// representation visible together. Treating Raw as text (or as SSE) loses
+// exactly the information a gRPC debugger is expected to inspect.
+func (m InteractiveModel) renderGRPCFrames(msg Message) string {
+	var b strings.Builder
+	headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("13")).Bold(true)
+	nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true)
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	dataStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	wireStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("5"))
+
+	b.WriteString(headerStyle.Render("Raw gRPC Frames (ProtoJSON + wire bytes):"))
+	b.WriteString("\n\n")
+	if len(msg.Frames) == 0 {
+		b.WriteString(dimStyle.Render("No gRPC frames captured yet."))
+		return b.String()
+	}
+
+	for i, frame := range msg.Frames {
+		name := frame.Name
+		if name == "" {
+			name = "(undiscriminated)"
+		}
+		_, _ = fmt.Fprintf(&b, "%s %s", dimStyle.Render(fmt.Sprintf("#%d", i+1)), nameStyle.Render("["+name+"]"))
+		if !frame.Timestamp.IsZero() {
+			_, _ = fmt.Fprintf(&b, " %s", dimStyle.Render(frame.Timestamp.Format("15:04:05.000")))
+		}
+		b.WriteString("\n")
+
+		if frame.Err != "" {
+			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render("error: " + frame.Err))
+			b.WriteString("\n")
+		}
+		if len(frame.Data) > 0 {
+			b.WriteString(dataStyle.Render("decoded:") + "\n")
+			var prettyJSON bytes.Buffer
+			if err := json.Indent(&prettyJSON, frame.Data, "  ", "  "); err == nil {
+				b.WriteString(prettyJSON.String())
+			} else {
+				b.WriteString(string(frame.Data))
+			}
+			b.WriteString("\n")
+		}
+		if len(frame.Raw) > 0 {
+			wire := hex.EncodeToString(frame.Raw)
+			const maxWireChars = 512
+			if len(wire) > maxWireChars {
+				wire = wire[:maxWireChars] + "…"
+			}
+			b.WriteString(wireStyle.Render("wire (hex): " + wire))
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+	}
 	return b.String()
 }
 
@@ -305,7 +367,7 @@ func (m InteractiveModel) renderMessages() string {
 				Italic(true).
 				Render("⏳ Streaming response from agents..."))
 			b.WriteString("\n\n")
-		} else if msg.RawSSE != "" {
+		} else if msg.RawSSE != "" || len(msg.Frames) > 0 || len(msg.Events) > 0 {
 			// Render based on view mode
 			if m.viewMode == ViewModeRaw {
 				b.WriteString(m.renderRawView(msg))

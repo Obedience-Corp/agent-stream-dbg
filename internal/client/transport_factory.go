@@ -1,8 +1,10 @@
 package client
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/lancekrogers/stream-debugger/internal/bridge"
 	"github.com/lancekrogers/stream-debugger/internal/config"
@@ -18,7 +20,7 @@ func newTransport(cfg *config.EnhancedConfig, parser *bridge.Parser, vars mappin
 	case "", "sse":
 		return newSSETransport(cfg, parser, vars)
 	case "grpc":
-		return newGRPCTransport(cfg), nil
+		return newGRPCTransport(cfg, vars)
 	case "replay":
 		tr, err := replay.New(cfg.Transport.BaseURL, 0)
 		if err != nil {
@@ -70,20 +72,109 @@ func withDebugQuery(rawURL, level string) (string, error) {
 	return u.String(), nil
 }
 
-func newGRPCTransport(cfg *config.EnhancedConfig) transport.Transport {
+func newGRPCTransport(cfg *config.EnhancedConfig, vars mapping.InterpolationVars) (transport.Transport, error) {
 	metadataKey, metadataValue, _ := cfg.Transport.Auth.Metadata()
+	request, err := interpolateGRPCRequest(cfg.Transport.Request, vars)
+	if err != nil {
+		return nil, fmt.Errorf("failed to render gRPC request: %w", err)
+	}
 	return grpctransport.New(grpctransport.Config{
 		Target:             cfg.Transport.Target,
 		Plaintext:          cfg.Transport.Plaintext,
 		MetadataKey:        metadataKey,
 		MetadataValue:      metadataValue,
 		Method:             cfg.Transport.GRPCMethod,
-		Request:            cfg.Transport.Request,
+		Request:            request,
 		Discriminator:      cfg.Transport.Discriminator,
 		DiscriminatorField: cfg.Transport.DiscriminatorField,
 		PreserveFieldNames: cfg.Transport.PreserveFieldNames,
 		DescriptorSetPath:  cfg.Transport.DescriptorSet,
 		ProtoFilePath:      cfg.Transport.ProtoFile,
 		ProtoImportPaths:   cfg.Transport.ProtoImportPath,
-	})
+	}), nil
+}
+
+// interpolateGRPCRequest renders placeholders in request fields at the same
+// point a dialect's SSE send template is rendered. This keeps gRPC request
+// configuration data-only while allowing common values such as {message},
+// {session_id}, and declared vars to vary per turn.
+func interpolateGRPCRequest(request map[string]any, vars mapping.InterpolationVars) (map[string]any, error) {
+	if request == nil {
+		return nil, nil
+	}
+	rendered, err := renderGRPCRequestValue(request, vars)
+	if err != nil {
+		return nil, err
+	}
+	out, ok := rendered.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("request must be an object")
+	}
+	return out, nil
+}
+
+func renderGRPCRequestValue(value any, vars mapping.InterpolationVars) (any, error) {
+	switch v := value.(type) {
+	case string:
+		if !strings.Contains(v, "{") {
+			return v, nil
+		}
+		if exact, ok := exactGRPCPlaceholderValue(v, vars); ok {
+			return exact, nil
+		}
+		rendered, err := mapping.Interpolate(v, vars)
+		if err != nil {
+			return nil, err
+		}
+		// mapping.Interpolate escapes placeholders for JSON templates. Decode
+		// that escaped content back into the string value a protobuf field
+		// expects; request maps are already typed data, not JSON templates.
+		var decoded string
+		if err := json.Unmarshal([]byte(`"`+rendered+`"`), &decoded); err == nil {
+			return decoded, nil
+		}
+		return rendered, nil
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for key, child := range v {
+			rendered, err := renderGRPCRequestValue(child, vars)
+			if err != nil {
+				return nil, fmt.Errorf("request field %q: %w", key, err)
+			}
+			out[key] = rendered
+		}
+		return out, nil
+	case []any:
+		out := make([]any, len(v))
+		for i, child := range v {
+			rendered, err := renderGRPCRequestValue(child, vars)
+			if err != nil {
+				return nil, fmt.Errorf("request item %d: %w", i, err)
+			}
+			out[i] = rendered
+		}
+		return out, nil
+	default:
+		return value, nil
+	}
+}
+
+func exactGRPCPlaceholderValue(value string, vars mapping.InterpolationVars) (any, bool) {
+	switch value {
+	case "{base_url}":
+		return vars.BaseURL, true
+	case "{session_id}":
+		return vars.SessionID, true
+	case "{message}":
+		return vars.Message, true
+	case "{agents}":
+		return append([]string(nil), vars.Agents...), true
+	}
+	if strings.HasPrefix(value, "{") && strings.HasSuffix(value, "}") {
+		name := strings.TrimSuffix(strings.TrimPrefix(value, "{"), "}")
+		if rendered, ok := vars.Vars[name]; ok {
+			return rendered, true
+		}
+	}
+	return nil, false
 }

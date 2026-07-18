@@ -3,6 +3,9 @@ package visualizer
 import (
 	"strings"
 	"testing"
+
+	"github.com/lancekrogers/stream-debugger/internal/config"
+	"github.com/lancekrogers/stream-debugger/internal/events"
 )
 
 // TestView_ContainsHeaderAndTabs is a floor-level test for view.go
@@ -57,6 +60,45 @@ func TestRenderRawView(t *testing.T) {
 	out := m.renderRawView(m.messages[0])
 	if !strings.Contains(out, "Raw SSE Stream") {
 		t.Error("expected the pretty-printed header for a completed message")
+	}
+}
+
+func TestRenderRawView_GRPCShowsDecodedAndWireData(t *testing.T) {
+	m := InteractiveModel{}
+	msg := Message{
+		TransportName: "grpc",
+		Frames: []CapturedFrame{{
+			Name: "AGENT_MESSAGE_DELTA",
+			Data: []byte(`{"content":"hello"}`),
+			Raw:  []byte{0x0a, 0x05, 0x68, 0x65, 0x6c, 0x6c, 0x6f},
+		}},
+	}
+	out := m.renderRawView(msg)
+	for _, want := range []string{"Raw gRPC Frames", "decoded:", "hello", "wire (hex): 0a0568656c6c6f"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected gRPC raw view to contain %q, got %q", want, out)
+		}
+	}
+	if strings.Contains(out, "Raw SSE") {
+		t.Error("gRPC raw view must not be labeled as SSE")
+	}
+}
+
+func TestRenderEventsPane_GenericNormalizedSummary(t *testing.T) {
+	m := NewInteractiveModel(&config.EnhancedConfig{})
+	m.showTokens = true
+	m.messages = []Message{{Events: []*events.Event{{
+		Name:     "AGENT_MESSAGE_DELTA",
+		Kind:     events.KindContent,
+		SourceID: "worker-a",
+		Content:  "hello",
+		Fields:   map[string]any{"turn_id": "turn-1", "durable_sequence": float64(12)},
+	}}}}
+	got := m.renderEventsPane()
+	for _, want := range []string{"AGENT_MESSAGE_DELTA", "source=worker-a", "content=\"hello\"", "turn_id=\"turn-1\""} {
+		if !strings.Contains(got, want) {
+			t.Errorf("expected generic event summary to contain %q, got %q", want, got)
+		}
 	}
 }
 

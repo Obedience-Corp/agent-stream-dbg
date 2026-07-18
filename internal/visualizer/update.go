@@ -9,6 +9,7 @@ import (
 	"github.com/lancekrogers/stream-debugger/internal/bridge"
 	"github.com/lancekrogers/stream-debugger/internal/events"
 	dblogger "github.com/lancekrogers/stream-debugger/internal/logger"
+	"github.com/lancekrogers/stream-debugger/internal/transport"
 )
 
 func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -63,6 +64,9 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.streamTransport = msg.stream
 		m.streamIndex = msg.index
+		if msg.index < len(m.messages) && msg.stream != nil {
+			m.messages[msg.index].TransportName = msg.stream.Name()
+		}
 		return m, m.readStreamFrameCmd()
 
 	case streamFrameMsg:
@@ -90,7 +94,16 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// used by every noninteractive transport path. applyParsedEvent owns
 		// the Events list — do not append here or every event is duplicated.
 		if m.streamIndex < len(m.messages) {
-			if len(msg.frame.Raw) > 0 {
+			transportName := m.messages[m.streamIndex].TransportName
+			if transportName == "" && m.streamTransport != nil {
+				transportName = m.streamTransport.Name()
+			}
+			if transportName == "" {
+				transportName = "sse"
+			}
+			m.messages[m.streamIndex].TransportName = transportName
+			m.messages[m.streamIndex].Frames = append(m.messages[m.streamIndex].Frames, captureFrame(msg.frame))
+			if transportName == "sse" && len(msg.frame.Raw) > 0 {
 				m.messages[m.streamIndex].RawSSE += string(msg.frame.Raw)
 			}
 			if msg.frame.Err != nil {
@@ -164,6 +177,23 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+func captureFrame(frame transport.Frame) CapturedFrame {
+	captured := CapturedFrame{
+		Name:      frame.Name,
+		Timestamp: frame.Timestamp,
+	}
+	if len(frame.Data) > 0 {
+		captured.Data = append([]byte(nil), frame.Data...)
+	}
+	if len(frame.Raw) > 0 {
+		captured.Raw = append([]byte(nil), frame.Raw...)
+	}
+	if frame.Err != nil {
+		captured.Err = frame.Err.Error()
+	}
+	return captured
 }
 
 // currentPaneName returns the display name for the active pane

@@ -295,6 +295,19 @@ dialect:
   file: obey
 ```
 
+That campaign-state stream is useful for daemon connectivity and state
+inspection. To debug agent execution itself, use the activity profile in
+[`configs/obey-activity-grpc.yaml`](configs/obey-activity-grpc.yaml). It
+connects to `WatchAllActivity`, then the [`obey-activity`](dialects/obey-activity.yaml)
+dialect maps nested activity types such as message deltas, reasoning, tool
+calls, completions, errors, turn lifecycle, and dropped-event counters into
+the same generic event model used by every transport.
+
+The gRPC request map supports the shared `{session_id}`, `{message}`, and
+declared `vars:` placeholders, including nested request fields. For another
+protobuf agent system, keep the transport connection settings and replace
+only the dialect's JSON paths and normalized event rules.
+
 <p align="center">
   <img src="docs/assets/tui-obey-grpc.gif" alt="Live Obey gRPC TUI setup and streaming" width="900">
 </p>
@@ -320,6 +333,7 @@ fails before a request is sent.
 - `configs/brainyard-v3.yaml` - BrainyardV3 multi-agent system
 - `configs/generic-sse.yaml` - Generic SSE API template
 - `configs/obey-grpc.yaml` - Obey local daemon campaign-state stream
+- `configs/obey-activity-grpc.yaml` - Obey multi-agent activity stream
 
 ---
 

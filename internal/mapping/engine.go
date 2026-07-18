@@ -43,17 +43,22 @@ type Rule struct {
 	Source  ValueForm
 	Content ValueForm
 	Seq     ValueForm
-	Fields  map[string]ValueForm
+	// Timestamp extracts a wire timestamp when it is nested inside an
+	// envelope (common for protobuf activity messages). When unset, Decode
+	// keeps the legacy top-level timestamp fallback.
+	Timestamp ValueForm
+	Fields    map[string]ValueForm
 }
 
 // ruleYAML is the raw YAML shape of a rule, strictly decoded.
 type ruleYAML struct {
-	Match   MatchSpec            `yaml:"match"`
-	Kind    string               `yaml:"kind"`
-	Source  ValueForm            `yaml:"source,omitempty"`
-	Content ValueForm            `yaml:"content,omitempty"`
-	Seq     ValueForm            `yaml:"seq,omitempty"`
-	Fields  map[string]ValueForm `yaml:"fields,omitempty"`
+	Match     MatchSpec            `yaml:"match"`
+	Kind      string               `yaml:"kind"`
+	Source    ValueForm            `yaml:"source,omitempty"`
+	Content   ValueForm            `yaml:"content,omitempty"`
+	Seq       ValueForm            `yaml:"seq,omitempty"`
+	Timestamp ValueForm            `yaml:"timestamp,omitempty"`
+	Fields    map[string]ValueForm `yaml:"fields,omitempty"`
 }
 
 // dialectYAML is the top-level dialect document shape.
@@ -128,12 +133,13 @@ func Load(data []byte) (*Engine, error) {
 			return nil, fmt.Errorf("rules[%d]: unknown kind %q", i, r.Kind)
 		}
 		rules = append(rules, Rule{
-			Match:   r.Match,
-			Kind:    kind,
-			Source:  r.Source,
-			Content: r.Content,
-			Seq:     r.Seq,
-			Fields:  r.Fields,
+			Match:     r.Match,
+			Kind:      kind,
+			Source:    r.Source,
+			Content:   r.Content,
+			Seq:       r.Seq,
+			Timestamp: r.Timestamp,
+			Fields:    r.Fields,
 		})
 	}
 
@@ -210,10 +216,18 @@ func (e *Engine) Decode(transportName string, data []byte) *events.Event {
 	}
 
 	rule := e.Rules[idx]
+	timestamp := events.ParseTimestamp(timestampField(fields))
+	if rule.Timestamp.IsSet() {
+		if value, ok := rule.Timestamp.Extract(data); ok {
+			if raw, err := json.Marshal(value); err == nil {
+				timestamp = events.ParseTimestamp(raw)
+			}
+		}
+	}
 	evt := &events.Event{
 		Name:      name,
 		Kind:      rule.Kind,
-		Timestamp: events.ParseTimestamp(timestampField(fields)),
+		Timestamp: timestamp,
 		Fields:    fields,
 		Raw:       data,
 	}
