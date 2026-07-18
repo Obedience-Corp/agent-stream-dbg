@@ -95,6 +95,11 @@ timeline session_file:
 test:
     go test -v ./...
 
+# Run the live TUI recording integration suite. Requires Brainyard, Obey,
+# and an external TermCast installation; see vhs.just for configuration.
+integration-vhs:
+    just --justfile vhs.just integration
+
 # Regenerate testdata/goldens/*.explain.txt — review the diff before committing, an unreviewed one is a silent regression
 goldens:
     go test ./dialects/... -run TestExplainGoldens -update-goldens -v

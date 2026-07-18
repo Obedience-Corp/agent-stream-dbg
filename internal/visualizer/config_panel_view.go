@@ -63,7 +63,7 @@ func (m InteractiveModel) renderConfigPanel() string {
 func configTransportHint(transportType string) string {
 	switch transportType {
 	case "grpc":
-		return "gRPC selected: fill the gRPC target. SSE fields are hidden and preserved."
+		return "gRPC selected: fill target + method. Request is JSON for the RPC input; auth env uses metadata."
 	case "replay":
 		return "Replay selected: fill the replay file path. Network fields are hidden."
 	case "sse":

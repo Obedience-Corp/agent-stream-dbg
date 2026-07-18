@@ -2,5 +2,5 @@
   "schemaVersion": 1,
   "name": "stream-debugger",
   "theme": "theme.json",
-  "publishTapes": ["first-run-config", "brainyard-live"]
+  "publishTapes": ["first-run-config", "brainyard-live", "obey-grpc"]
 }
