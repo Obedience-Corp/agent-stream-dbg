@@ -1,0 +1,29 @@
+# Offline demo config for VHS / local motion chrome recordings.
+# Pointed at cmd/fixture-sse-server replaying the Brainyard fixture.
+
+transport:
+  type: "sse"
+  base_url: "http://127.0.0.1:18765"
+
+  stream_endpoint:
+    url: "/stream"
+    method: "POST"
+    headers:
+      Accept: "text/event-stream"
+    auth:
+      type: "none"
+
+dialect:
+  file: "dialects/brainyard.yaml"
+
+session:
+  id: "anim-demo"
+  auto_setup: false
+
+logging:
+  dir: "/tmp/stream-debugger-anim-demo-logs"
+  dimensions:
+    by_event_type: true
+    by_agent: true
+    by_session: true
+    api_calls: false

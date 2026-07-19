@@ -60,8 +60,8 @@ func EnergyStrip(frame int, level float64, live bool, width int, s Styles, reduc
 		wiggle := 0.2 * math.Sin(phase*2*math.Pi)
 		h := clamp01(level*(0.35+0.65*lobe) + wiggle*level*0.9)
 		if !live || level < 0.06 {
-			// Idle breath floor.
-			h = 0.1 + 0.08*math.Abs(math.Sin(float64(frame)*0.3+float64(i)*0.22))
+			// Idle breath floor — taller so the strip is obvious on demos.
+			h = 0.18 + 0.22*math.Abs(math.Sin(float64(frame)*0.35+float64(i)*0.28))
 		}
 		idx := int(h * float64(len(barGlyphs)-1))
 		if idx < 0 {
