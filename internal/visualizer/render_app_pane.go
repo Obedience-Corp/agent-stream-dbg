@@ -151,11 +151,7 @@ func (m InteractiveModel) renderAggregatorDebugSummary(agg *AgentResponse) strin
 	active := !agg.Completed && (m.streaming || agg.TokenCount > 0)
 	parts = append(parts, anim.AggregatorGlyph(active, agg.Completed, m.animFrame, s, reduced))
 	if active {
-		level := 0.35
-		if agg.DurationMs > 0 && agg.TokenCount > 0 {
-			level = anim.NormalizeRate(float64(agg.TokenCount) * 1000.0 / float64(agg.DurationMs))
-		}
-		parts = append(parts, anim.MiniBar(m.animFrame, level, true, 8, s, reduced))
+		parts = append(parts, anim.MiniBar(agentEnergyLevel(agg, m.streaming), true, 8, s, reduced))
 	}
 
 	return summaryStyle.Render("[Aggregator] " + strings.Join(parts, ", "))
@@ -207,11 +203,7 @@ func (m InteractiveModel) renderAgentSummaries(msg Message) string {
 		glyph := anim.AgentGlyph(active, resp.Completed, m.animFrame, s, reduced)
 		header := fmt.Sprintf("%s %s %s (%d tokens)", caret, glyph, agentID, resp.TokenCount)
 		if active {
-			level := 0.4
-			if resp.DurationMs > 0 && resp.TokenCount > 0 {
-				level = anim.NormalizeRate(float64(resp.TokenCount) * 1000.0 / float64(resp.DurationMs))
-			}
-			header += " " + anim.MiniBar(m.animFrame, level, true, 8, s, reduced)
+			header += " " + anim.MiniBar(agentEnergyLevel(resp, m.streaming), true, 8, s, reduced)
 		}
 		b.WriteString(agentStyle.Render(header))
 		b.WriteString("\n")

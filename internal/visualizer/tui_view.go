@@ -41,10 +41,10 @@ func (m *Model) View() string {
 		headerText = fmt.Sprintf("%s (flow: %s)", headerText, m.FlowID)
 	}
 	header := headerStyle.Render(headerText)
-	// Energy strip under the legacy header.
+	// Energy strip under the legacy header — token sample history, not a free oscillator.
 	duration := time.Since(m.startTime)
-	tokensPerSec := 0.0
-	if duration.Seconds() > 0 {
+	tokensPerSec := m.energy.Rate()
+	if tokensPerSec == 0 && duration.Seconds() > 0 && m.totalTokens > 0 {
 		tokensPerSec = float64(m.totalTokens) / duration.Seconds()
 	}
 	live := m.sessionActive
@@ -59,7 +59,7 @@ func (m *Model) View() string {
 	}
 	s := anim.DefaultStyles()
 	reduced := anim.ReducedMotion()
-	meter := anim.HeaderMeter(m.animFrame, tokensPerSec, live, m.errorCount > 0 && !live, m.width-6, s, reduced)
+	meter := anim.HeaderMeter(m.energy.Samples(), tokensPerSec, live, m.errorCount > 0 && !live, m.animFrame, m.width-6, s, reduced)
 
 	flowView := m.renderFlowStatus()
 	promptView := ""
@@ -135,10 +135,14 @@ func (m *Model) renderAgent(agent *AgentState) string {
 	status := anim.AgentGlyph(agent.Active, done, m.animFrame, s, reduced)
 	agentName := lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(agent.ID)
 	level := 0.0
-	if agent.Active {
-		level = 0.5
+	if agent.Active && agent.TokenCount > 0 {
+		elapsed := time.Since(agent.StartTime).Seconds()
+		if elapsed < 0.05 {
+			elapsed = 0.05
+		}
+		level = anim.NormalizeRate(float64(agent.TokenCount) / elapsed)
 	}
-	bar := anim.MiniBar(m.animFrame, level, agent.Active, 8, s, reduced)
+	bar := anim.MiniBar(level, agent.Active, 8, s, reduced)
 	header := fmt.Sprintf("%s %s %s", status, agentName, bar)
 	content := agent.Content.String()
 	if len(content) > 200 {
@@ -160,10 +164,14 @@ func (m *Model) renderAggregator() string {
 	status := anim.AggregatorGlyph(active, done, m.animFrame, s, reduced)
 	aggregatorName := lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Bold(true).Render("Aggregator (Synthesis)")
 	level := 0.0
-	if active {
-		level = 0.55
+	if active && m.aggregatorState.TokenCount > 0 {
+		elapsed := time.Since(m.aggregatorState.StartTime).Seconds()
+		if elapsed < 0.05 {
+			elapsed = 0.05
+		}
+		level = anim.NormalizeRate(float64(m.aggregatorState.TokenCount) / elapsed)
 	}
-	bar := anim.MiniBar(m.animFrame, level, active, 10, s, reduced)
+	bar := anim.MiniBar(level, active, 10, s, reduced)
 	header := fmt.Sprintf("%s %s %s", status, aggregatorName, bar)
 	content := m.aggregatorState.Content.String()
 	if len(content) > 400 {

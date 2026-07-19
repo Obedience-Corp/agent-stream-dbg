@@ -8,7 +8,7 @@ import (
 	"github.com/lancekrogers/stream-debugger/internal/visualizer/anim"
 )
 
-// animTickMsg drives energy-strip / agent-pulse / flow-chase frames.
+// animTickMsg drives energy decay sampling + flow-chase glyph frames.
 type animTickMsg struct{}
 
 const animTickInterval = 80 * time.Millisecond
@@ -17,28 +17,6 @@ func animTickCmd() tea.Cmd {
 	return tea.Tick(animTickInterval, func(time.Time) tea.Msg {
 		return animTickMsg{}
 	})
-}
-
-// streamTokensPerSec estimates live throughput for the current turn.
-func (m InteractiveModel) streamTokensPerSec() float64 {
-	if len(m.messages) == 0 {
-		return 0
-	}
-	msg := m.messages[len(m.messages)-1]
-	tokens := 0
-	for _, r := range msg.AgentResponses {
-		if r != nil {
-			tokens += r.TokenCount
-		}
-	}
-	if tokens == 0 {
-		return 0
-	}
-	elapsed := time.Since(msg.Timestamp).Seconds()
-	if elapsed < 0.05 {
-		elapsed = 0.05
-	}
-	return float64(tokens) / elapsed
 }
 
 func (m InteractiveModel) animStyles() anim.Styles {
@@ -65,4 +43,27 @@ func (m InteractiveModel) hasHotViewportChrome() bool {
 		}
 	}
 	return false
+}
+
+// agentEnergyLevel estimates 0–1 activity for one agent from its token rate
+// since stream start (not a free-running animation).
+func agentEnergyLevel(ar *AgentResponse, streaming bool) float64 {
+	if ar == nil || ar.TokenCount == 0 {
+		if streaming {
+			return 0.1
+		}
+		return 0
+	}
+	elapsed := time.Since(ar.StartTime).Seconds()
+	if ar.StartTime.IsZero() {
+		elapsed = 1
+	}
+	if elapsed < 0.05 {
+		elapsed = 0.05
+	}
+	if ar.Completed && ar.DurationMs > 0 {
+		elapsed = float64(ar.DurationMs) / 1000.0
+	}
+	rate := float64(ar.TokenCount) / elapsed
+	return anim.NormalizeRate(rate)
 }

@@ -10,6 +10,7 @@ var barGlyphs = []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
 
 // LED is a one-glyph connection indicator.
 // live → solid pulse, idle → breath, err → blink, reduced → static.
+// frame only advances the glyph cycle; energy comes from token samples elsewhere.
 func LED(live, err bool, frame int, s Styles, reduced bool) string {
 	if err {
 		if reduced || frame%2 == 0 {
@@ -18,13 +19,12 @@ func LED(live, err bool, frame int, s Styles, reduced bool) string {
 		return s.Muted.Render("○")
 	}
 	if live {
-		spin := []string{"●", "◉", "◎", "◉"}
 		if reduced {
 			return s.Live.Render("●")
 		}
+		spin := []string{"●", "◉", "◎", "◉"}
 		return s.Live.Render(spin[frame%len(spin)])
 	}
-	// Idle breath
 	if reduced {
 		return s.Idle.Render("○")
 	}
@@ -32,38 +32,41 @@ func LED(live, err bool, frame int, s Styles, reduced bool) string {
 	return s.Idle.Render(phase[frame%len(phase)])
 }
 
-// EnergyStrip is a single-line equalizer for wire throughput.
-// level is 0–1 (use NormalizeRate). When not live, draws a soft idle breath.
-func EnergyStrip(frame int, level float64, live bool, width int, s Styles, reduced bool) string {
+// EnergyStrip draws a single-line equalizer from real energy samples.
+//
+// samples is oldest→newest history of 0–1 levels (token-driven). When live is
+// false or samples is empty, a flat low idle line is drawn — no random wiggle.
+func EnergyStrip(samples []float64, live bool, width int, s Styles, reduced bool) string {
 	if width < 8 {
 		width = 8
 	}
 	if width > 48 {
 		width = 48
 	}
-	level = clamp01(level)
-	if reduced {
-		frame = 0
-		if !live {
-			level = 0.08
+
+	// Fit samples to width: pad left with zeros or resample.
+	cols := make([]float64, width)
+	if live && len(samples) > 0 {
+		if reduced {
+			// Single frozen level (latest sample).
+			v := samples[len(samples)-1]
+			for i := range cols {
+				cols[i] = v
+			}
+		} else {
+			fillSamples(cols, samples)
 		}
 	}
 
 	var b strings.Builder
 	b.Grow(width * 12)
 	for i := 0; i < width; i++ {
-		pos := float64(i) / float64(max(width-1, 1))
-		// Center-weighted lobe — reads as a stream pipe, not noise.
-		lobe := math.Sin(pos * math.Pi)
-		lobe *= lobe
-		phase := float64((frame*2+i*3)%24) / 24
-		wiggle := 0.2 * math.Sin(phase*2*math.Pi)
-		h := clamp01(level*(0.35+0.65*lobe) + wiggle*level*0.9)
-		if !live || level < 0.06 {
-			// Idle breath floor — taller so the strip is obvious on demos.
-			h = 0.18 + 0.22*math.Abs(math.Sin(float64(frame)*0.35+float64(i)*0.28))
+		h := clamp01(cols[i])
+		if !live {
+			// Quiet baseline — static, not oscillating.
+			h = 0.08
 		}
-		idx := int(h * float64(len(barGlyphs)-1))
+		idx := int(math.Round(h * float64(len(barGlyphs)-1)))
 		if idx < 0 {
 			idx = 0
 		}
@@ -72,7 +75,7 @@ func EnergyStrip(frame int, level float64, live bool, width int, s Styles, reduc
 		}
 		rel := float64(idx) / float64(len(barGlyphs)-1)
 		style := colorByHeat(rel, s)
-		if !live {
+		if !live || h < 0.05 {
 			style = s.Idle
 		}
 		b.WriteString(style.Render(string(barGlyphs[idx])))
@@ -80,10 +83,41 @@ func EnergyStrip(frame int, level float64, live bool, width int, s Styles, reduc
 	return b.String()
 }
 
-// HeaderMeter builds the title chrome line:
-//   ● STREAM  ▁▂▄█▇▅  42 tok/s  LIVE
-func HeaderMeter(frame int, tokensPerSec float64, live, err bool, width int, s Styles, reduced bool) string {
-	level := NormalizeRate(tokensPerSec)
+// fillSamples maps oldest→newest samples onto cols (newest on the right).
+func fillSamples(cols, samples []float64) {
+	n := len(cols)
+	if n == 0 {
+		return
+	}
+	if len(samples) == 0 {
+		return
+	}
+	if len(samples) == 1 {
+		for i := range cols {
+			cols[i] = samples[0]
+		}
+		return
+	}
+	// Stretch/compress samples across columns.
+	for i := 0; i < n; i++ {
+		// Map column i to sample index.
+		t := float64(i) / float64(n-1)
+		src := t * float64(len(samples)-1)
+		lo := int(src)
+		hi := lo + 1
+		if hi >= len(samples) {
+			cols[i] = samples[len(samples)-1]
+			continue
+		}
+		frac := src - float64(lo)
+		cols[i] = samples[lo]*(1-frac) + samples[hi]*frac
+	}
+}
+
+// HeaderMeter builds the title chrome line from token-driven samples:
+//
+//	● STREAM  ▁▂▄█▇▅  42 tok/s  LIVE
+func HeaderMeter(samples []float64, tokensPerSec float64, live, err bool, frame, width int, s Styles, reduced bool) string {
 	led := LED(live, err, frame, s, reduced)
 	stripW := width
 	if stripW <= 0 {
@@ -92,7 +126,7 @@ func HeaderMeter(frame int, tokensPerSec float64, live, err bool, width int, s S
 	if stripW > 28 {
 		stripW = 28
 	}
-	strip := EnergyStrip(frame, level, live && !err, stripW, s, reduced)
+	strip := EnergyStrip(samples, live && !err, stripW, s, reduced)
 
 	state := s.Muted.Render("IDLE")
 	if err {
@@ -120,14 +154,14 @@ func HeaderMeter(frame int, tokensPerSec float64, live, err bool, width int, s S
 }
 
 // StreamingLabel replaces the static "⏳ Streaming..." input prompt.
-func StreamingLabel(frame int, tokensPerSec float64, s Styles, reduced bool) string {
+// The mini strip uses the same token sample history as the header.
+func StreamingLabel(samples []float64, tokensPerSec float64, frame int, s Styles, reduced bool) string {
 	spin := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 	glyph := "◈"
 	if !reduced {
 		glyph = spin[frame%len(spin)]
 	}
-	level := NormalizeRate(tokensPerSec)
-	strip := EnergyStrip(frame, level, true, 12, s, reduced)
+	strip := EnergyStrip(samples, true, 12, s, reduced)
 	rate := ""
 	if tokensPerSec > 0 {
 		rate = fmt.Sprintf("  %.0f tok/s", tokensPerSec)
@@ -136,15 +170,13 @@ func StreamingLabel(frame int, tokensPerSec float64, s Styles, reduced bool) str
 }
 
 // MiniBar is a short inline meter for agent/aggregator token activity.
-func MiniBar(frame int, level float64, active bool, width int, s Styles, reduced bool) string {
+// level should come from that agent's recent token rate (0–1), not a free clock.
+func MiniBar(level float64, active bool, width int, s Styles, reduced bool) string {
 	if width < 4 {
 		width = 4
 	}
 	if width > 16 {
 		width = 16
-	}
-	if reduced {
-		frame = 0
 	}
 	level = clamp01(level)
 	filled := int(math.Round(level * float64(width)))
@@ -157,13 +189,7 @@ func MiniBar(frame int, level float64, active bool, width int, s Styles, reduced
 	var b strings.Builder
 	for i := 0; i < width; i++ {
 		if i < filled {
-			// Leading edge wiggles while active.
-			g := "█"
-			if active && !reduced && i == filled-1 {
-				edge := []string{"█", "▓", "▒", "▓"}
-				g = edge[frame%len(edge)]
-			}
-			b.WriteString(s.Agent.Render(g))
+			b.WriteString(s.Agent.Render("█"))
 		} else {
 			b.WriteString(s.Muted.Render("░"))
 		}

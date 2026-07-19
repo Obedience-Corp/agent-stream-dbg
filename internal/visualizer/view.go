@@ -21,7 +21,8 @@ func (m InteractiveModel) View() string {
 	var b strings.Builder
 	s := m.animStyles()
 	reduced := anim.ReducedMotion()
-	rate := m.streamTokensPerSec()
+	rate := m.energy.Rate()
+	samples := m.energy.Samples()
 
 	// Header with live energy strip + pane indicator
 	headerStyle := lipgloss.NewStyle().
@@ -57,12 +58,12 @@ func (m InteractiveModel) View() string {
 	b.WriteString("  ")
 	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(fmt.Sprintf("(session: %s)", m.cfg.Session.ID)))
 	b.WriteString("\n")
-	// Mission-control energy strip — always visible under the title.
+	// Mission-control energy strip — token-history waveform, not a free oscillator.
 	meterW := m.width - 4
 	if meterW < 24 {
 		meterW = 24
 	}
-	b.WriteString(anim.HeaderMeter(m.animFrame, rate, m.streaming, m.err != nil, meterW, s, reduced))
+	b.WriteString(anim.HeaderMeter(samples, rate, m.streaming, m.err != nil, m.animFrame, meterW, s, reduced))
 	b.WriteString("\n\n")
 
 	// Display viewport (scrollable message history)
@@ -90,7 +91,7 @@ func (m InteractiveModel) View() string {
 
 	inputLabel := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("Your message:")
 	if m.streaming {
-		inputLabel = anim.StreamingLabel(m.animFrame, rate, s, reduced)
+		inputLabel = anim.StreamingLabel(samples, rate, m.animFrame, s, reduced)
 	}
 
 	b.WriteString(inputLabel)

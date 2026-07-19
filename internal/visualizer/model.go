@@ -162,8 +162,10 @@ type InteractiveModel struct {
 	dialectFlow flowState
 	parser      *bridge.Parser
 
-	// animFrame advances on animTickMsg for energy strip / pulses / flow chase.
+	// animFrame advances on animTickMsg for LED / flow-chase glyph cycles only.
 	animFrame int
+	// energy is driven by KindContent token arrivals (not a free-running wiggle).
+	energy energyState
 }
 
 type Message struct {
@@ -279,6 +281,7 @@ func NewInteractiveModelWithContextAndConfigPathAndOpenConfig(cfg *config.Enhanc
 		// the user has filled and saved the configuration panel.
 		sessionReady: !cfg.Session.AutoSetup || !openConfigPanel,
 		configPath:   configPath,
+		energy:       newEnergyState(),
 	}
 	// Set an initial placeholder so the viewport isn't blank before first refresh
 	m.viewport.SetContent(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(

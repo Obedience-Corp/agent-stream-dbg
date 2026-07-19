@@ -29,32 +29,48 @@ func TestNormalizeRate(t *testing.T) {
 	}
 }
 
-func TestEnergyStripLiveVsIdle(t *testing.T) {
+func TestEnergyStripFromTokenSamples(t *testing.T) {
 	s := DefaultStyles()
-	live := EnergyStrip(3, 0.8, true, 16, s, false)
-	idle := EnergyStrip(3, 0, false, 16, s, false)
+	// Rising sample history → strip should not be flat idle-only.
+	samples := []float64{0.1, 0.3, 0.5, 0.8, 1.0, 0.6, 0.2}
+	live := EnergyStrip(samples, true, 16, s, false)
+	idle := EnergyStrip(nil, false, 16, s, false)
 	if live == "" || idle == "" {
 		t.Fatal("strips should render")
 	}
-	// Both produce visible glyphs (ANSI-stripped length >= width).
 	if plainLen(live) < 16 || plainLen(idle) < 16 {
 		t.Fatalf("strip width short: live=%d idle=%d", plainLen(live), plainLen(idle))
+	}
+	// Live with real samples should differ from quiet idle.
+	if stripANSI(live) == stripANSI(idle) {
+		t.Fatal("token-driven live strip should differ from idle baseline")
+	}
+}
+
+func TestEnergyStripNoRandomWhenSamplesEmptyButLive(t *testing.T) {
+	s := DefaultStyles()
+	a := stripANSI(EnergyStrip(nil, true, 12, s, false))
+	b := stripANSI(EnergyStrip(nil, true, 12, s, false))
+	// Empty live history → flat low columns; deterministic, not frame-wiggly.
+	if a != b {
+		t.Fatalf("empty live strip should be deterministic, got %q vs %q", a, b)
 	}
 }
 
 func TestHeaderMeterContainsState(t *testing.T) {
 	s := DefaultStyles()
-	got := HeaderMeter(2, 42, true, false, 20, s, false)
+	samples := []float64{0.2, 0.5, 0.9}
+	got := HeaderMeter(samples, 42, true, false, 2, 20, s, false)
 	for _, want := range []string{"STREAM", "tok/s", "LIVE"} {
 		if !strings.Contains(stripANSI(got), want) {
 			t.Errorf("header missing %q:\n%s", want, stripANSI(got))
 		}
 	}
-	idle := HeaderMeter(0, 0, false, false, 20, s, true)
+	idle := HeaderMeter(nil, 0, false, false, 0, 20, s, true)
 	if !strings.Contains(stripANSI(idle), "IDLE") {
 		t.Fatalf("idle header missing IDLE: %s", stripANSI(idle))
 	}
-	errLine := HeaderMeter(1, 0, false, true, 20, s, false)
+	errLine := HeaderMeter(nil, 0, false, true, 1, 20, s, false)
 	if !strings.Contains(stripANSI(errLine), "ERROR") {
 		t.Fatalf("error header missing ERROR: %s", stripANSI(errLine))
 	}
@@ -77,7 +93,7 @@ func TestAgentAndFlowGlyphsChangeWithState(t *testing.T) {
 
 func TestStreamingLabel(t *testing.T) {
 	s := DefaultStyles()
-	got := stripANSI(StreamingLabel(5, 30, s, false))
+	got := stripANSI(StreamingLabel([]float64{0.4, 0.7}, 30, 5, s, false))
 	if !strings.Contains(got, "streaming") {
 		t.Fatalf("label = %q", got)
 	}

@@ -38,8 +38,10 @@ type Model struct {
 	startTime   time.Time
 	totalTokens int
 	totalEvents int
-	// animFrame advances on tickMsg for energy strip / agent pulses.
+	// animFrame advances on tickMsg for LED glyph cycles only.
 	animFrame int
+	// energy is driven by KindContent token arrivals.
+	energy energyState
 
 	// Flow status
 	flow map[string]*FlowStepStatus
@@ -167,6 +169,7 @@ func NewModelWithContext(cfg *config.EnhancedConfig, sseClient *client.SSEClient
 		promptInfo:      make(map[string]*PromptInfoState),
 		dialectFlow:     newFlowStateWithParser(parser),
 		parser:          parser,
+		energy:          newEnergyState(),
 	}
 }
 
@@ -191,6 +194,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.waitForError()
 	case tickMsg:
 		m.animFrame++
+		live := m.sessionActive
+		for _, a := range m.agents {
+			if a != nil && a.Active {
+				live = true
+				break
+			}
+		}
+		if m.aggregatorState != nil && m.aggregatorState.Active {
+			live = true
+		}
+		m.energy.tick(time.Now(), live)
 		return m, m.tickCmd()
 	}
 	return m, nil
