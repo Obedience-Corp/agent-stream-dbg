@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lancekrogers/stream-debugger/internal/events"
+	"github.com/lancekrogers/stream-debugger/internal/visualizer/anim"
 )
 
 // renderAppPane renders the App pane (F2) showing aggregator output and agent summaries
@@ -144,11 +145,19 @@ func (m InteractiveModel) renderAggregatorDebugSummary(agg *AgentResponse) strin
 		parts = append(parts, fmt.Sprintf("first-token: %dms", agg.FirstTokenMs))
 	}
 
-	// Status indicator
-	if agg.Completed {
-		parts = append(parts, "✓")
-	} else {
-		parts = append(parts, "⏳")
+	// Status indicator + mini energy bar while hot
+	s := anim.DefaultStyles()
+	reduced := anim.ReducedMotion()
+	active := !agg.Completed && (m.streaming || agg.TokenCount > 0)
+	parts = append(parts, anim.AggregatorGlyph(active, agg.Completed, m.animFrame, s, reduced))
+	if active || agg.TokenCount > 0 {
+		level := 0.0
+		if agg.DurationMs > 0 && agg.TokenCount > 0 {
+			level = anim.NormalizeRate(float64(agg.TokenCount) * 1000.0 / float64(agg.DurationMs))
+		} else if active {
+			level = 0.35
+		}
+		parts = append(parts, anim.MiniBar(m.animFrame, level, active, 8, s, reduced))
 	}
 
 	return summaryStyle.Render("[Aggregator] " + strings.Join(parts, ", "))
@@ -192,13 +201,21 @@ func (m InteractiveModel) renderAgentSummaries(msg Message) string {
 			caret = "▶"
 		}
 
-		// Status indicator
-		status := ""
-		if resp.Completed {
-			status = " ✓"
+		s := anim.DefaultStyles()
+		// Tint agent anim with the agent color when possible.
+		s.Agent = lipgloss.NewStyle().Foreground(agentColor).Bold(true)
+		reduced := anim.ReducedMotion()
+		active := !resp.Completed && (m.streaming || resp.TokenCount > 0)
+		glyph := anim.AgentGlyph(active, resp.Completed, m.animFrame, s, reduced)
+		level := 0.0
+		if resp.DurationMs > 0 && resp.TokenCount > 0 {
+			level = anim.NormalizeRate(float64(resp.TokenCount) * 1000.0 / float64(resp.DurationMs))
+		} else if active {
+			level = 0.4
 		}
+		bar := anim.MiniBar(m.animFrame, level, active, 8, s, reduced)
 
-		header := fmt.Sprintf("%s %s (%d tokens)%s", caret, agentID, resp.TokenCount, status)
+		header := fmt.Sprintf("%s %s %s (%d tokens) %s", caret, glyph, agentID, resp.TokenCount, bar)
 		b.WriteString(agentStyle.Render(header))
 		b.WriteString("\n")
 

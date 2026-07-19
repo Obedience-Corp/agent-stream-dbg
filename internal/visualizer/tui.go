@@ -38,6 +38,8 @@ type Model struct {
 	startTime   time.Time
 	totalTokens int
 	totalEvents int
+	// animFrame advances on tickMsg for energy strip / agent pulses.
+	animFrame int
 
 	// Flow status
 	flow map[string]*FlowStepStatus
@@ -188,6 +190,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.errorCount++
 		return m, m.waitForError()
 	case tickMsg:
+		m.animFrame++
 		return m, m.tickCmd()
 	}
 	return m, nil

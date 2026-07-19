@@ -161,6 +161,9 @@ type InteractiveModel struct {
 	// events when it declared none.
 	dialectFlow flowState
 	parser      *bridge.Parser
+
+	// animFrame advances on animTickMsg for energy strip / pulses / flow chase.
+	animFrame int
 }
 
 type Message struct {
@@ -291,7 +294,7 @@ func NewInteractiveModelWithContextAndConfigPathAndOpenConfig(cfg *config.Enhanc
 }
 
 func (m InteractiveModel) Init() tea.Cmd {
-	return textarea.Blink
+	return tea.Batch(textarea.Blink, animTickCmd())
 }
 
 // refreshViewportContent updates the viewport content based on current state

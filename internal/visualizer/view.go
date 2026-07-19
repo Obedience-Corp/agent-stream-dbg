@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/lancekrogers/stream-debugger/internal/visualizer/anim"
 )
 
 func (m InteractiveModel) View() string {
@@ -17,8 +19,11 @@ func (m InteractiveModel) View() string {
 	}
 
 	var b strings.Builder
+	s := m.animStyles()
+	reduced := anim.ReducedMotion()
+	rate := m.streamTokensPerSec()
 
-	// Header with pane indicator
+	// Header with live energy strip + pane indicator
 	headerStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("6")).
@@ -45,11 +50,19 @@ func (m InteractiveModel) View() string {
 	if dbg == "" {
 		dbg = "off"
 	}
-	b.WriteString(headerStyle.Render(fmt.Sprintf("🚀 Stream Debugger (debug=%s)", dbg)))
+	title := headerStyle.Render(fmt.Sprintf("Stream Debugger (debug=%s)", dbg))
+	b.WriteString(title)
 	b.WriteString(" ")
 	b.WriteString(tabs.String())
 	b.WriteString("  ")
 	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(fmt.Sprintf("(session: %s)", m.cfg.Session.ID)))
+	b.WriteString("\n")
+	// Mission-control energy strip — always visible under the title.
+	meterW := m.width - 4
+	if meterW < 24 {
+		meterW = 24
+	}
+	b.WriteString(anim.HeaderMeter(m.animFrame, rate, m.streaming, m.err != nil, meterW, s, reduced))
 	b.WriteString("\n\n")
 
 	// Display viewport (scrollable message history)
@@ -62,7 +75,7 @@ func (m InteractiveModel) View() string {
 		errorStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("9")).
 			Bold(true)
-		b.WriteString(errorStyle.Render(fmt.Sprintf("❌ Error: %v", m.err)))
+		b.WriteString(errorStyle.Render(fmt.Sprintf("✗ Error: %v", m.err)))
 		b.WriteString("\n\n")
 	}
 
@@ -71,13 +84,16 @@ func (m InteractiveModel) View() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("62")).
 		Padding(0, 1)
-
-	inputLabel := "Your message:"
 	if m.streaming {
-		inputLabel = "⏳ Streaming response..."
+		inputBoxStyle = inputBoxStyle.BorderForeground(lipgloss.Color("14"))
 	}
 
-	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(inputLabel))
+	inputLabel := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("Your message:")
+	if m.streaming {
+		inputLabel = anim.StreamingLabel(m.animFrame, rate, s, reduced)
+	}
+
+	b.WriteString(inputLabel)
 	b.WriteString("\n")
 	b.WriteString(inputBoxStyle.Render(m.textarea.View()))
 	b.WriteString("\n")

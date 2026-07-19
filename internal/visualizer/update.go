@@ -16,6 +16,14 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case animTickMsg:
+		m.animFrame++
+		// Viewport hosts agent/flow glyphs — refresh only while something is hot.
+		if m.hasHotViewportChrome() {
+			m.contentDirty = true
+		}
+		cmds = append(cmds, animTickCmd())
+
 	case tea.KeyMsg:
 		updated, cmd, handled := m.handleKeyMsg(msg)
 		if handled {

@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/lancekrogers/stream-debugger/internal/visualizer/anim"
 )
 
 // View renders the TUI.
@@ -39,6 +41,25 @@ func (m *Model) View() string {
 		headerText = fmt.Sprintf("%s (flow: %s)", headerText, m.FlowID)
 	}
 	header := headerStyle.Render(headerText)
+	// Energy strip under the legacy header.
+	duration := time.Since(m.startTime)
+	tokensPerSec := 0.0
+	if duration.Seconds() > 0 {
+		tokensPerSec = float64(m.totalTokens) / duration.Seconds()
+	}
+	live := m.sessionActive
+	for _, a := range m.agents {
+		if a != nil && a.Active {
+			live = true
+			break
+		}
+	}
+	if m.aggregatorState != nil && m.aggregatorState.Active {
+		live = true
+	}
+	s := anim.DefaultStyles()
+	reduced := anim.ReducedMotion()
+	meter := anim.HeaderMeter(m.animFrame, tokensPerSec, live, m.errorCount > 0 && !live, m.width-6, s, reduced)
 
 	flowView := m.renderFlowStatus()
 	promptView := ""
@@ -65,8 +86,6 @@ func (m *Model) View() string {
 		aggregatorView = aggregatorStyle.Render(m.renderAggregator())
 	}
 
-	duration := time.Since(m.startTime)
-	tokensPerSec := float64(m.totalTokens) / duration.Seconds()
 	stats := statsStyle.Render(fmt.Sprintf(
 		"Events: %d | Tokens: %d | Tokens/sec: %.1f | Errors: %d | Duration: %s",
 		m.totalEvents, m.totalTokens, tokensPerSec, m.errorCount, duration.Round(time.Second),
@@ -78,7 +97,7 @@ func (m *Model) View() string {
 	controls := statsStyle.Render(fmt.Sprintf("^P pause | ^A agents | ^R refs | ^I prompts | F1 verbose | F2 full | F3 off | ^C quit | debug=%s", dbg))
 	promptPanelView := m.renderPromptPanel()
 
-	sections := []string{header}
+	sections := []string{header, meter}
 	if flowView != "" {
 		sections = append(sections, flowView)
 	}
@@ -108,16 +127,19 @@ func (m *Model) View() string {
 
 // renderAgent renders a single agent's view.
 func (m *Model) renderAgent(agent *AgentState) string {
-	statusIcon := "●"
-	statusColor := "8"
-	if agent.Active {
-		statusIcon = "◉"
-		statusColor = "10"
-	}
-	status := lipgloss.NewStyle().Foreground(lipgloss.Color(statusColor)).Render(statusIcon)
+	s := anim.DefaultStyles()
 	color := getAgentColor(agent.ID, m.agentColorOverrides())
+	s.Agent = lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true)
+	reduced := anim.ReducedMotion()
+	done := !agent.Active && agent.TokenCount > 0 && !agent.EndTime.IsZero()
+	status := anim.AgentGlyph(agent.Active, done, m.animFrame, s, reduced)
 	agentName := lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(agent.ID)
-	header := fmt.Sprintf("%s %s", status, agentName)
+	level := 0.0
+	if agent.Active {
+		level = 0.5
+	}
+	bar := anim.MiniBar(m.animFrame, level, agent.Active, 8, s, reduced)
+	header := fmt.Sprintf("%s %s %s", status, agentName, bar)
 	content := agent.Content.String()
 	if len(content) > 200 {
 		content = "..." + content[len(content)-200:]
@@ -131,15 +153,18 @@ func (m *Model) renderAgent(agent *AgentState) string {
 
 // renderAggregator renders the aggregator-role lane's synthesis view.
 func (m *Model) renderAggregator() string {
-	statusIcon := "●"
-	statusColor := "8"
-	if m.aggregatorState.Active {
-		statusIcon = "◉"
-		statusColor = "11"
-	}
-	status := lipgloss.NewStyle().Foreground(lipgloss.Color(statusColor)).Render(statusIcon)
+	s := anim.DefaultStyles()
+	reduced := anim.ReducedMotion()
+	active := m.aggregatorState.Active
+	done := !active && m.aggregatorState.TokenCount > 0
+	status := anim.AggregatorGlyph(active, done, m.animFrame, s, reduced)
 	aggregatorName := lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Bold(true).Render("Aggregator (Synthesis)")
-	header := fmt.Sprintf("%s %s", status, aggregatorName)
+	level := 0.0
+	if active {
+		level = 0.55
+	}
+	bar := anim.MiniBar(m.animFrame, level, active, 10, s, reduced)
+	header := fmt.Sprintf("%s %s %s", status, aggregatorName, bar)
 	content := m.aggregatorState.Content.String()
 	if len(content) > 400 {
 		content = "..." + content[len(content)-400:]
