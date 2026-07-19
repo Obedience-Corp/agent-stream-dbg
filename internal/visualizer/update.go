@@ -16,6 +16,15 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case animTickMsg:
+		m.animFrame++
+		m.energy.tick(time.Now(), m.streaming)
+		// Viewport hosts agent/flow glyphs — refresh only while something is hot.
+		if m.hasHotViewportChrome() {
+			m.contentDirty = true
+		}
+		cmds = append(cmds, animTickCmd())
+
 	case tea.KeyMsg:
 		updated, cmd, handled := m.handleKeyMsg(msg)
 		if handled {
@@ -82,6 +91,7 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.streamTransport = msg.stream
 		m.streamIndex = msg.index
+		m.energy.reset()
 		if msg.index < len(m.messages) && msg.stream != nil {
 			m.messages[msg.index].TransportName = msg.stream.Name()
 		}
@@ -351,6 +361,8 @@ func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
 		ar.ContentChunks = append(ar.ContentChunks, c)
 		ar.FullContent += c
 		ar.TokenCount++
+		// Drive header/stream energy from real content tokens.
+		m.energy.onTokens(1, time.Now())
 	case events.KindStreamEnd:
 		if aid == "" {
 			return

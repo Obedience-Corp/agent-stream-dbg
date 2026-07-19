@@ -16,6 +16,7 @@ Real-time TUI for watching streams + timeline analysis for understanding paralle
 ## Features
 
 🎬 **Real-Time TUI** - Watch SSE and gRPC streams live in your terminal
+⚡ **Live motion chrome** - Stream energy strip, agent pulses, and flow-stage chase (respects `STREAM_DEBUGGER_REDUCED_MOTION` / `NO_MOTION`)
 📊 **Timeline Visualization** - Analyze parallel execution from logs
 ⚙️ **Configuration-Driven** - Select a wire dialect and SSE, gRPC, or replay transport via YAML config
 📝 **Multi-Dimensional Logging** - Events logged by type, agent, session, and API calls

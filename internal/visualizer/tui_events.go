@@ -33,6 +33,7 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 			m.aggregatorState.TokenCount++
 			m.aggregatorState.Sequence = event.Seq
 			m.totalTokens++
+			m.energy.onTokens(1, time.Now())
 			break
 		}
 		agentID := event.SourceID
@@ -42,6 +43,7 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 			agent.Sequence = event.Seq
 			agent.LastUpdate = time.Now()
 			m.totalTokens++
+			m.energy.onTokens(1, time.Now())
 		}
 	case events.KindStreamEnd:
 		if isAggregator {

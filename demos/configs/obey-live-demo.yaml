@@ -1,0 +1,31 @@
+# Live Obey daemon demo — WatchCampaignState against My_Tools.
+# Requires: `obey serve` with socket at /tmp/obey.sock
+
+transport:
+  type: grpc
+  target: "unix:///tmp/obey.sock"
+  method: "/local.v1.LocalDaemonService/WatchCampaignState"
+  plaintext: true
+  discriminator: oneof
+  request:
+    campaign_id: "8a57dff6-753a-41c2-be15-47c3d8fc4ca8" # My_Tools
+    include_initial_snapshot: true
+    include_heartbeat: true
+
+dialect:
+  file: "dialects/obey.yaml"
+
+session:
+  auto_setup: false
+  id: "obey-live-demo"
+
+logging:
+  dir: "/tmp/stream-debugger-obey-live-logs"
+  dimensions:
+    by_event_type: true
+    by_agent: true
+    by_session: true
+    api_calls: false
+
+display:
+  colors: true

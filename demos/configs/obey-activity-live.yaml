@@ -1,0 +1,29 @@
+# Live Obey multi-agent activity stream for My_Tools.
+# Requires: `obey serve` with socket at /tmp/obey.sock
+
+transport:
+  type: grpc
+  target: "unix:///tmp/obey.sock"
+  method: "/local.v1.LocalDaemonService/WatchAllActivity"
+  plaintext: true
+  discriminator: message_type
+  request:
+    campaign_id: "8a57dff6-753a-41c2-be15-47c3d8fc4ca8" # My_Tools
+
+dialect:
+  file: "dialects/obey-activity.yaml"
+
+session:
+  auto_setup: false
+  id: "obey-activity-live"
+
+logging:
+  dir: "/tmp/stream-debugger-obey-activity-logs"
+  dimensions:
+    by_event_type: true
+    by_agent: true
+    by_session: true
+    api_calls: false
+
+display:
+  colors: true

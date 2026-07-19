@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lancekrogers/stream-debugger/internal/events"
+	"github.com/lancekrogers/stream-debugger/internal/visualizer/anim"
 )
 
 // =============================================================================
@@ -58,8 +59,11 @@ func (m InteractiveModel) buildFlowNodes(evts []*events.Event) map[string]*FlowN
 	return nodes
 }
 
-// statusIcon returns the status indicator for a flow step
+// statusIcon returns a plain (non-ANSI) status glyph for tests and reduced paths.
 func statusIcon(n *FlowNode) string {
+	if n == nil {
+		return " "
+	}
 	if !n.Enabled {
 		return "–"
 	}
@@ -69,7 +73,17 @@ func statusIcon(n *FlowNode) string {
 	if n.DurationMs > 0 {
 		return "✓"
 	}
-	return "…"
+	return "·"
+}
+
+// statusIconFrame is the animated form used by the live Flow pane.
+func statusIconFrame(n *FlowNode, frame int, reduced bool) string {
+	if n == nil {
+		return " "
+	}
+	s := anim.DefaultStyles()
+	done := n.DurationMs > 0 && !n.InProgress
+	return anim.FlowGlyph(n.Enabled, n.InProgress, done, frame, s, reduced)
 }
 
 // renderFlowPane renders the Flow pane (F1) showing step rows
@@ -107,22 +121,27 @@ func (m InteractiveModel) renderFlowPane() string {
 	b.WriteString(dimStyle.Render(fmt.Sprintf("Turn %d of %d  ([ ] to navigate)", turn+1, len(m.messages))))
 	b.WriteString("\n\n")
 
+	reduced := anim.ReducedMotion()
 	for i, step := range steps {
 		n := nodes[step]
 
 		// Build the line
 		var line strings.Builder
 
-		// Status icon
+		// Status icon (spins while InProgress)
 		if n != nil {
-			line.WriteString(statusIcon(n))
+			line.WriteString(statusIconFrame(n, m.animFrame, reduced))
 		} else {
 			line.WriteString(" ")
 		}
 		line.WriteString(" ")
 
-		// Step name
-		_, _ = fmt.Fprintf(&line, "%-12s", step)
+		// Step name (+ chase trail while hot)
+		if n != nil && n.InProgress {
+			_, _ = fmt.Fprintf(&line, "%-12s %s", step, anim.FlowChase(m.animFrame, anim.DefaultStyles(), reduced))
+		} else {
+			_, _ = fmt.Fprintf(&line, "%-12s", step)
+		}
 
 		// Metrics (if available)
 		if n != nil {
@@ -262,6 +281,7 @@ func (m InteractiveModel) renderFlowAllPane() string {
 
 		// Step rows
 		steps := m.dialectFlow.stages()
+		reduced := anim.ReducedMotion()
 		for _, step := range steps {
 			n := nodes[step]
 			if n == nil {
@@ -269,9 +289,13 @@ func (m InteractiveModel) renderFlowAllPane() string {
 			}
 
 			var line strings.Builder
-			line.WriteString(statusIcon(n))
+			line.WriteString(statusIconFrame(n, m.animFrame, reduced))
 			line.WriteString(" ")
-			_, _ = fmt.Fprintf(&line, "%-12s", step)
+			if n.InProgress {
+				_, _ = fmt.Fprintf(&line, "%-12s %s", step, anim.FlowChase(m.animFrame, anim.DefaultStyles(), reduced))
+			} else {
+				_, _ = fmt.Fprintf(&line, "%-12s", step)
+			}
 			if n.DurationMs > 0 {
 				_, _ = fmt.Fprintf(&line, " [%dms]", n.DurationMs)
 			}

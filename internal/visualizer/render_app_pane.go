@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lancekrogers/stream-debugger/internal/events"
+	"github.com/lancekrogers/stream-debugger/internal/visualizer/anim"
 )
 
 // renderAppPane renders the App pane (F2) showing aggregator output and agent summaries
@@ -144,11 +145,13 @@ func (m InteractiveModel) renderAggregatorDebugSummary(agg *AgentResponse) strin
 		parts = append(parts, fmt.Sprintf("first-token: %dms", agg.FirstTokenMs))
 	}
 
-	// Status indicator
-	if agg.Completed {
-		parts = append(parts, "✓")
-	} else {
-		parts = append(parts, "⏳")
+	// Status indicator + mini energy bar only while actively streaming.
+	s := anim.DefaultStyles()
+	reduced := anim.ReducedMotion()
+	active := !agg.Completed && (m.streaming || agg.TokenCount > 0)
+	parts = append(parts, anim.AggregatorGlyph(active, agg.Completed, m.animFrame, s, reduced))
+	if active {
+		parts = append(parts, anim.MiniBar(agentEnergyLevel(agg, m.streaming), true, 8, s, reduced))
 	}
 
 	return summaryStyle.Render("[Aggregator] " + strings.Join(parts, ", "))
@@ -192,13 +195,16 @@ func (m InteractiveModel) renderAgentSummaries(msg Message) string {
 			caret = "▶"
 		}
 
-		// Status indicator
-		status := ""
-		if resp.Completed {
-			status = " ✓"
+		s := anim.DefaultStyles()
+		// Tint agent anim with the agent color when possible.
+		s.Agent = lipgloss.NewStyle().Foreground(agentColor).Bold(true)
+		reduced := anim.ReducedMotion()
+		active := !resp.Completed && (m.streaming || resp.TokenCount > 0)
+		glyph := anim.AgentGlyph(active, resp.Completed, m.animFrame, s, reduced)
+		header := fmt.Sprintf("%s %s %s (%d tokens)", caret, glyph, agentID, resp.TokenCount)
+		if active {
+			header += " " + anim.MiniBar(agentEnergyLevel(resp, m.streaming), true, 8, s, reduced)
 		}
-
-		header := fmt.Sprintf("%s %s (%d tokens)%s", caret, agentID, resp.TokenCount, status)
 		b.WriteString(agentStyle.Render(header))
 		b.WriteString("\n")
 
