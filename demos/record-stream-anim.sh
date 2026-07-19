@@ -10,6 +10,9 @@ export TERM="${TERM:-xterm-256color}"
 export COLORTERM=truecolor
 export CLICOLOR_FORCE=1
 export FORCE_COLOR=1
+export STREAM_DEBUGGER_COLOR_PROFILE=truecolor
+# Agent shells often export NO_COLOR=1 — kill it so VHS/lipgloss paint.
+unset NO_COLOR || true
 # Ensure motion is on for the demo.
 unset STREAM_DEBUGGER_REDUCED_MOTION NO_MOTION || true
 

@@ -262,7 +262,7 @@ func TestRenderParity_ReferenceFixture(t *testing.T) {
 		// the load-bearing data (numeric values, agent content, event
 		// lines) survives unchanged, and that the label rename actually
 		// landed.
-		eventsPaneText := m.renderEventsPane()
+		eventsPaneText := stripANSI(m.renderEventsPane())
 		for _, want := range []string{
 			"Events (View: PARSED) (Tokens: OFF) (Aggregator: OFF)",
 			"Ctrl+T: RAW view, t: tokens, W: aggregator-only",
@@ -279,7 +279,7 @@ func TestRenderParity_ReferenceFixture(t *testing.T) {
 			}
 		}
 
-		app := m.renderAppPane()
+		app := stripANSI(m.renderAppPane())
 		for _, want := range []string{
 			"Aggregator Output",
 			"[Aggregator] tokens: 28, ✓",
@@ -303,6 +303,9 @@ func TestRenderParity_ReferenceFixture(t *testing.T) {
 // line.
 func assertTrimmedLinesMatch(t *testing.T, label, got string, want []string) {
 	t.Helper()
+	// Strip SGR so parity holds whether lipgloss is forced truecolor (VHS/demo)
+	// or monochrome under NO_COLOR.
+	got = stripANSI(got)
 	gotLines := strings.Split(strings.TrimRight(got, "\n"), "\n")
 	for i := range gotLines {
 		gotLines[i] = strings.TrimSpace(gotLines[i])

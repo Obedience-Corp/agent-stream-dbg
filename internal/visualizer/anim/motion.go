@@ -27,19 +27,20 @@ type Styles struct {
 	Core   lipgloss.Style
 }
 
-// DefaultStyles is a readable 16-color / truecolor-friendly kit.
+// DefaultStyles is a truecolor-first kit (maps cleanly under ANSI256/16 too).
+// Hex keeps VHS/truecolor demos vivid when the recorder supports color.
 func DefaultStyles() Styles {
 	return Styles{
-		Live:   lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true),  // cyan
-		Idle:   lipgloss.NewStyle().Foreground(lipgloss.Color("8")),              // gray
-		Error:  lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true),   // red
-		Muted:  lipgloss.NewStyle().Foreground(lipgloss.Color("8")),
-		Accent: lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true),   // teal
-		Agent:  lipgloss.NewStyle().Foreground(lipgloss.Color("13")).Bold(true),  // magenta
-		Agg:    lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Bold(true),  // yellow
-		Tip:    lipgloss.NewStyle().Foreground(lipgloss.Color("14")),
-		Mid:    lipgloss.NewStyle().Foreground(lipgloss.Color("12")),
-		Core:   lipgloss.NewStyle().Foreground(lipgloss.Color("6")),
+		Live:   lipgloss.NewStyle().Foreground(lipgloss.Color("#67e8f9")).Bold(true), // cyan
+		Idle:   lipgloss.NewStyle().Foreground(lipgloss.Color("#64748b")),             // slate
+		Error:  lipgloss.NewStyle().Foreground(lipgloss.Color("#fb7185")).Bold(true), // rose
+		Muted:  lipgloss.NewStyle().Foreground(lipgloss.Color("#64748b")),
+		Accent: lipgloss.NewStyle().Foreground(lipgloss.Color("#22d3ee")).Bold(true), // bright cyan
+		Agent:  lipgloss.NewStyle().Foreground(lipgloss.Color("#d8b4fe")).Bold(true), // magenta
+		Agg:    lipgloss.NewStyle().Foreground(lipgloss.Color("#fde68a")).Bold(true), // amber
+		Tip:    lipgloss.NewStyle().Foreground(lipgloss.Color("#a5f3fc")),             // ice
+		Mid:    lipgloss.NewStyle().Foreground(lipgloss.Color("#93c5fd")),             // blue
+		Core:   lipgloss.NewStyle().Foreground(lipgloss.Color("#22d3ee")),             // teal
 	}
 }
 

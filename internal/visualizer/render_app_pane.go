@@ -145,19 +145,17 @@ func (m InteractiveModel) renderAggregatorDebugSummary(agg *AgentResponse) strin
 		parts = append(parts, fmt.Sprintf("first-token: %dms", agg.FirstTokenMs))
 	}
 
-	// Status indicator + mini energy bar while hot
+	// Status indicator + mini energy bar only while actively streaming.
 	s := anim.DefaultStyles()
 	reduced := anim.ReducedMotion()
 	active := !agg.Completed && (m.streaming || agg.TokenCount > 0)
 	parts = append(parts, anim.AggregatorGlyph(active, agg.Completed, m.animFrame, s, reduced))
-	if active || agg.TokenCount > 0 {
-		level := 0.0
+	if active {
+		level := 0.35
 		if agg.DurationMs > 0 && agg.TokenCount > 0 {
 			level = anim.NormalizeRate(float64(agg.TokenCount) * 1000.0 / float64(agg.DurationMs))
-		} else if active {
-			level = 0.35
 		}
-		parts = append(parts, anim.MiniBar(m.animFrame, level, active, 8, s, reduced))
+		parts = append(parts, anim.MiniBar(m.animFrame, level, true, 8, s, reduced))
 	}
 
 	return summaryStyle.Render("[Aggregator] " + strings.Join(parts, ", "))
@@ -207,15 +205,14 @@ func (m InteractiveModel) renderAgentSummaries(msg Message) string {
 		reduced := anim.ReducedMotion()
 		active := !resp.Completed && (m.streaming || resp.TokenCount > 0)
 		glyph := anim.AgentGlyph(active, resp.Completed, m.animFrame, s, reduced)
-		level := 0.0
-		if resp.DurationMs > 0 && resp.TokenCount > 0 {
-			level = anim.NormalizeRate(float64(resp.TokenCount) * 1000.0 / float64(resp.DurationMs))
-		} else if active {
-			level = 0.4
+		header := fmt.Sprintf("%s %s %s (%d tokens)", caret, glyph, agentID, resp.TokenCount)
+		if active {
+			level := 0.4
+			if resp.DurationMs > 0 && resp.TokenCount > 0 {
+				level = anim.NormalizeRate(float64(resp.TokenCount) * 1000.0 / float64(resp.DurationMs))
+			}
+			header += " " + anim.MiniBar(m.animFrame, level, true, 8, s, reduced)
 		}
-		bar := anim.MiniBar(m.animFrame, level, active, 8, s, reduced)
-
-		header := fmt.Sprintf("%s %s %s (%d tokens) %s", caret, glyph, agentID, resp.TokenCount, bar)
 		b.WriteString(agentStyle.Render(header))
 		b.WriteString("\n")
 

@@ -18,12 +18,12 @@ func TestRenderAppPane_BothFocuses(t *testing.T) {
 	m := newFixtureModel(t)
 	for _, focus := range []AppFocus{AppFocusAggregator, AppFocusAgents} {
 		m.appFocus = focus
-		out := m.renderAppPane()
+		out := stripANSI(m.renderAppPane())
 		if !strings.Contains(out, "Aggregator Output") {
-			t.Errorf("focus=%v: expected Aggregator Output section", focus)
+			t.Errorf("focus=%v: expected Aggregator Output section, got:\n%s", focus, out)
 		}
 		if !strings.Contains(out, "Agents") {
-			t.Errorf("focus=%v: expected Agents section", focus)
+			t.Errorf("focus=%v: expected Agents section, got:\n%s", focus, out)
 		}
 	}
 }
