@@ -1,0 +1,44 @@
+# Live ACP (Agent Client Protocol) agent over stdio.
+#
+# Spawns an ACP-compatible coding agent as a subprocess, performs
+# initialize → session/new → session/prompt, and feeds every agent→client
+# JSON-RPC line through the embedded `acp` dialect.
+#
+# Reverse RPC (permissions, fs, terminal) is stubbed: permissions are
+# auto-approved by default; other reverse methods return JSON-RPC errors
+# so the agent does not hang. This is a debugger, not a full ACP host.
+#
+# Examples (install the agent first):
+#   command: npx
+#   args: ["@xai-official/grok", "agent", "stdio"]
+#
+#   command: gemini
+#   args: ["--experimental-acp"]
+#
+# Offline fixture path (no agent process):
+#   just demo-acp
+#   stream-debugger explain --dialect dialects/acp.yaml --from testdata/fixtures/acp-session.jsonl
+
+transport:
+  type: acp
+  command: npx
+  args: ["@xai-official/grok", "agent", "stdio"]
+  # cwd: "."
+  # env:
+  #   - "SOME_KEY=value"
+  # auto_approve: true   # default; set false to cancel permission requests
+
+dialect:
+  file: acp
+
+session:
+  id: acp-live
+  auto_setup: false
+
+logging:
+  dir: "./logs/acp"
+  dimensions:
+    by_event_type: true
+    by_agent: true
+    by_session: true
+    api_calls: false

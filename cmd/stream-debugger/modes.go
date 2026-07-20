@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -126,6 +127,11 @@ func streamTarget(cfg *config.EnhancedConfig) string {
 		return cfg.Transport.Target
 	case "replay":
 		return cfg.Transport.BaseURL
+	case "acp":
+		if len(cfg.Transport.Args) == 0 {
+			return cfg.Transport.Command
+		}
+		return cfg.Transport.Command + " " + strings.Join(cfg.Transport.Args, " ")
 	default:
 		return cfg.StreamEndpointURL()
 	}

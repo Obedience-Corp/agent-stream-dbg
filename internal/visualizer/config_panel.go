@@ -101,7 +101,7 @@ func newConfigPanel(cfg *config.EnhancedConfig) configPanel {
 	labels := []string{"Dialect", "Transport", "Auth env", "Base URL", "SSE endpoint", "gRPC target", "gRPC security", "gRPC metadata key", "gRPC method", "gRPC request", "Discriminator", "Discriminator field", "Agents", "Vars"}
 	placeholders := []string{
 		"embedded name or path to dialect YAML",
-		"sse, grpc, or replay",
+		"sse, grpc, replay, or acp",
 		"TOKEN_ENV (optional auth)",
 		"https://api.example.com",
 		"/v1/stream",
@@ -401,8 +401,8 @@ func (m *InteractiveModel) applyConfigPanel(reconnect bool) (tea.Cmd, error) {
 	if transportType == "" {
 		transportType = "sse"
 	}
-	if transportType != "sse" && transportType != "grpc" && transportType != "replay" {
-		return nil, fmt.Errorf("unsupported transport %q (use sse, grpc, or replay)", transportType)
+	if transportType != "sse" && transportType != "grpc" && transportType != "replay" && transportType != "acp" {
+		return nil, fmt.Errorf("unsupported transport %q (use sse, grpc, replay, or acp)", transportType)
 	}
 	if transportType == "grpc" {
 		if values[configFieldGRPCTarget] == "" {
