@@ -7,14 +7,14 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/lancekrogers/stream-debugger/internal/bridge"
-	"github.com/lancekrogers/stream-debugger/internal/config"
-	"github.com/lancekrogers/stream-debugger/internal/mapping"
-	"github.com/lancekrogers/stream-debugger/internal/transport"
-	acptransport "github.com/lancekrogers/stream-debugger/internal/transport/acp"
-	grpctransport "github.com/lancekrogers/stream-debugger/internal/transport/grpc"
-	"github.com/lancekrogers/stream-debugger/internal/transport/replay"
-	"github.com/lancekrogers/stream-debugger/internal/transport/sse"
+	"github.com/Obedience-Corp/stream-debugger/internal/bridge"
+	"github.com/Obedience-Corp/stream-debugger/internal/config"
+	"github.com/Obedience-Corp/stream-debugger/internal/mapping"
+	"github.com/Obedience-Corp/stream-debugger/internal/transport"
+	acptransport "github.com/Obedience-Corp/stream-debugger/internal/transport/acp"
+	grpctransport "github.com/Obedience-Corp/stream-debugger/internal/transport/grpc"
+	"github.com/Obedience-Corp/stream-debugger/internal/transport/replay"
+	"github.com/Obedience-Corp/stream-debugger/internal/transport/sse"
 )
 
 // GRPCStreamingMethod is the UI-facing alias for a reflection-discovered

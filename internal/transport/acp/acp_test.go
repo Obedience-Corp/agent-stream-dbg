@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lancekrogers/stream-debugger/internal/bridge"
-	"github.com/lancekrogers/stream-debugger/internal/events"
+	"github.com/Obedience-Corp/stream-debugger/internal/bridge"
+	"github.com/Obedience-Corp/stream-debugger/internal/events"
 )
 
 // TestHelperProcess_FakeACPAgent is re-executed as a child process that

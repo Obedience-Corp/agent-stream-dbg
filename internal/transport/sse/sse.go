@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lancekrogers/stream-debugger/internal/transport"
+	"github.com/Obedience-Corp/stream-debugger/internal/transport"
 )
 
 // Transport reads one SSE response body and emits every frame on it,

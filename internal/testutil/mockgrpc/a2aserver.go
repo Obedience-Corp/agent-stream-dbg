@@ -7,7 +7,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
-	"github.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc/a2apb"
+	"github.com/Obedience-Corp/stream-debugger/internal/testutil/mockgrpc/a2apb"
 )
 
 // A2AServer is the gRPC equivalent of Server (above) for the A2A-shaped

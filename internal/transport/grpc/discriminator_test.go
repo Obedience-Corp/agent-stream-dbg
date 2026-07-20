@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lancekrogers/stream-debugger/internal/mapping"
-	"github.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc"
-	"github.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc/agentstreampb"
+	"github.com/Obedience-Corp/stream-debugger/internal/mapping"
+	"github.com/Obedience-Corp/stream-debugger/internal/testutil/mockgrpc"
+	"github.com/Obedience-Corp/stream-debugger/internal/testutil/mockgrpc/agentstreampb"
 )
 
 // connectStreamingTransport uses a context that outlives setup. The

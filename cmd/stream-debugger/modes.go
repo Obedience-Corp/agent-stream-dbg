@@ -9,11 +9,11 @@ import (
 	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/lancekrogers/stream-debugger/internal/bridge"
-	"github.com/lancekrogers/stream-debugger/internal/client"
-	"github.com/lancekrogers/stream-debugger/internal/config"
-	"github.com/lancekrogers/stream-debugger/internal/logger"
-	"github.com/lancekrogers/stream-debugger/internal/visualizer"
+	"github.com/Obedience-Corp/stream-debugger/internal/bridge"
+	"github.com/Obedience-Corp/stream-debugger/internal/client"
+	"github.com/Obedience-Corp/stream-debugger/internal/config"
+	"github.com/Obedience-Corp/stream-debugger/internal/logger"
+	"github.com/Obedience-Corp/stream-debugger/internal/visualizer"
 )
 
 func runInteractiveWithOptions(configPath, dialectOverride string, openConfigPanel bool) error {

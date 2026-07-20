@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lancekrogers/stream-debugger/internal/events"
-	"github.com/lancekrogers/stream-debugger/internal/mapping"
+	"github.com/Obedience-Corp/stream-debugger/internal/events"
+	"github.com/Obedience-Corp/stream-debugger/internal/mapping"
 )
 
 func TestObeyActivityDialect_NormalizesNestedActivity(t *testing.T) {

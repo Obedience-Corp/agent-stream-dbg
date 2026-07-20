@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/lancekrogers/stream-debugger/internal/config"
+	"github.com/Obedience-Corp/stream-debugger/internal/config"
 )
 
 // TestModelAgentColorOverrides proves Model.agentColorOverrides safely

@@ -311,4 +311,4 @@ curl -X POST http://localhost:5003/api/v3/debug/session \
 
 ---
 
-**Questions?** File an issue at https://github.com/lancekrogers/stream-debugger/issues
+**Questions?** File an issue at https://github.com/Obedience-Corp/stream-debugger/issues

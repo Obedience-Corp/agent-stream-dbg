@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc"
-	"github.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc/agentstreampb"
+	"github.com/Obedience-Corp/stream-debugger/internal/testutil/mockgrpc"
+	"github.com/Obedience-Corp/stream-debugger/internal/testutil/mockgrpc/agentstreampb"
 )
 
 // protoFileFixture and its import root — the same testdata/proto/agentstream.proto

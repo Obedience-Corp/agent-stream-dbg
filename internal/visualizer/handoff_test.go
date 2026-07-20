@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lancekrogers/stream-debugger/internal/config"
-	"github.com/lancekrogers/stream-debugger/internal/events"
+	"github.com/Obedience-Corp/stream-debugger/internal/config"
+	"github.com/Obedience-Corp/stream-debugger/internal/events"
 )
 
 // stripANSI removes lipgloss's ANSI escape codes so rendered output can

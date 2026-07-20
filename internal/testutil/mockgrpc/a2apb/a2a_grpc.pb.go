@@ -52,7 +52,7 @@
 // package is a2a.v1, not the real proto's lf.a2a.v1: this is a
 // deliberately trimmed test-only vendor, not a byte-for-byte mirror of
 // the upstream package, and a distinct package name avoids any
-// impression that github.com/lancekrogers/stream-debugger's generated Go
+// impression that github.com/Obedience-Corp/stream-debugger's generated Go
 // package is (or could be mistaken for) the real upstream one. The RPC
 // name SendStreamingMessage and its request/response shapes are kept
 // faithful to the real spec (a2a.proto:31-42) wherever vendored.

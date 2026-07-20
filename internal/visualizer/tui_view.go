@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/lancekrogers/stream-debugger/internal/visualizer/anim"
+	"github.com/Obedience-Corp/stream-debugger/internal/visualizer/anim"
 )
 
 // View renders the TUI.

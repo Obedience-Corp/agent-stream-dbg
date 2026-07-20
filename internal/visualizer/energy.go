@@ -4,7 +4,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/lancekrogers/stream-debugger/internal/visualizer/anim"
+	"github.com/Obedience-Corp/stream-debugger/internal/visualizer/anim"
 )
 
 // energyState tracks stream chrome from real token arrivals — not a free-running

@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/lancekrogers/stream-debugger/internal/testutil"
+	"github.com/Obedience-Corp/stream-debugger/internal/testutil"
 )
 
 func main() {

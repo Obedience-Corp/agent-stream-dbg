@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lancekrogers/stream-debugger/internal/events"
-	"github.com/lancekrogers/stream-debugger/internal/mapping"
-	"github.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc"
-	"github.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc/a2apb"
-	"github.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc/agentstreampb"
-	grpctransport "github.com/lancekrogers/stream-debugger/internal/transport/grpc"
+	"github.com/Obedience-Corp/stream-debugger/internal/events"
+	"github.com/Obedience-Corp/stream-debugger/internal/mapping"
+	"github.com/Obedience-Corp/stream-debugger/internal/testutil/mockgrpc"
+	"github.com/Obedience-Corp/stream-debugger/internal/testutil/mockgrpc/a2apb"
+	"github.com/Obedience-Corp/stream-debugger/internal/testutil/mockgrpc/agentstreampb"
+	grpctransport "github.com/Obedience-Corp/stream-debugger/internal/transport/grpc"
 )
 
 // TestBrainyardDialect_CrossTransportParity is phase 006's actual gate,
