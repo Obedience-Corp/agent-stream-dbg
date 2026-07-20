@@ -157,8 +157,10 @@ func inspectConfig(path, source string) ConfigEntry {
 		entry.Status = EntryNeedsSetup
 	case !cfg.Transport.Auth.AuthSecretsPresent():
 		entry.Status = EntryAuthNeeded
-		if cfg.Transport.Auth.TokenEnv != "" {
-			entry.Err = cfg.Transport.Auth.TokenEnv + " not set"
+		entry.Err = cfg.Transport.Auth.AuthMissingSummary()
+		if full := cfg.Transport.Auth.AuthMissingMessage(); full != "" {
+			// Full multi-line guidance for status line / Enter on home.
+			entry.Err = full
 		}
 	default:
 		entry.Status = EntryReady

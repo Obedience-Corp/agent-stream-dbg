@@ -364,27 +364,57 @@ func (a AuthConfig) AuthSecretsPresent() bool {
 	}
 }
 
+// AuthMissingMessage returns a user-facing explanation of how to supply
+// missing credentials (env export or .env). Empty when secrets are present.
+func (a AuthConfig) AuthMissingMessage() string {
+	if a.AuthSecretsPresent() {
+		return ""
+	}
+	switch a.Type {
+	case "bearer", "api_key", "metadata":
+		if a.TokenEnv == "" {
+			return fmt.Sprintf("auth.type %q requires token_env in the run config", a.Type)
+		}
+		return fmt.Sprintf(
+			"%s is not set. Add it to a .env file in this directory (or export it), then re-run:\n\n  %s=your-secret-here\n\nstream-debugger loads .env automatically when reading a config.",
+			a.TokenEnv, a.TokenEnv,
+		)
+	case "basic":
+		return "Basic auth credentials are not set. Put the username_env / password_env values in a .env file (or export them), then re-run.\n\nstream-debugger loads .env automatically when reading a config."
+	default:
+		return ""
+	}
+}
+
+// AuthMissingSummary is a one-line hint for list UIs (home hub).
+func (a AuthConfig) AuthMissingSummary() string {
+	if a.AuthSecretsPresent() {
+		return ""
+	}
+	switch a.Type {
+	case "bearer", "api_key", "metadata":
+		if a.TokenEnv == "" {
+			return "auth token_env missing in config"
+		}
+		return a.TokenEnv + " not set — add to .env or export it"
+	case "basic":
+		return "basic auth env vars not set — add to .env"
+	default:
+		return ""
+	}
+}
+
 // ValidateAuth returns an error when this transport needs credentials that
 // are not available. Safe to call before connecting or auto-setup.
 func (c *EnhancedConfig) ValidateAuth() error {
 	if c == nil {
 		return fmt.Errorf("config is nil")
 	}
-	a := c.Transport.Auth
-	if a.AuthSecretsPresent() {
+	msg := c.Transport.Auth.AuthMissingMessage()
+	if msg == "" {
 		return nil
 	}
-	switch a.Type {
-	case "bearer", "api_key", "metadata":
-		if a.TokenEnv == "" {
-			return fmt.Errorf("auth.type %q requires token_env", a.Type)
-		}
-		return fmt.Errorf("%s environment variable not set (export it or edit auth in the config panel)", a.TokenEnv)
-	case "basic":
-		return fmt.Errorf("basic auth credentials are not set (export the username/password env vars)")
-	default:
-		return nil
-	}
+	return fmt.Errorf("%s", msg)
 }
 
 // EnhancedConfig is the unified configuration structure

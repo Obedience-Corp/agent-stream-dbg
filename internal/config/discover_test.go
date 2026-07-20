@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -87,6 +88,9 @@ logging:
 	}
 	if entries[0].Transport != "sse" {
 		t.Fatalf("transport = %q", entries[0].Transport)
+	}
+	if !strings.Contains(entries[0].Err, "LIST_AUTH_NEEDED_KEY") || !strings.Contains(entries[0].Err, ".env") {
+		t.Fatalf("err should explain .env setup, got %q", entries[0].Err)
 	}
 }
 

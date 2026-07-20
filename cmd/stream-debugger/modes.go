@@ -35,21 +35,19 @@ func runInteractiveWithOptions(configPath, dialectOverride string, openConfigPan
 	fmt.Printf("   Session: %s\n", cfg.Session.ID)
 	fmt.Printf("   Log Dir: %s\n\n", cfg.LogDir)
 
-	// Missing auth env (e.g. API_KEY) should open the panel, not abort — the
-	// home hub surfaces these as "auth needed".
-	if err := cfg.ValidateAuth(); err != nil && !openConfigPanel {
-		fmt.Printf("⚠️  %v\n", err)
-		fmt.Printf("   Opening the configuration panel so you can fix auth.\n\n")
-		openConfigPanel = true
+	// Missing auth env (e.g. API_KEY): fail with .env setup instructions unless
+	// we are opening the config panel explicitly (e.g. home hub "e" to edit).
+	// Secrets live in the environment, not the YAML panel.
+	if !openConfigPanel {
+		if err := cfg.ValidateAuth(); err != nil {
+			return err
+		}
 	}
 
 	// A newly-created starter config has no endpoint yet. Defer its setup
 	// handshake until the user saves the first-run panel and sends a message.
 	// Existing configs keep the historical eager setup behavior.
 	if cfg.Session.AutoSetup && !openConfigPanel {
-		if err := cfg.ValidateAuth(); err != nil {
-			return fmt.Errorf("failed to setup session: %w", err)
-		}
 		fmt.Printf("🔄 Auto-setting up session...\n")
 		vars := config.InterpolationVarsFromConfig(cfg)
 		sessionID, err := parser.RunSetup(programCtx, vars, cfg.Transport.ResolvedHeaders(), nil)

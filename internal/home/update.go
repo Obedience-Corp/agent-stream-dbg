@@ -86,9 +86,17 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.status = entry.Err
 				return m, nil
 			}
-			// Incomplete structure or missing auth env: open with the config
-			// panel so the user can fix fields / see which token_env is needed.
-			openPanel := entry.Status == config.EntryNeedsSetup || entry.Status == config.EntryAuthNeeded
+			// Missing .env / env secrets: stay on home with an actionable error.
+			// Opening the config panel is the wrong fix — the secret is not in YAML.
+			if entry.Status == config.EntryAuthNeeded {
+				m.status = entry.Err
+				if m.status == "" {
+					m.status = "Required auth environment variable is not set. Add it to .env and re-run."
+				}
+				return m, nil
+			}
+			// Incomplete structure: open with the config panel to finish setup.
+			openPanel := entry.Status == config.EntryNeedsSetup
 			return m.exitOpen(entry.Path, openPanel, "")
 		}
 	}

@@ -101,9 +101,17 @@ func (m model) viewHome() string {
 			b.WriteString("\n")
 			if i == m.cursor {
 				b.WriteString(dimStyle.Render("    " + config.DisplayPath(entry.Path, m.opts.Cwd)))
-				if entry.Status == config.EntryAuthNeeded && entry.Err != "" {
+				if entry.Status == config.EntryAuthNeeded {
 					b.WriteString("\n")
-					b.WriteString(dimStyle.Render("    " + entry.Err + " — export the env var or press e to edit"))
+					// One-line summary under the path; Enter shows the full .env guidance in status.
+					summary := entry.Err
+					if nl := strings.Index(summary, "\n"); nl > 0 {
+						summary = summary[:nl]
+					}
+					if summary == "" {
+						summary = "auth env not set — press enter for setup instructions"
+					}
+					b.WriteString(chipNeed.Render("    " + summary))
 				}
 				b.WriteString("\n")
 			}
@@ -127,8 +135,16 @@ func (m model) viewHome() string {
 	b.WriteString("\n")
 	b.WriteString(dimStyle.Render("↑↓ navigate  enter open  e edit  n new  d delete  q quit"))
 	if m.status != "" {
-		b.WriteString("\n")
-		b.WriteString(statusStyle.Render(m.status))
+		b.WriteString("\n\n")
+		// Multi-line auth/.env guidance from status.
+		for i, line := range strings.Split(m.status, "\n") {
+			if i == 0 {
+				b.WriteString(statusStyle.Render(line))
+			} else {
+				b.WriteString(dimStyle.Render(line))
+			}
+			b.WriteString("\n")
+		}
 	}
 	return b.String()
 }

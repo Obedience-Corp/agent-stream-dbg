@@ -27,7 +27,7 @@ transport:
 dialect:
   file: openai
 `,
-			wantAuthErrSub: "MISSING_TOKEN",
+			wantAuthErrSub: ".env",
 		},
 		{
 			name: "basic without username/password loads but ValidateAuth fails",
@@ -43,7 +43,7 @@ transport:
 dialect:
   file: openai
 `,
-			wantAuthErrSub: "basic auth",
+			wantAuthErrSub: ".env",
 		},
 		{
 			name: "unknown auth type",
