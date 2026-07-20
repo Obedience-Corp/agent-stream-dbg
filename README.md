@@ -23,14 +23,16 @@ just install   # or: go install ./cmd/stream-debugger
 
 ## Quick start
 
-No backend required — offline demos against bundled fixtures:
+After install, just run:
 
 ```bash
-just demo       # multi-agent timeline (bundled fixture)
-just demo-acp   # ACP dialect: explain + timeline + replay
+stream-debugger
 ```
 
-Connect to a stream with a YAML run config:
+That opens the **home hub**: create or pick a run config, try an offline demo
+(no network), then open an interactive session. Quit a session to return home.
+
+Or jump straight in with a YAML run config:
 
 ```bash
 cp config.yaml.example my-config.yaml
@@ -38,8 +40,12 @@ cp config.yaml.example my-config.yaml
 stream-debugger --config my-config.yaml
 ```
 
-Running without `--config` creates a starter config and opens the TUI
-configuration panel. Press `Ctrl+S` to save.
+From a clone, CLI offline demos still work without the TUI:
+
+```bash
+just demo       # multi-agent timeline (bundled fixture)
+just demo-acp   # ACP dialect: explain + timeline + replay
+```
 
 Single-shot stream (useful for scripts):
 

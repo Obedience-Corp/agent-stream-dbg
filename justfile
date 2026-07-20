@@ -85,6 +85,19 @@ demo-acp:
     echo "=== replay ==="
     ./bin/stream-debugger replay --dialect acp testdata/fixtures/acp-session.jsonl
 
+# Prototype launch-home TUI (design only — not the product binary).
+# See workflow/design/stream-debugger-home-tui/ and demos/home-ux/.
+demo-home-ux:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    go build -o bin/home-ux ./demos/home-ux
+    export SD_HOME_UX_CONFIG_DIR="${SD_HOME_UX_CONFIG_DIR:-$(mktemp -d /tmp/sd-home-ux.XXXXXX)}"
+    ./bin/home-ux
+
+# Record docs/assets/home-ux-*.gif design tapes (requires vhs).
+record-home-ux:
+    bash demos/home-ux/record.sh all
+
 # Record docs/assets/tui-acp-demo.gif (requires vhs + ffmpeg on PATH).
 record-acp:
     bash demos/record-acp.sh

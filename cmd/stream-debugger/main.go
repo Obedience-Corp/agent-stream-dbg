@@ -4,6 +4,7 @@ import (
 	"fmt"
 	neturl "net/url"
 	"os"
+	"strings"
 
 	"github.com/Obedience-Corp/stream-debugger/internal/help"
 	"github.com/Obedience-Corp/stream-debugger/internal/mapping"
@@ -22,8 +23,10 @@ func main() {
    1. Interactive Mode: Multi-turn chat with real-time visualization (default)
    2. Stream Mode: Single message for CI/CD and scripting
 
-   Running without --config starts first-run setup in the TUI and creates a
-   starter config when no existing config can be found.
+   Running without --config opens the home hub: select, create, or edit run
+   configs, try offline demos, then open an interactive session.
+
+   Pass --config / -c to jump straight into interactive mode.
 
    Press Ctrl+T in interactive mode to toggle between RAW (SSE) and PARSED (agent-organized) views.`,
 		Version: "1.0.0",
@@ -110,15 +113,16 @@ func main() {
 }
 
 func defaultAction(c *cli.Context) error {
-	configPath, created, err := resolveInteractiveConfig(c.String("config"))
-	if err != nil {
-		return err
+	// Explicit -c: power-user / demo / CI path straight into interactive.
+	if strings.TrimSpace(c.String("config")) != "" {
+		configPath, err := resolveExplicitConfig(c.String("config"))
+		if err != nil {
+			return err
+		}
+		return runInteractiveWithOptions(configPath, c.String("dialect"), false)
 	}
-	if created {
-		fmt.Printf("No config found. Created a starter config at: %s\n", configPath)
-		fmt.Println("Opening the setup panel. Fill in your backend details, then press Ctrl+S to save.")
-	}
-	return runInteractiveWithOptions(configPath, c.String("dialect"), created)
+	// Bare launch: home hub (list / create / offline demos / open session).
+	return runHome(c.String("dialect"))
 }
 
 func streamAction(c *cli.Context) error {
