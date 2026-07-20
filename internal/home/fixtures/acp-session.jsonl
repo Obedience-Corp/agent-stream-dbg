@@ -1,4 +1,4 @@
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientInfo":{"name":"stream-debugger","version":"0.1.0"}},"timestamp":"2026-07-20T12:00:00.000Z"}
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientInfo":{"name":"agent-stream-dbg","version":"0.1.0"}},"timestamp":"2026-07-20T12:00:00.000Z"}
 {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1,"agentInfo":{"name":"grok","version":"open-source"},"agentCapabilities":{"loadSession":true}},"timestamp":"2026-07-20T12:00:00.050Z"}
 {"jsonrpc":"2.0","id":2,"method":"session/new","params":{"cwd":"/Users/dev/project","mcpServers":[]},"timestamp":"2026-07-20T12:00:00.100Z"}
 {"jsonrpc":"2.0","id":2,"result":{"sessionId":"sess_abc123"},"timestamp":"2026-07-20T12:00:00.150Z"}

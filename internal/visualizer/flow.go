@@ -1,9 +1,9 @@
 package visualizer
 
 import (
-	"github.com/Obedience-Corp/stream-debugger/internal/bridge"
-	"github.com/Obedience-Corp/stream-debugger/internal/events"
-	"github.com/Obedience-Corp/stream-debugger/internal/mapping"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/bridge"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/mapping"
 )
 
 // flowState resolves stages and lane roles from the loaded dialect's

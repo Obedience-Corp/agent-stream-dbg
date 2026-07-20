@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/testutil"
-	"github.com/Obedience-Corp/stream-debugger/internal/transport"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/testutil"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport"
 )
 
 func waitForGoroutines(t *testing.T, baseline int) {

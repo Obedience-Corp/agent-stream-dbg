@@ -9,15 +9,15 @@ import (
 	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/Obedience-Corp/stream-debugger/internal/bridge"
-	"github.com/Obedience-Corp/stream-debugger/internal/client"
-	"github.com/Obedience-Corp/stream-debugger/internal/config"
-	"github.com/Obedience-Corp/stream-debugger/internal/logger"
-	"github.com/Obedience-Corp/stream-debugger/internal/visualizer"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/bridge"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/client"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/logger"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/visualizer"
 )
 
 func runInteractiveWithOptions(configPath, dialectOverride string, openConfigPanel bool) error {
-	fmt.Printf("🚀 Stream Debugger - Interactive Mode\n\n")
+	fmt.Printf("🚀 agent-stream-dbg - Interactive Mode\n\n")
 	cfg, err := config.LoadConfigFile(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)

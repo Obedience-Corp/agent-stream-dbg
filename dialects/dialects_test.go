@@ -10,8 +10,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/events"
-	"github.com/Obedience-Corp/stream-debugger/internal/mapping"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/mapping"
 )
 
 // TestOpenAIDialect_ExactDecode is the openai.yaml wire shape's acid test:

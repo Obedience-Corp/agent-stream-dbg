@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/bridge"
-	"github.com/Obedience-Corp/stream-debugger/internal/events"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/bridge"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
 )
 
 // TestHelperProcess_FakeACPAgent is re-executed as a child process that
@@ -120,7 +120,7 @@ func helperAgentConfig(prompt string) Config {
 		Env:                    []string{"GO_WANT_HELPER_PROCESS=1"},
 		Prompt:                 prompt,
 		AutoApprovePermissions: true,
-		ClientName:             "stream-debugger-test",
+		ClientName:             "agent-stream-dbg-test",
 	}
 }
 

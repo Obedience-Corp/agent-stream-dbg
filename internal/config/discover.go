@@ -32,16 +32,20 @@ type ConfigEntry struct {
 }
 
 // interactiveConfigNames are the well-known basenames scanned in the cwd.
+// Legacy stream-debugger.* names remain so older checkouts keep working.
 var interactiveConfigNames = []string{
-	"stream-debugger.yaml",
-	"stream-debugger.yml",
+	"agent-stream-dbg.yaml",
+	"agent-stream-dbg.yml",
+	"stream-debugger.yaml", // legacy
+	"stream-debugger.yml",  // legacy
 	"config.yaml",
 	"config.yml",
 }
 
-// ListConfigs returns run configs from the working directory and the user
-// config directory. It never creates files.
-func ListConfigs(cwd, userConfigDir string) []ConfigEntry {
+// ListConfigs returns run configs from the working directory and one or more
+// user config directories. It never creates files and never invents paths —
+// callers that want legacy ~/.config/stream-debugger must pass it explicitly.
+func ListConfigs(cwd string, userConfigDirs ...string) []ConfigEntry {
 	seen := make(map[string]struct{})
 	var out []ConfigEntry
 
@@ -79,14 +83,19 @@ func ListConfigs(cwd, userConfigDir string) []ConfigEntry {
 		}
 	}
 
-	if strings.TrimSpace(userConfigDir) != "" {
-		if entries, err := os.ReadDir(userConfigDir); err == nil {
-			for _, e := range entries {
-				if e.IsDir() || !isYAMLName(e.Name()) {
-					continue
-				}
-				add(filepath.Join(userConfigDir, e.Name()), "user")
+	for _, dir := range userConfigDirs {
+		if strings.TrimSpace(dir) == "" {
+			continue
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() || !isYAMLName(e.Name()) {
+				continue
 			}
+			add(filepath.Join(dir, e.Name()), "user")
 		}
 	}
 
@@ -191,7 +200,7 @@ func ConfigReady(cfg *EnhancedConfig) bool {
 }
 
 // DisplayPath returns a short path for UI: relative to cwd when possible,
-// otherwise ~/.config/stream-debugger/… for user configs.
+// otherwise ~/.config/agent-stream-dbg/… for user configs.
 func DisplayPath(path, cwd string) string {
 	if path == "" {
 		return ""
@@ -205,15 +214,21 @@ func DisplayPath(path, cwd string) string {
 			return rel
 		}
 	}
-	if ud, err := UserConfigDir(); err == nil {
-		udAbs, _ := filepath.Abs(ud)
-		if udAbs != "" && (path == udAbs || strings.HasPrefix(path, udAbs+string(filepath.Separator))) {
-			rest := strings.TrimPrefix(path, udAbs)
-			rest = strings.TrimPrefix(rest, string(filepath.Separator))
-			if rest == "" {
-				return "~/.config/stream-debugger"
+	if base, err := os.UserConfigDir(); err == nil {
+		for _, name := range []string{"agent-stream-dbg", "stream-debugger"} {
+			udAbs, _ := filepath.Abs(filepath.Join(base, name))
+			if udAbs == "" {
+				continue
 			}
-			return filepath.Join("~/.config/stream-debugger", rest)
+			if path == udAbs || strings.HasPrefix(path, udAbs+string(filepath.Separator)) {
+				rest := strings.TrimPrefix(path, udAbs)
+				rest = strings.TrimPrefix(rest, string(filepath.Separator))
+				prefix := "~/.config/" + name
+				if rest == "" {
+					return prefix
+				}
+				return filepath.Join(prefix, rest)
+			}
 		}
 	}
 	if len(path) > 64 {
@@ -222,13 +237,35 @@ func DisplayPath(path, cwd string) string {
 	return path
 }
 
-// UserConfigDir returns ~/.config/stream-debugger (or platform equivalent).
+// UserConfigDir returns ~/.config/agent-stream-dbg (or platform equivalent).
 func UserConfigDir() (string, error) {
 	base, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("find user config directory: %w", err)
 	}
+	return filepath.Join(base, "agent-stream-dbg"), nil
+}
+
+// LegacyUserConfigDir returns the pre-rename ~/.config/stream-debugger path.
+func LegacyUserConfigDir() (string, error) {
+	base, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("find user config directory: %w", err)
+	}
 	return filepath.Join(base, "stream-debugger"), nil
+}
+
+// UserConfigDirs returns primary + legacy user config directories for listing.
+func UserConfigDirs() ([]string, error) {
+	primary, err := UserConfigDir()
+	if err != nil {
+		return nil, err
+	}
+	dirs := []string{primary}
+	if legacy, err := LegacyUserConfigDir(); err == nil && legacy != primary {
+		dirs = append(dirs, legacy)
+	}
+	return dirs, nil
 }
 
 // WriteNewConfig writes a new private run-config file. path must not already exist.

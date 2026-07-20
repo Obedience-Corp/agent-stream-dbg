@@ -44,9 +44,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "→ building stream-debugger"
+echo "→ building agent-stream-dbg"
 mkdir -p bin docs/assets
-go build -o bin/stream-debugger ./cmd/stream-debugger
+go build -o bin/agent-stream-dbg ./cmd/agent-stream-dbg
 
 # Fire turns only after the VHS tape has opened the activity watch.
 # Tape timeline from Show: export/cd ~2s, launch binary ~2s, Sleep 2s,

@@ -23,7 +23,7 @@ import (
 	"github.com/jhump/protoreflect/desc" //nolint:staticcheck // SA1019: same reasoning as stream.go — grpcdynamic requires this type
 	"github.com/jhump/protoreflect/dynamic/grpcdynamic"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/transport"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport"
 )
 
 // Config configures a gRPC dial and, if Method is set, the single

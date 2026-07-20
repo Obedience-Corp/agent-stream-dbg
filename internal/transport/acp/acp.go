@@ -24,7 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/transport"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport"
 )
 
 // Config configures an ACP stdio agent process.
@@ -44,7 +44,7 @@ type Config struct {
 	// Zero defaults to 1.
 	ProtocolVersion int
 	// ClientName is reported in initialize clientInfo; empty defaults to
-	// "stream-debugger".
+	// "agent-stream-dbg".
 	ClientName string
 	// AutoApprovePermissions answers session/request_permission with allow.
 	// When false, requests are cancelled.
@@ -89,7 +89,7 @@ func New(cfg Config) *Transport {
 		cfg.ProtocolVersion = 1
 	}
 	if cfg.ClientName == "" {
-		cfg.ClientName = "stream-debugger"
+		cfg.ClientName = "agent-stream-dbg"
 	}
 	return &Transport{
 		cfg:     cfg,
@@ -494,7 +494,7 @@ func (t *Transport) replyReverse(id json.RawMessage, method string, params json.
 		rpcErr = &struct {
 			Code    int    `json:"code"`
 			Message string `json:"message"`
-		}{Code: -32601, Message: fmt.Sprintf("stream-debugger acp stub: method %q not implemented", method)}
+		}{Code: -32601, Message: fmt.Sprintf("agent-stream-dbg acp stub: method %q not implemented", method)}
 	}
 
 	resp := map[string]any{

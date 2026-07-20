@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/events"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
 )
 
 // render_parity_test.go is phase 007's closing gate: it renders the real

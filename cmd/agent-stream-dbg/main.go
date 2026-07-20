@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/help"
-	"github.com/Obedience-Corp/stream-debugger/internal/mapping"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/help"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/mapping"
 	"github.com/urfave/cli/v2"
 )
 
@@ -15,20 +15,22 @@ func main() {
 	cli.HelpPrinter = help.CustomHelpPrinter
 
 	app := &cli.App{
-		Name:  "stream-debugger",
-		Usage: "Debug SSE streaming responses from multi-agent systems",
-		Description: `A configuration-driven CLI tool for visualizing and debugging Server-Sent Events (SSE) streaming.
+		Name:  "agent-stream-dbg",
+		Usage: "TUI debugger for multi-agent event streams (SSE, gRPC, ACP, replay)",
+		Description: `Terminal debugger for multi-agent backends you're building.
 
-   Supports two primary modes:
-   1. Interactive Mode: Multi-turn chat with real-time visualization (default)
-   2. Stream Mode: Single message for CI/CD and scripting
+   Point it at a live endpoint or a recorded fixture, watch agents in a multi-pane
+   TUI, and decode frames with YAML dialects (what the bytes mean).
+
+   Transports: SSE, gRPC, ACP (stdio), and replay (JSONL fixtures).
 
    Running without --config opens the home hub: select, create, or edit run
    configs, try offline demos, then open an interactive session.
 
    Pass --config / -c to jump straight into interactive mode.
 
-   Press Ctrl+T in interactive mode to toggle between RAW (SSE) and PARSED (agent-organized) views.`,
+   Press Ctrl+T in interactive mode to toggle between RAW (wire) and PARSED
+   (agent-organized) views.`,
 		Version: "1.0.0",
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "Path to YAML configuration file (optional for interactive mode)"},
@@ -43,8 +45,8 @@ func main() {
    ⚠️  IMPORTANT: Flags must come BEFORE the message argument!
 
    Examples:
-     $ stream-debugger stream --config config.yaml "Hello"
-     $ stream-debugger stream -c my-api.yaml "What is consciousness?"`,
+     $ agent-stream-dbg stream --config config.yaml "Hello"
+     $ agent-stream-dbg stream -c my-api.yaml "What is consciousness?"`,
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "Path to YAML configuration file", Required: true},
 					&cli.StringFlag{Name: "dialect", Usage: "Embedded dialect name or path to a dialect YAML file (overrides config)"},
@@ -55,7 +57,7 @@ func main() {
 				Description: `Replays a recorded session from log files.
 
    Example:
-     $ stream-debugger replay logs/by-session/session_*.jsonl`,
+     $ agent-stream-dbg replay logs/by-session/session_*.jsonl`,
 				Flags: []cli.Flag{&cli.StringFlag{Name: "dialect", Usage: "Embedded dialect name or path to a dialect YAML file"}}, Action: replayAction,
 			},
 			{
@@ -64,7 +66,7 @@ func main() {
    execution durations, and performance metrics.
 
    Example:
-     $ stream-debugger timeline logs/by-session/session_*.jsonl`,
+     $ agent-stream-dbg timeline logs/by-session/session_*.jsonl`,
 				Flags: []cli.Flag{&cli.StringFlag{Name: "dialect", Usage: "Embedded dialect name or path to a dialect YAML file"}}, Action: timelineAction,
 			},
 			{
@@ -75,8 +77,8 @@ func main() {
    and guessed field before using it.
 
    Examples:
-     $ stream-debugger init --url http://localhost:8080/stream --send "hi" > my.yaml
-     $ stream-debugger init --from logs/by-session/session.jsonl > my.yaml`,
+     $ agent-stream-dbg init --url http://localhost:8080/stream --send "hi" > my.yaml
+     $ agent-stream-dbg init --from logs/by-session/session.jsonl > my.yaml`,
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: "url", Usage: "SSE endpoint to sample live (mutually exclusive with --from)"},
 					&cli.StringFlag{Name: "send", Usage: "Message to send when sampling --url (sent as a ?message= query param)"},
@@ -94,7 +96,7 @@ func main() {
    extractions, 1 otherwise — usable as a CI check for a shipped dialect.
 
    Example:
-     $ stream-debugger explain --dialect dialects/reference.yaml --from testdata/fixtures/session.jsonl`,
+     $ agent-stream-dbg explain --dialect dialects/reference.yaml --from testdata/fixtures/session.jsonl`,
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: "dialect", Required: true, Usage: "Path to the dialect YAML file"},
 					&cli.StringFlag{Name: "from", Usage: "JSONL fixture to trace (mutually exclusive with --url)"},

@@ -1,8 +1,8 @@
-# Stream Debugger Usage Guide
+# agent-stream-dbg Usage Guide
 
 ## Two Modes of Operation
 
-Stream Debugger has **two distinct modes** for different use cases:
+agent-stream-dbg has **two distinct modes** for different use cases:
 
 ---
 
@@ -13,7 +13,7 @@ Stream Debugger has **two distinct modes** for different use cases:
 ### Command
 
 ```bash
-stream-debugger --config config.yaml
+agent-stream-dbg --config config.yaml
 ```
 
 ### Features
@@ -70,7 +70,7 @@ both a neurological phenomenon and a subjective experience...
 
 ```bash
 # 1. Start interactive mode
-stream-debugger --config tools/stream-debugger/config.yaml
+agent-stream-dbg --config tools/agent-stream-dbg/config.yaml
 
 # 2. Type your message and press Enter
 > What is consciousness?
@@ -92,7 +92,7 @@ stream-debugger --config tools/stream-debugger/config.yaml
 ### Command
 
 ```bash
-stream-debugger stream "your message" --config config.yaml
+agent-stream-dbg stream "your message" --config config.yaml
 ```
 
 **⚠️ IMPORTANT:** The message must come BEFORE the `--config` flag!
@@ -108,24 +108,24 @@ stream-debugger stream "your message" --config config.yaml
 
 ```bash
 # Correct syntax (message first, then --config)
-stream-debugger stream "What is consciousness?" --config config.yaml
+agent-stream-dbg stream "What is consciousness?" --config config.yaml
 
 # ❌ WRONG - will fail
-stream-debugger stream --config config.yaml "What is consciousness?"
+agent-stream-dbg stream --config config.yaml "What is consciousness?"
 ```
 
 ### Use Cases
 
 ```bash
 # Quick test
-stream-debugger stream "Hello" --config config.yaml
+agent-stream-dbg stream "Hello" --config config.yaml
 
 # CI/CD pipeline
-./stream-debugger stream "$TEST_MESSAGE" --config ci-config.yaml
+./agent-stream-dbg stream "$TEST_MESSAGE" --config ci-config.yaml
 
 # Scripting
 for msg in "test1" "test2" "test3"; do
-  stream-debugger stream "$msg" --config config.yaml
+  agent-stream-dbg stream "$msg" --config config.yaml
 done
 ```
 
@@ -138,7 +138,7 @@ done
 ### Command
 
 ```bash
-stream-debugger timeline logs/by-session/session_*.jsonl
+agent-stream-dbg timeline logs/by-session/session_*.jsonl
 ```
 
 ### Features
@@ -181,7 +181,7 @@ cat .env
 # SESSION_ID=debug-session-id
 
 # Run interactive mode
-stream-debugger --config config.yaml
+agent-stream-dbg --config config.yaml
 ```
 
 ### Config File Location
@@ -189,7 +189,7 @@ stream-debugger --config config.yaml
 The config file path can be:
 - Relative: `--config config.yaml` (looks in current directory)
 - Absolute: `--config /full/path/to/config.yaml`
-- From BrainyardV3: `--config tools/stream-debugger/config.yaml`
+- From BrainyardV3: `--config tools/agent-stream-dbg/config.yaml`
 
 ---
 
@@ -202,7 +202,7 @@ The config file path can be:
 cd /path/to/your/backend
 
 # Run manually with the backend's config
-stream-debugger --config tools/stream-debugger/config.yaml
+agent-stream-dbg --config tools/agent-stream-dbg/config.yaml
 ```
 
 ### Session Setup
@@ -244,7 +244,7 @@ cat logs/by-agent/sam_harris.jsonl | jq -r '.event.content'
 wc -l logs/by-event-type/*.jsonl
 
 # Timeline visualization
-stream-debugger timeline logs/by-session/session_*.jsonl
+agent-stream-dbg timeline logs/by-session/session_*.jsonl
 ```
 
 ---
@@ -258,11 +258,11 @@ stream-debugger timeline logs/by-session/session_*.jsonl
 
 ```bash
 # Option 1: Use absolute path
-stream-debugger --config /full/path/to/config.yaml
+agent-stream-dbg --config /full/path/to/config.yaml
 
 # Option 2: Navigate first
 cd /path/to/config/directory
-stream-debugger --config config.yaml
+agent-stream-dbg --config config.yaml
 ```
 
 ### "API_KEY environment variable not set"
@@ -291,14 +291,14 @@ curl -X POST http://localhost:5003/api/v3/debug/session \
 
 | Use Case | Mode | Command |
 |----------|------|---------|
-| **Development & exploration** | Interactive | `stream-debugger --config config.yaml` |
-| **Multi-turn conversations** | Interactive | `stream-debugger --config config.yaml` |
-| **Testing agent interactions** | Interactive | `stream-debugger --config config.yaml` |
-| **CI/CD testing** | Stream | `stream-debugger stream "test" --config config.yaml` |
-| **Automation/scripting** | Stream | `stream-debugger stream "$MSG" --config config.yaml` |
-| **Quick one-off test** | Stream | `stream-debugger stream "hello" --config config.yaml` |
-| **Performance analysis** | Timeline | `stream-debugger timeline logs/session_*.jsonl` |
-| **Understanding execution** | Timeline | `stream-debugger timeline logs/session_*.jsonl` |
+| **Development & exploration** | Interactive | `agent-stream-dbg --config config.yaml` |
+| **Multi-turn conversations** | Interactive | `agent-stream-dbg --config config.yaml` |
+| **Testing agent interactions** | Interactive | `agent-stream-dbg --config config.yaml` |
+| **CI/CD testing** | Stream | `agent-stream-dbg stream "test" --config config.yaml` |
+| **Automation/scripting** | Stream | `agent-stream-dbg stream "$MSG" --config config.yaml` |
+| **Quick one-off test** | Stream | `agent-stream-dbg stream "hello" --config config.yaml` |
+| **Performance analysis** | Timeline | `agent-stream-dbg timeline logs/session_*.jsonl` |
+| **Understanding execution** | Timeline | `agent-stream-dbg timeline logs/session_*.jsonl` |
 
 ---
 
@@ -311,4 +311,4 @@ curl -X POST http://localhost:5003/api/v3/debug/session \
 
 ---
 
-**Questions?** File an issue at https://github.com/Obedience-Corp/stream-debugger/issues
+**Questions?** File an issue at https://github.com/Obedience-Corp/agent-stream-dbg/issues

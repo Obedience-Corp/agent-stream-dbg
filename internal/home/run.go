@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/Obedience-Corp/stream-debugger/internal/config"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
 )
 
 // Action is what the CLI should do after the home hub exits.
@@ -25,9 +25,10 @@ type Result struct {
 
 // Options configure the home hub.
 type Options struct {
-	Cwd           string
-	UserConfigDir string
-	Notice        string
+	Cwd            string
+	UserConfigDir  string   // primary dir for new configs
+	UserConfigDirs []string // all dirs to list (primary + legacy)
+	Notice         string
 }
 
 // Run launches the home hub TUI and blocks until the user quits or opens a session.
@@ -46,6 +47,6 @@ func Run(opts Options) (Result, error) {
 }
 
 // ReloadEntries re-scans config locations (used by tests and after external edits).
-func ReloadEntries(cwd, userConfigDir string) []config.ConfigEntry {
-	return config.ListConfigs(cwd, userConfigDir)
+func ReloadEntries(cwd string, userConfigDirs ...string) []config.ConfigEntry {
+	return config.ListConfigs(cwd, userConfigDirs...)
 }

@@ -8,7 +8,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/Obedience-Corp/stream-debugger/internal/config"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
 )
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -334,7 +334,7 @@ func (m model) updateOffline(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		demo := m.offlineDemos[m.cursor]
 		dir := filepath.Join(m.opts.UserConfigDir, "demos")
 		if strings.TrimSpace(m.opts.UserConfigDir) == "" {
-			dir = filepath.Join(os.TempDir(), "stream-debugger-demos")
+			dir = filepath.Join(os.TempDir(), "agent-stream-dbg-demos")
 		}
 		path, err := MaterializeDemo(dir, demo)
 		if err != nil {

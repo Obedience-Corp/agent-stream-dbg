@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/visualizer/anim"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/visualizer/anim"
 )
 
 // View renders the TUI.
@@ -36,7 +36,7 @@ func (m *Model) View() string {
 		Foreground(lipgloss.Color("8")).
 		Padding(0, 1)
 
-	headerText := fmt.Sprintf("Stream Debugger - Session: %s", m.config.Session.ID)
+	headerText := fmt.Sprintf("agent-stream-dbg - Session: %s", m.config.Session.ID)
 	if m.FlowID != "" {
 		headerText = fmt.Sprintf("%s (flow: %s)", headerText, m.FlowID)
 	}

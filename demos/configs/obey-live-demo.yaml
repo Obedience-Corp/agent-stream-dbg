@@ -20,7 +20,7 @@ session:
   id: "obey-live-demo"
 
 logging:
-  dir: "/tmp/stream-debugger-obey-live-logs"
+  dir: "/tmp/agent-stream-dbg-obey-live-logs"
   dimensions:
     by_event_type: true
     by_agent: true

@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/config"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
 )
 
 // resolveExplicitConfig validates an explicit --config path. It never creates files.
@@ -17,7 +17,7 @@ func resolveExplicitConfig(explicit string) (string, error) {
 	}
 	if _, err := os.Stat(explicit); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return "", fmt.Errorf("config file %q not found; run stream-debugger without --config to open the home hub", explicit)
+			return "", fmt.Errorf("config file %q not found; run agent-stream-dbg without --config to open the home hub", explicit)
 		}
 		return "", fmt.Errorf("check config file %q: %w", explicit, err)
 	}
@@ -46,7 +46,7 @@ func resolveInteractiveConfigAt(explicit, cwd, userConfigDir string) (path strin
 
 	entries := config.ListConfigs(cwd, userConfigDir)
 	if len(entries) == 0 {
-		return "", false, fmt.Errorf("no config found; run stream-debugger (no flags) to open the home hub and create one")
+		return "", false, fmt.Errorf("no config found; run agent-stream-dbg (no flags) to open the home hub and create one")
 	}
 	// Prefer first ready entry, else first listed.
 	for _, e := range entries {

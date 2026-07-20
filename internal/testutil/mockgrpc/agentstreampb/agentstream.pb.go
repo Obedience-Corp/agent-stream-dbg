@@ -1,5 +1,5 @@
 // Test service for the gRPC transport's mock server — the gRPC equivalent
-// of a recorded session fixture for SSE. Deliberately
+// of testdata/fixtures/brainyard-session.jsonl for SSE. Deliberately
 // small: enough oneof case variety to prove discriminator inference,
 // nothing resembling a second real dialect.
 
@@ -582,7 +582,7 @@ const file_agentstream_proto_rawDesc = "" +
 	"\x06Stream\x12\x1d.agentstream.v1.StreamRequest\x1a\x1b.agentstream.v1.StreamEvent0\x01\x12D\n" +
 	"\x04Chat\x12\x1b.agentstream.v1.ChatMessage\x1a\x1b.agentstream.v1.StreamEvent(\x010\x01\x12M\n" +
 	"\vStreamTyped\x12\x1d.agentstream.v1.StreamRequest\x1a\x1d.agentstream.v1.TypedEnvelope0\x01\x12T\n" +
-	"\x10StreamMultiOneof\x12\x1d.agentstream.v1.StreamRequest\x1a\x1f.agentstream.v1.MultiOneofEvent0\x01BRZPgithub.com/Obedience-Corp/stream-debugger/internal/testutil/mockgrpc/agentstreampbb\x06proto3"
+	"\x10StreamMultiOneof\x12\x1d.agentstream.v1.StreamRequest\x1a\x1f.agentstream.v1.MultiOneofEvent0\x01BUZSgithub.com/Obedience-Corp/agent-stream-dbg/internal/testutil/mockgrpc/agentstreampbb\x06proto3"
 
 var (
 	file_agentstream_proto_rawDescOnce sync.Once

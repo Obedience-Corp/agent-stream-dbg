@@ -6,10 +6,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/events"
-	"github.com/Obedience-Corp/stream-debugger/internal/mapping"
-	"github.com/Obedience-Corp/stream-debugger/internal/testutil/mockgrpc"
-	"github.com/Obedience-Corp/stream-debugger/internal/testutil/mockgrpc/agentstreampb"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/mapping"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/testutil/mockgrpc"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/testutil/mockgrpc/agentstreampb"
 )
 
 // statusDialect is the companion test dialect this task's Done-When

@@ -1,4 +1,4 @@
-# Release tasks for Stream Debugger.
+# Release tasks for agent-stream-dbg.
 #
 # Releases are tag-based: the tag is pushed to GitHub, then GitHub creates the
 # release with generated notes. Run `just release create v0.1.0` after merging
@@ -31,7 +31,7 @@ tag version: check
         echo "tag already exists: {{version}}" >&2
         exit 1
     fi
-    git tag -a "{{version}}" -m "Stream Debugger {{version}}"
+    git tag -a "{{version}}" -m "agent-stream-dbg {{version}}"
     git push origin "{{version}}"
     echo "Tagged and pushed {{version}}."
 
@@ -40,7 +40,7 @@ tag version: check
 publish version:
     gh release create "{{version}}" \
         --verify-tag \
-        --title "Stream Debugger {{version}}" \
+        --title "agent-stream-dbg {{version}}" \
         --generate-notes
 
 # Tag and publish a release in one command. Usage:
@@ -58,13 +58,13 @@ build-all-platforms:
     mkdir -p bin
 
     echo "🔨 Building for darwin/arm64 (M1/M2/M3 Macs)..."
-    GOOS=darwin GOARCH=arm64 go build -o bin/stream-debugger-darwin-arm64 ./cmd/stream-debugger
+    GOOS=darwin GOARCH=arm64 go build -o bin/agent-stream-dbg-darwin-arm64 ./cmd/agent-stream-dbg
 
     echo "🔨 Building for darwin/amd64 (Intel Macs)..."
-    GOOS=darwin GOARCH=amd64 go build -o bin/stream-debugger-darwin-amd64 ./cmd/stream-debugger
+    GOOS=darwin GOARCH=amd64 go build -o bin/agent-stream-dbg-darwin-amd64 ./cmd/agent-stream-dbg
 
     echo "🔨 Building for linux/amd64 (Docker/Railway)..."
-    GOOS=linux GOARCH=amd64 go build -o bin/stream-debugger-linux-amd64 ./cmd/stream-debugger
+    GOOS=linux GOARCH=amd64 go build -o bin/agent-stream-dbg-linux-amd64 ./cmd/agent-stream-dbg
 
     echo "✅ All platforms built:"
-    ls -la bin/stream-debugger-*
+    ls -la bin/agent-stream-dbg-*

@@ -11,10 +11,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/bridge"
-	"github.com/Obedience-Corp/stream-debugger/internal/client"
-	"github.com/Obedience-Corp/stream-debugger/internal/config"
-	"github.com/Obedience-Corp/stream-debugger/internal/events"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/bridge"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/client"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
 )
 
 func main() {

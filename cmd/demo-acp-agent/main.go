@@ -2,7 +2,7 @@
 // and VHS recordings. It speaks JSON-RPC 2.0 NDJSON on stdio:
 // initialize → session/new → session/prompt (repeatable).
 //
-// Not a product agent — only enough wire surface for stream-debugger's
+// Not a product agent — only enough wire surface for agent-stream-dbg's
 // transport.type: acp path.
 package main
 

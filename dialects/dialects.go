@@ -1,5 +1,5 @@
 // Package dialects embeds the dialect YAML documents shipped with the
-// stream-debugger binary.
+// agent-stream-dbg binary.
 package dialects
 
 import (

@@ -3,7 +3,7 @@ package config
 import (
 	"maps"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/mapping"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/mapping"
 )
 
 // InterpolationVarsFromConfig builds the fixed interpolation context shared by

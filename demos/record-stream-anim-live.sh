@@ -10,9 +10,9 @@ export SD_ROOT="$ROOT"
 # Prefer Brainyard tools env if present (never printed).
 if [[ -z "${API_KEY:-}" ]]; then
   for f in \
-    "$HOME/Dev/AI/Brainyard/projects/BrainyardV3/tools/stream-debugger/.env" \
+    "$HOME/Dev/AI/Brainyard/projects/BrainyardV3/tools/agent-stream-dbg/.env" \
     "$ROOT/.env" \
-    "$(dirname "$ROOT")/stream-debugger/.env"; do
+    "$(dirname "$ROOT")/agent-stream-dbg/.env"; do
     if [[ -f "$f" ]]; then
       # shellcheck disable=SC1090
       set -a; source "$f"; set +a
@@ -36,9 +36,9 @@ export FORCE_COLOR=1
 export STREAM_DEBUGGER_COLOR_PROFILE=truecolor
 unset NO_COLOR STREAM_DEBUGGER_REDUCED_MOTION NO_MOTION || true
 
-echo "→ building stream-debugger"
+echo "→ building agent-stream-dbg"
 mkdir -p bin docs/assets
-go build -o bin/stream-debugger ./cmd/stream-debugger
+go build -o bin/agent-stream-dbg ./cmd/agent-stream-dbg
 
 echo "→ recording live Brainyard VHS (API_KEY present, not printed)"
 vhs demos/tapes/tui-stream-anim-live.tape

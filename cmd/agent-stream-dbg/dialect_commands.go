@@ -8,15 +8,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/bridge"
-	"github.com/Obedience-Corp/stream-debugger/internal/config"
-	"github.com/Obedience-Corp/stream-debugger/internal/dialectinit"
-	"github.com/Obedience-Corp/stream-debugger/internal/events"
-	"github.com/Obedience-Corp/stream-debugger/internal/explain"
-	"github.com/Obedience-Corp/stream-debugger/internal/mapping"
-	"github.com/Obedience-Corp/stream-debugger/internal/transport"
-	"github.com/Obedience-Corp/stream-debugger/internal/transport/replay"
-	"github.com/Obedience-Corp/stream-debugger/internal/transport/sse"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/bridge"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/dialectinit"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/explain"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/mapping"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport/replay"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport/sse"
 )
 
 // loadEventsFromFile reads a JSONL session log through the replay transport.

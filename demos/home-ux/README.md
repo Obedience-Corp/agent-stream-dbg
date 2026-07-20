@@ -1,9 +1,9 @@
 # Home UX prototype
 
 Bubble Tea mock of the **launch home / settings hub** proposed for
-`stream-debugger` bare launch. Not the product binary.
+`agent-stream-dbg` bare launch. Not the product binary.
 
-Design: `workflow/design/stream-debugger-home-tui/` (campaign).
+Design: `workflow/design/agent-stream-dbg-home-tui/` (campaign).
 
 ## Run
 

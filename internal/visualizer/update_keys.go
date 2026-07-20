@@ -7,7 +7,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/Obedience-Corp/stream-debugger/internal/events"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
 )
 
 // handleKeyMsg handles tea.KeyMsg within Update, extracted verbatim (pure
@@ -55,7 +55,7 @@ func (m InteractiveModel) handleKeyMsg(msg tea.KeyMsg) (InteractiveModel, tea.Cm
 			filename := fmt.Sprintf("events_%s.txt", time.Now().Format("20060102_150405"))
 
 			var output strings.Builder
-			output.WriteString("# Stream Debugger Event Export\n")
+			output.WriteString("# agent-stream-dbg Event Export\n")
 			_, _ = fmt.Fprintf(&output, "# Timestamp: %s\n", time.Now().Format(time.RFC3339))
 			_, _ = fmt.Fprintf(&output, "# Session: %s\n", m.cfg.Session.ID)
 			_, _ = fmt.Fprintf(&output, "# Event Count: %d\n\n", len(lastMsg.Events))

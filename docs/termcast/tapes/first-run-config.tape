@@ -14,11 +14,11 @@ Source out/_theme.tape
 
 # Keep the recording isolated from the operator's real config and credentials.
 Hide
-Type "export HOME=$(mktemp -d /tmp/stream-debugger-termcast-home.XXXXXX); export TERM=xterm-256color COLORTERM=truecolor CLICOLOR_FORCE=1; clear" Enter
+Type "export HOME=$(mktemp -d /tmp/agent-stream-dbg-termcast-home.XXXXXX); export TERM=xterm-256color COLORTERM=truecolor CLICOLOR_FORCE=1; clear" Enter
 Show
 
 # First launch opens the setup panel automatically.
-Type "/tmp/stream-debugger-config-ux" Sleep 500ms Enter
+Type "/tmp/agent-stream-dbg-config-ux" Sleep 500ms Enter
 Sleep 2s
 Type "openai" Sleep 150ms
 Tab

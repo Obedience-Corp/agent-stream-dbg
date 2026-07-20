@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/events"
-	"github.com/Obedience-Corp/stream-debugger/internal/mapping"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/mapping"
 )
 
 // grpcTestDialect mirrors internal/transport/grpc's own test dialect

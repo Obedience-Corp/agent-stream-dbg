@@ -46,12 +46,12 @@ Each has a hand-authored fixture and an exact per-frame decode test
 ## 4. `init` infers a usable draft dialect from a live stream or recording; `explain` shows per-frame rule matching
 
 **Verified.**
-- `stream-debugger init --from <fixture>` emits a commented draft YAML;
+- `agent-stream-dbg init --from <fixture>` emits a commented draft YAML;
   recovers 100% of hand-written `brainyard.yaml`'s event coverage and
   source/content/seq paths (required: ≥70%), and correctly infers
   `discriminator: auto` for the openai fixture (no event names, no payload
   discriminator field).
-- `stream-debugger explain --dialect d.yaml --from fixture.jsonl` traces
+- `agent-stream-dbg explain --dialect d.yaml --from fixture.jsonl` traces
   every frame: matched rule + extracted fields, or a hint when nothing
   matched. Exit code reflects health (0 clean, 1 on unknowns/empty
   extractions) — verified against the real `brainyard.yaml` (22/22 frames,

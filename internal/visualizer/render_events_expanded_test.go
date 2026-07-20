@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/events"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
 )
 
 // TestRenderEventExpandedPlainText is a floor-level test for

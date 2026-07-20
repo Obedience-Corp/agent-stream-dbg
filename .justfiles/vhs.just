@@ -10,8 +10,8 @@ root := justfile_directory() + "/.."
 content := root + "/docs/termcast"
 assets := root + "/docs/assets"
 termcast := env_var_or_default("TERMCAST", "termcast")
-brainyard_binary := "/tmp/stream-debugger-brainyard-tui"
-obey_binary := "/tmp/stream-debugger-obey-tui"
+brainyard_binary := "/tmp/agent-stream-dbg-brainyard-tui"
+obey_binary := "/tmp/agent-stream-dbg-obey-tui"
 
 [private]
 default:
@@ -30,8 +30,8 @@ validate:
 # Build the binaries referenced by the existing live tapes outside the repo.
 [no-cd]
 build:
-    go build -o "{{brainyard_binary}}" ./cmd/stream-debugger
-    go build -o "{{obey_binary}}" ./cmd/stream-debugger
+    go build -o "{{brainyard_binary}}" ./cmd/agent-stream-dbg
+    go build -o "{{obey_binary}}" ./cmd/agent-stream-dbg
 
 # Require both live backends before attempting a recording.
 [no-cd]
@@ -42,8 +42,8 @@ services:
         echo "Brainyard is not reachable at 127.0.0.1:5003" >&2
         exit 1
     fi
-    if ! test -S /tmp/obey-stream-debugger.sock; then
-        echo "Obey is not listening on /tmp/obey-stream-debugger.sock" >&2
+    if ! test -S /tmp/obey-agent-stream-dbg.sock; then
+        echo "Obey is not listening on /tmp/obey-agent-stream-dbg.sock" >&2
         exit 1
     fi
 

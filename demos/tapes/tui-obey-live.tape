@@ -10,7 +10,7 @@ Set Margin 0
 Set BorderRadius 8
 Set Framerate 24
 Set TypingSpeed 35ms
-Set Theme { "name": "stream-debugger", "black": "#111827", "red": "#fb7185", "green": "#86efac", "yellow": "#fde68a", "blue": "#93c5fd", "magenta": "#d8b4fe", "cyan": "#67e8f9", "white": "#f4f7fb", "brightBlack": "#64748b", "brightRed": "#fda4af", "brightGreen": "#bbf7d0", "brightYellow": "#fef3c7", "brightBlue": "#bfdbfe", "brightMagenta": "#e9d5ff", "brightCyan": "#a5f3fc", "brightWhite": "#ffffff", "background": "#10131a", "foreground": "#f4f7fb", "cursor": "#67e8f9", "selection": "#283548" }
+Set Theme { "name": "agent-stream-dbg", "black": "#111827", "red": "#fb7185", "green": "#86efac", "yellow": "#fde68a", "blue": "#93c5fd", "magenta": "#d8b4fe", "cyan": "#67e8f9", "white": "#f4f7fb", "brightBlack": "#64748b", "brightRed": "#fda4af", "brightGreen": "#bbf7d0", "brightYellow": "#fef3c7", "brightBlue": "#bfdbfe", "brightMagenta": "#e9d5ff", "brightCyan": "#a5f3fc", "brightWhite": "#ffffff", "background": "#10131a", "foreground": "#f4f7fb", "cursor": "#67e8f9", "selection": "#283548" }
 
 # Live Obey daemon at unix:///tmp/obey.sock — no API key.
 Hide
@@ -18,7 +18,7 @@ Type `export HOME=$(mktemp -d /tmp/sd-obey-home.XXXXXX) TERM=xterm-256color COLO
 Show
 
 # WatchCampaignState against My_Tools (snapshot + live updates).
-Type `./bin/stream-debugger -c demos/configs/obey-live-demo.yaml` Enter
+Type `./bin/agent-stream-dbg -c demos/configs/obey-live-demo.yaml` Enter
 Sleep 2s
 
 # Start the long-lived watch RPC (message is retained; daemon supplies frames).

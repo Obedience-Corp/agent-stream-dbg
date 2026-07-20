@@ -1,4 +1,4 @@
-# Stream Debugger - Implementation Complete ✅
+# agent-stream-dbg - Implementation Complete ✅
 
 ## Overview
 
@@ -92,7 +92,7 @@ A real-time Terminal UI (TUI) debugger for visualizing SSE (Server-Sent Events) 
 ## Project Structure
 
 ```
-stream-debugger/
+agent-stream-dbg/
 ├── cmd/
 │   └── debugger/
 │       └── main.go              # CLI entry point ✅
@@ -133,7 +133,7 @@ stream-debugger/
 
 1. **Setup**:
    ```bash
-   cd /path/to/stream-debugger
+   cd /path/to/agent-stream-dbg
    cp .env.example .env
    # Edit .env with your API key
    ```
@@ -162,7 +162,7 @@ stream-debugger/
 
 ```
 ╭─────────────────────────────────────────────╮
-│ Stream Debugger - Session: test-session-001│
+│ agent-stream-dbg - Session: test-session-001│
 ╰─────────────────────────────────────────────╯
 
 ╭───────────────────╮  ╭───────────────────╮
@@ -320,7 +320,7 @@ github.com/joho/godotenv v1.5.1             // .env loading
 
 2. **Run stream debugger**:
    ```bash
-   cd /path/to/stream-debugger
+   cd /path/to/agent-stream-dbg
    just stream "What is consciousness from multiple perspectives?"
    ```
 

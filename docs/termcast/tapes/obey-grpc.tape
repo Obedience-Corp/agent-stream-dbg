@@ -15,20 +15,20 @@ Source out/_theme.tape
 # The caller supplies a live Obey daemon at the temporary Unix socket. This
 # tape keeps its generated config and logs under an isolated HOME directory.
 Hide
-Type "cd /tmp; export HOME=$(mktemp -d /tmp/stream-debugger-obey-termcast-home.XXXXXX); export TERM=xterm-256color COLORTERM=truecolor CLICOLOR_FORCE=1; clear" Enter
+Type "cd /tmp; export HOME=$(mktemp -d /tmp/agent-stream-dbg-obey-termcast-home.XXXXXX); export TERM=xterm-256color COLORTERM=truecolor CLICOLOR_FORCE=1; clear" Enter
 Show
 
 # First-run setup through the actual config panel. The daemon is plaintext
 # gRPC over a Unix socket, and WatchCampaignState requires the initial snapshot
 # request to produce the first frame immediately.
-Type "/tmp/stream-debugger-obey-tui" Sleep 500ms Enter
+Type "/tmp/agent-stream-dbg-obey-tui" Sleep 500ms Enter
 Sleep 2s
 Type "obey" Sleep 150ms
 Tab
 Type "grpc" Sleep 150ms
 Tab
 Tab
-Type "unix:///tmp/obey-stream-debugger.sock" Sleep 150ms
+Type "unix:///tmp/obey-agent-stream-dbg.sock" Sleep 150ms
 Tab
 Type "plaintext" Sleep 150ms
 Tab

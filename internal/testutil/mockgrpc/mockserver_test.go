@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/testutil/mockgrpc/agentstreampb"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/testutil/mockgrpc/agentstreampb"
 )
 
 func scriptedEvents() []*agentstreampb.StreamEvent {

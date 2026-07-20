@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/testutil"
-	"github.com/Obedience-Corp/stream-debugger/internal/transport/replay"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/testutil"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport/replay"
 )
 
 func samplesFromFixture(t *testing.T, path string) []Sample {

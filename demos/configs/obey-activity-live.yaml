@@ -18,7 +18,7 @@ session:
   id: "obey-activity-live"
 
 logging:
-  dir: "/tmp/stream-debugger-obey-activity-logs"
+  dir: "/tmp/agent-stream-dbg-obey-activity-logs"
   dimensions:
     by_event_type: true
     by_agent: true

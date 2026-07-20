@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/config"
-	"github.com/Obedience-Corp/stream-debugger/internal/home"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/home"
 )
 
 // runHome is the default bare-launch experience: list/create configs, open
@@ -23,13 +23,18 @@ func runHome(dialectOverride string) error {
 	if err := os.MkdirAll(userConfigDir, 0o700); err != nil {
 		return fmt.Errorf("create user config directory: %w", err)
 	}
+	userConfigDirs, err := config.UserConfigDirs()
+	if err != nil {
+		return fmt.Errorf("find user config directories: %w", err)
+	}
 
 	notice := ""
 	for {
 		result, err := home.Run(home.Options{
-			Cwd:           cwd,
-			UserConfigDir: userConfigDir,
-			Notice:        notice,
+			Cwd:            cwd,
+			UserConfigDir:  userConfigDir, // writes go here
+			UserConfigDirs: userConfigDirs,
+			Notice:         notice,
 		})
 		if err != nil {
 			return err

@@ -1,9 +1,11 @@
-# Stream Debugger
+# agent-stream-dbg
 
-TUI debugger for **agent and multi-agent streams**.
+TUI debugger for **agent and multi-agent event streams** (SSE, gRPC, ACP, replay).
 
 Point it at a live backend or a recorded fixture, watch frames in a multi-pane
 terminal UI, and decode them through a **dialect** (what the bytes mean).
+
+> Formerly `stream-debugger`. The binary and module path are now `agent-stream-dbg`.
 
 | Transport | What it is |
 |-----------|------------|
@@ -18,21 +20,22 @@ terminal UI, and decode them through a **dialect** (what the bytes mean).
 ## Install
 
 ```bash
-go install github.com/Obedience-Corp/stream-debugger/cmd/stream-debugger@latest
+go install github.com/Obedience-Corp/agent-stream-dbg/cmd/agent-stream-dbg@latest
 ```
 
 From source:
 
 ```bash
-git clone https://github.com/Obedience-Corp/stream-debugger.git
-cd stream-debugger
-just install   # or: go install ./cmd/stream-debugger
+git clone https://github.com/Obedience-Corp/agent-stream-dbg.git
+cd agent-stream-dbg
+just install   # or: go install ./cmd/agent-stream-dbg
 ```
+
 
 ## Quick start
 
 ```bash
-stream-debugger
+agent-stream-dbg
 ```
 
 Bare launch opens the **home hub**:
@@ -58,15 +61,15 @@ Bare launch opens the **home hub**:
 Jump straight into interactive mode with a YAML file (demos, scripts, CI):
 
 ```bash
-stream-debugger --config my-config.yaml
+agent-stream-dbg --config my-config.yaml
 # or
-stream-debugger -c demos/configs/acp-demo.yaml
+agent-stream-dbg -c demos/configs/acp-demo.yaml
 ```
 
 Single-shot stream (no home hub):
 
 ```bash
-stream-debugger stream --config my-config.yaml "your message"
+agent-stream-dbg stream --config my-config.yaml "your message"
 ```
 
 From a clone, CLI offline recipes without the TUI:
@@ -141,13 +144,13 @@ Also: [`tui-obey-grpc.gif`](docs/assets/tui-obey-grpc.gif),
 
 | Command | Purpose |
 |---------|---------|
-| `stream-debugger` | Home hub (default) |
-| `stream-debugger -c <file>` | Interactive TUI with a run config |
-| `stream-debugger stream -c <file> "msg"` | One message, then exit |
-| `stream-debugger timeline <session.jsonl>` | Parallel execution timeline |
-| `stream-debugger replay <session.jsonl>` | Replay a recorded session |
-| `stream-debugger explain ...` | Trace dialect matching per frame |
-| `stream-debugger init ...` | Draft a dialect from a stream or recording |
+| `agent-stream-dbg` | Home hub (default) |
+| `agent-stream-dbg -c <file>` | Interactive TUI with a run config |
+| `agent-stream-dbg stream -c <file> "msg"` | One message, then exit |
+| `agent-stream-dbg timeline <session.jsonl>` | Parallel execution timeline |
+| `agent-stream-dbg replay <session.jsonl>` | Replay a recorded session |
+| `agent-stream-dbg explain ...` | Trace dialect matching per frame |
+| `agent-stream-dbg init ...` | Draft a dialect from a stream or recording |
 
 Flags for `stream` must come **before** the message argument.
 
@@ -172,9 +175,10 @@ the home hub wizard, or copy [`config.yaml.example`](config.yaml.example).
 Configs are loaded from:
 
 - The path you pass with `-c` / `--config`
-- Well-known names in the working directory (`stream-debugger.yaml`, `config.yaml`, …)
+- Well-known names in the working directory (`agent-stream-dbg.yaml`, `config.yaml`, …)
 - `configs/*.yaml` in the working directory
-- `~/.config/stream-debugger/*.yaml` (user library used by the home hub)
+- `~/.config/agent-stream-dbg/*.yaml` (user library used by the home hub)
+- Legacy: `stream-debugger.yaml` and `~/.config/stream-debugger/` are still scanned
 
 ### Transports
 
@@ -225,7 +229,7 @@ map to agents, tools, and content.
 Private backends (Brainyard, Obey) are **not** published with this repo; their
 dialects ship so you can decode recorded streams and so CI can golden-test
 them. Public use starts from `openai` / `anthropic` / `a2a` / `acp`, or
-`stream-debugger init` against your own recording.
+`agent-stream-dbg init` against your own recording.
 
 ### Example configs
 
