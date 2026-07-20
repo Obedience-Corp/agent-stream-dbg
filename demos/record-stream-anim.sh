@@ -18,7 +18,7 @@ unset STREAM_DEBUGGER_REDUCED_MOTION NO_MOTION || true
 
 echo "→ building binaries"
 mkdir -p bin docs/assets
-go build -o bin/stream-debugger ./cmd/stream-debugger
+go build -o bin/agent-stream-dbg ./cmd/agent-stream-dbg
 go build -o bin/fixture-sse-server ./cmd/fixture-sse-server
 
 echo "→ starting fixture SSE server on :18765"

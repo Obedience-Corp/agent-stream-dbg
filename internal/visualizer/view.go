@@ -10,7 +10,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/visualizer/anim"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/visualizer/anim"
 )
 
 func (m InteractiveModel) View() string {
@@ -51,7 +51,7 @@ func (m InteractiveModel) View() string {
 	if dbg == "" {
 		dbg = "off"
 	}
-	title := headerStyle.Render(fmt.Sprintf("Stream Debugger (debug=%s)", dbg))
+	title := headerStyle.Render(fmt.Sprintf("agent-stream-dbg (debug=%s)", dbg))
 	b.WriteString(title)
 	b.WriteString(" ")
 	b.WriteString(tabs.String())

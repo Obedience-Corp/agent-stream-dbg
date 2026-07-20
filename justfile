@@ -1,5 +1,5 @@
 #!/usr/bin/env just --justfile
-# Stream Debugger - Development Commands
+# agent-stream-dbg - Development Commands
 
 # Testing and code quality checks.
 [doc('Testing and code quality checks')]

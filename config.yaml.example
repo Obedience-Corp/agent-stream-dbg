@@ -1,4 +1,4 @@
-# Stream Debugger Configuration
+# agent-stream-dbg Configuration
 #
 # This is a RUN config: it says how to connect (transport) and, once the
 # dialect engine lands, what the bytes mean (dialect). It never encodes

@@ -1,6 +1,6 @@
 // Package dialectinit infers a draft dialect from observed wire frames.
 // Heuristics are deliberately dumb and legible (workflow/design/
-// stream-debugger-open-source/dialect-spec.md 'init'): a wrong guess is an
+// agent-stream-dbg-open-source/dialect-spec.md 'init'): a wrong guess is an
 // edit, not a bug. The output is always a labeled draft — never presented
 // as a finished dialect.
 package dialectinit

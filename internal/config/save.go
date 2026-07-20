@@ -81,7 +81,7 @@ func SaveConfigFile(path string, cfg *EnhancedConfig) error {
 	if info, statErr := os.Stat(path); statErr == nil {
 		mode = info.Mode().Perm()
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".stream-debugger-config-*.yaml")
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".agent-stream-dbg-config-*.yaml")
 	if err != nil {
 		return fmt.Errorf("create temporary config file: %w", err)
 	}

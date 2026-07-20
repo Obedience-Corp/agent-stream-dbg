@@ -26,7 +26,7 @@ import (
 	"github.com/jhump/protoreflect/desc"    //nolint:staticcheck // SA1019: same reasoning as reflect.go — grpcdynamic requires this type
 	"github.com/jhump/protoreflect/dynamic" //nolint:staticcheck // SA1019: grpcdynamic's own message factory produces this concrete type; see MarshalJSONPB comment above
 	"github.com/jhump/protoreflect/dynamic/grpcdynamic"
-	"github.com/Obedience-Corp/stream-debugger/internal/transport"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/testutil/mockgrpc"
-	"github.com/Obedience-Corp/stream-debugger/internal/testutil/mockgrpc/agentstreampb"
-	"github.com/Obedience-Corp/stream-debugger/internal/transport"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/testutil/mockgrpc"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/testutil/mockgrpc/agentstreampb"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport"
 	protobuf "google.golang.org/protobuf/proto"
 )
 

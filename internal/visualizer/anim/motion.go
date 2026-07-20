@@ -1,4 +1,4 @@
-// Package anim renders terminal activity visuals for Stream Debugger.
+// Package anim renders terminal activity visuals for agent-stream-dbg.
 //
 // Design intent: mission-control chrome for live streams — energy meters,
 // agent pulses, and flow-stage chase — not decorative noise over log text.

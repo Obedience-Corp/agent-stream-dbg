@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/testutil/mockgrpc"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/testutil/mockgrpc"
 )
 
 // TestTransport_Send_BidiRoundTrip is this task's explicit Done-When: a

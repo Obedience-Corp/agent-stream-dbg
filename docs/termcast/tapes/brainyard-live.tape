@@ -15,11 +15,11 @@ Source out/_theme.tape
 # The caller supplies API_KEY; this tape never contains or prints the secret.
 # Keep generated config, logs, and Ctrl+S exports outside the repository.
 Hide
-Type "cd /tmp; export HOME=$(mktemp -d /tmp/stream-debugger-brainyard-termcast-home.XXXXXX); export SESSION_ID=termcast-brainyard-live; export TERM=xterm-256color COLORTERM=truecolor CLICOLOR_FORCE=1; clear" Enter
+Type "cd /tmp; export HOME=$(mktemp -d /tmp/agent-stream-dbg-brainyard-termcast-home.XXXXXX); export SESSION_ID=termcast-brainyard-live; export TERM=xterm-256color COLORTERM=truecolor CLICOLOR_FORCE=1; clear" Enter
 Show
 
 # First-run setup against the real local BrainyardV3 service.
-Type "/tmp/stream-debugger-brainyard-tui" Sleep 500ms Enter
+Type "/tmp/agent-stream-dbg-brainyard-tui" Sleep 500ms Enter
 Sleep 2s
 Type "brainyard" Sleep 150ms
 Tab

@@ -21,7 +21,7 @@ session:
   auto_setup: false
 
 logging:
-  dir: "/tmp/stream-debugger-acp-demo-logs"
+  dir: "/tmp/agent-stream-dbg-acp-demo-logs"
   dimensions:
     by_event_type: true
     by_agent: true

@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/Obedience-Corp/stream-debugger/internal/config"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
 )
 
 var (
@@ -56,7 +56,7 @@ func (m model) View() string {
 
 func (m model) viewHome() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("Stream Debugger"))
+	b.WriteString(titleStyle.Render("agent-stream-dbg"))
 	b.WriteString("\n")
 	if len(m.entries) == 0 {
 		b.WriteString(dimStyle.Render("Welcome"))

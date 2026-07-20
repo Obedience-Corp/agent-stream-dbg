@@ -8,7 +8,7 @@ package agentstream.v1;
 
 import "google/protobuf/any.proto";
 
-option go_package = "github.com/Obedience-Corp/stream-debugger/internal/testutil/mockgrpc/agentstreampb";
+option go_package = "github.com/Obedience-Corp/agent-stream-dbg/internal/testutil/mockgrpc/agentstreampb";
 
 // AgentStream is a minimal multi-agent streaming service: one
 // server-streaming RPC that replays a scripted sequence of StreamEvents,

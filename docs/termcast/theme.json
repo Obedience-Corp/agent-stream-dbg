@@ -1,7 +1,7 @@
 {
-  "name": "stream-debugger",
+  "name": "agent-stream-dbg",
   "terminal": {
-    "name": "stream-debugger",
+    "name": "agent-stream-dbg",
     "background": "#10131a",
     "foreground": "#f4f7fb",
     "cursor": "#67e8f9",

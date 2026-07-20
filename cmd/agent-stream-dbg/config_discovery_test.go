@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/config"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
 )
 
 func TestResolveExplicitConfigUsesPath(t *testing.T) {
@@ -37,8 +37,8 @@ func TestResolveExplicitConfigMissing(t *testing.T) {
 func TestResolveInteractiveConfigPrefersWorkingDirectory(t *testing.T) {
 	cwd := t.TempDir()
 	userConfigDir := t.TempDir()
-	localPath := filepath.Join(cwd, "stream-debugger.yaml")
-	userPath := filepath.Join(userConfigDir, "stream-debugger.yaml")
+	localPath := filepath.Join(cwd, "agent-stream-dbg.yaml")
+	userPath := filepath.Join(userConfigDir, "agent-stream-dbg.yaml")
 	body := "transport:\n  type: sse\n  base_url: http://x\n  stream_endpoint:\n    url: /s\ndialect:\n  file: brainyard\n"
 	for _, path := range []string{localPath, userPath} {
 		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
@@ -56,7 +56,7 @@ func TestResolveInteractiveConfigPrefersWorkingDirectory(t *testing.T) {
 }
 
 func TestResolveInteractiveConfigNoAutoCreate(t *testing.T) {
-	userConfigDir := filepath.Join(t.TempDir(), "stream-debugger")
+	userConfigDir := filepath.Join(t.TempDir(), "agent-stream-dbg")
 	_, created, err := resolveInteractiveConfigAt("", t.TempDir(), userConfigDir)
 	if err == nil {
 		t.Fatal("expected error when no configs exist")

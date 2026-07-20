@@ -8,11 +8,11 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/Obedience-Corp/stream-debugger/internal/bridge"
-	"github.com/Obedience-Corp/stream-debugger/internal/config"
-	"github.com/Obedience-Corp/stream-debugger/internal/events"
-	dblogger "github.com/Obedience-Corp/stream-debugger/internal/logger"
-	"github.com/Obedience-Corp/stream-debugger/internal/transport"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/bridge"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
+	dblogger "github.com/Obedience-Corp/agent-stream-dbg/internal/logger"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport"
 )
 
 // ViewMode represents the display mode for responses

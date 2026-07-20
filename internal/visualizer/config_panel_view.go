@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/Obedience-Corp/stream-debugger/internal/client"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/client"
 )
 
 func (m InteractiveModel) renderConfigPanel() string {

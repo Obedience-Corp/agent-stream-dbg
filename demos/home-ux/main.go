@@ -1,5 +1,5 @@
-// Command home-ux is a design prototype for the stream-debugger launch hub.
-// It is not the product binary. See workflow/design/stream-debugger-home-tui/.
+// Command home-ux is a design prototype for the agent-stream-dbg launch hub.
+// It is not the product binary. See workflow/design/agent-stream-dbg-home-tui/.
 package main
 
 import (
@@ -91,7 +91,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "user config dir: %v\n", err)
 			os.Exit(1)
 		}
-		configDir = filepath.Join(base, "stream-debugger-home-ux")
+		configDir = filepath.Join(base, "agent-stream-dbg-home-ux")
 	}
 	_ = os.MkdirAll(configDir, 0o700)
 
@@ -662,7 +662,7 @@ func (m model) View() string {
 
 func (m model) viewHome() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("Stream Debugger"))
+	b.WriteString(titleStyle.Render("agent-stream-dbg"))
 	b.WriteString("\n")
 	if len(m.configs) == 0 {
 		b.WriteString(dimStyle.Render("Welcome"))

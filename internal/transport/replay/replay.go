@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/transport"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport"
 )
 
 // Transport replays a fixture's lines as Frames, in order.

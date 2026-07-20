@@ -15,7 +15,7 @@ unset NO_COLOR || true
 
 echo "→ building binaries"
 mkdir -p bin docs/assets
-go build -o bin/stream-debugger ./cmd/stream-debugger
+go build -o bin/agent-stream-dbg ./cmd/agent-stream-dbg
 go build -o bin/demo-acp-agent ./cmd/demo-acp-agent
 
 # Sanity: multi-turn ACP transport (no TTY / no LLM required).

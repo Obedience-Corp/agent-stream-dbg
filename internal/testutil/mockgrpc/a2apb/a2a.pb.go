@@ -19,7 +19,7 @@
 //     status_update=3, artifact_update=4 field numbers and names, but
 //     drops the real message=2 branch (type Message) entirely: this
 //     test's two sub-cases are statusUpdate and artifactUpdate (mirroring
-//     dialects/cross_transport_test.go's cross-transport parity test's
+//     dialects/cross_transport_test.go's TestBrainyardDialect_CrossTransportParity's
 //     two sub-cases) — a2a.yaml's `message` rule is already proven over
 //     SSE by dialects/dialects_test.go's TestA2ADialect_ExactDecode; this
 //     file's job is the gRPC transport seam, not re-proving every dialect
@@ -52,7 +52,7 @@
 // package is a2a.v1, not the real proto's lf.a2a.v1: this is a
 // deliberately trimmed test-only vendor, not a byte-for-byte mirror of
 // the upstream package, and a distinct package name avoids any
-// impression that github.com/Obedience-Corp/stream-debugger's generated Go
+// impression that github.com/Obedience-Corp/agent-stream-dbg's generated Go
 // package is (or could be mistaken for) the real upstream one. The RPC
 // name SendStreamingMessage and its request/response shapes are kept
 // faithful to the real spec (a2a.proto:31-42) wherever vendored.
@@ -787,7 +787,7 @@ const file_a2a_proto_rawDesc = "" +
 	"\x18TASK_STATE_AUTH_REQUIRED\x10\b2Z\n" +
 	"\n" +
 	"A2AService\x12L\n" +
-	"\x14SendStreamingMessage\x12\x1a.a2a.v1.SendMessageRequest\x1a\x16.a2a.v1.StreamResponse0\x01BJZHgithub.com/Obedience-Corp/stream-debugger/internal/testutil/mockgrpc/a2apbb\x06proto3"
+	"\x14SendStreamingMessage\x12\x1a.a2a.v1.SendMessageRequest\x1a\x16.a2a.v1.StreamResponse0\x01BMZKgithub.com/Obedience-Corp/agent-stream-dbg/internal/testutil/mockgrpc/a2apbb\x06proto3"
 
 var (
 	file_a2a_proto_rawDescOnce sync.Once

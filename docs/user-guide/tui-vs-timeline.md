@@ -20,7 +20,7 @@ Quick clarification on the two visualization modes.
 **What you see:**
 ```
 ┌─────────────────────────────────────────┐
-│ Stream Debugger - Session: xxx         │  ← Full terminal window
+│ agent-stream-dbg - Session: xxx         │  ← Full terminal window
 └─────────────────────────────────────────┘
 
 ┌──────────────┐  ┌──────────────┐
@@ -115,7 +115,7 @@ $ _  ← Back to normal prompt
 $ just stream "What is consciousness?"
 
 # ┌────────────────────────────────────┐
-# │ Stream Debugger                    │ ← TUI mode
+# │ agent-stream-dbg                    │ ← TUI mode
 # │                                    │   (full screen)
 # │ ◉ sam_harris streaming...         │
 # │ ◉ eckhart_tolle streaming...      │

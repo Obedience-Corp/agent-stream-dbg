@@ -3,8 +3,8 @@ package home
 import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/Obedience-Corp/stream-debugger/dialects"
-	"github.com/Obedience-Corp/stream-debugger/internal/config"
+	"github.com/Obedience-Corp/agent-stream-dbg/dialects"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
 )
 
 const (
@@ -68,7 +68,11 @@ func newModel(opts Options) model {
 }
 
 func (m *model) reload() {
-	m.entries = config.ListConfigs(m.opts.Cwd, m.opts.UserConfigDir)
+	dirs := m.opts.UserConfigDirs
+	if len(dirs) == 0 && m.opts.UserConfigDir != "" {
+		dirs = []string{m.opts.UserConfigDir}
+	}
+	m.entries = config.ListConfigs(m.opts.Cwd, dirs...)
 	if m.cursor >= len(m.homeItems()) {
 		m.cursor = 0
 	}

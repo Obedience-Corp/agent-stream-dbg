@@ -1,4 +1,4 @@
-// Package testutil provides test doubles for exercising stream-debugger
+// Package testutil provides test doubles for exercising agent-stream-dbg
 // against realistic data without a live backend.
 package testutil
 

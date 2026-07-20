@@ -25,7 +25,7 @@ $ go build -o bin/debugger ./cmd/debugger
 
 ### Module Name
 ```
-github.com/Obedience-Corp/stream-debugger
+github.com/Obedience-Corp/agent-stream-dbg
 ```
 
 ---
@@ -35,10 +35,10 @@ github.com/Obedience-Corp/stream-debugger
 ### All Tests Passing
 ```bash
 $ go test ./...
-ok  	github.com/Obedience-Corp/stream-debugger/internal/config	0.148s
-ok  	github.com/Obedience-Corp/stream-debugger/internal/events	0.255s
-ok  	github.com/Obedience-Corp/stream-debugger/internal/logger	0.375s
-ok  	github.com/Obedience-Corp/stream-debugger/internal/visualizer	0.512s
+ok  	github.com/Obedience-Corp/agent-stream-dbg/internal/config	0.148s
+ok  	github.com/Obedience-Corp/agent-stream-dbg/internal/events	0.255s
+ok  	github.com/Obedience-Corp/agent-stream-dbg/internal/logger	0.375s
+ok  	github.com/Obedience-Corp/agent-stream-dbg/internal/visualizer	0.512s
 ```
 
 ### Test Files Created

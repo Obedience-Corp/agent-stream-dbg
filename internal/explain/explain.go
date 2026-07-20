@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/mapping"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/mapping"
 )
 
 // Extraction is one field a matched rule pulled (or tried to pull) out of

@@ -18,7 +18,7 @@
 #
 # Offline fixture path (no agent process):
 #   just demo-acp
-#   stream-debugger explain --dialect dialects/acp.yaml --from testdata/fixtures/acp-session.jsonl
+#   agent-stream-dbg explain --dialect dialects/acp.yaml --from testdata/fixtures/acp-session.jsonl
 
 transport:
   type: acp

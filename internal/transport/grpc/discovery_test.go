@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/testutil/mockgrpc"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/testutil/mockgrpc"
 )
 
 func TestDiscoverStreamingMethodsBuildsUsableOptions(t *testing.T) {

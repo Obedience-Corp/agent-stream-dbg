@@ -28,9 +28,9 @@ unset NO_COLOR STREAM_DEBUGGER_REDUCED_MOTION NO_MOTION || true
 echo "→ probe live Obey stream"
 go run demos/obey_live_probe.go demos/configs/obey-live-demo.yaml
 
-echo "→ building stream-debugger"
+echo "→ building agent-stream-dbg"
 mkdir -p bin docs/assets
-go build -o bin/stream-debugger ./cmd/stream-debugger
+go build -o bin/agent-stream-dbg ./cmd/agent-stream-dbg
 
 echo "→ recording live Obey VHS (socket=$SOCK)"
 vhs demos/tapes/tui-obey-live.tape

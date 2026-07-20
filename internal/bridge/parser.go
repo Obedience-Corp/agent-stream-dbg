@@ -1,5 +1,5 @@
 // Package bridge is the stable call-site facade over a selected dialect for
-// internal/client, internal/visualizer, and cmd/stream-debugger. It knows no
+// internal/client, internal/visualizer, and cmd/agent-stream-dbg. It knows no
 // event types itself — internal/mapping.Engine does the work, driven entirely
 // by YAML data; this package only loads the chosen source and exposes a
 // convenient API.
@@ -15,9 +15,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Obedience-Corp/stream-debugger/dialects"
-	"github.com/Obedience-Corp/stream-debugger/internal/events"
-	"github.com/Obedience-Corp/stream-debugger/internal/mapping"
+	"github.com/Obedience-Corp/agent-stream-dbg/dialects"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/mapping"
 )
 
 // Parser decodes wire frames into the generic events.Event core via one

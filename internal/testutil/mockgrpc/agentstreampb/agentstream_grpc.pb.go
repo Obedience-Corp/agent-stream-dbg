@@ -1,5 +1,5 @@
 // Test service for the gRPC transport's mock server — the gRPC equivalent
-// of a recorded session fixture for SSE. Deliberately
+// of testdata/fixtures/brainyard-session.jsonl for SSE. Deliberately
 // small: enough oneof case variety to prove discriminator inference,
 // nothing resembling a second real dialect.
 

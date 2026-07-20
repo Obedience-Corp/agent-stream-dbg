@@ -7,14 +7,14 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/bridge"
-	"github.com/Obedience-Corp/stream-debugger/internal/config"
-	"github.com/Obedience-Corp/stream-debugger/internal/mapping"
-	"github.com/Obedience-Corp/stream-debugger/internal/transport"
-	acptransport "github.com/Obedience-Corp/stream-debugger/internal/transport/acp"
-	grpctransport "github.com/Obedience-Corp/stream-debugger/internal/transport/grpc"
-	"github.com/Obedience-Corp/stream-debugger/internal/transport/replay"
-	"github.com/Obedience-Corp/stream-debugger/internal/transport/sse"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/bridge"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/mapping"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport"
+	acptransport "github.com/Obedience-Corp/agent-stream-dbg/internal/transport/acp"
+	grpctransport "github.com/Obedience-Corp/agent-stream-dbg/internal/transport/grpc"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport/replay"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport/sse"
 )
 
 // GRPCStreamingMethod is the UI-facing alias for a reflection-discovered
@@ -67,7 +67,7 @@ func newACPTransport(cfg *config.EnhancedConfig, vars mapping.InterpolationVars)
 		Env:                    append([]string(nil), cfg.Transport.Env...),
 		Prompt:                 vars.Message,
 		AutoApprovePermissions: cfg.Transport.AutoApprove,
-		ClientName:             "stream-debugger",
+		ClientName:             "agent-stream-dbg",
 	})
 }
 

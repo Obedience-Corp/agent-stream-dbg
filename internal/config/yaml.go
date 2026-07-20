@@ -376,11 +376,11 @@ func (a AuthConfig) AuthMissingMessage() string {
 			return fmt.Sprintf("auth.type %q requires token_env in the run config", a.Type)
 		}
 		return fmt.Sprintf(
-			"%s is not set. Add it to a .env file in this directory (or export it), then re-run:\n\n  %s=your-secret-here\n\nstream-debugger loads .env automatically when reading a config.",
+			"%s is not set. Add it to a .env file in this directory (or export it), then re-run:\n\n  %s=your-secret-here\n\nagent-stream-dbg loads .env automatically when reading a config.",
 			a.TokenEnv, a.TokenEnv,
 		)
 	case "basic":
-		return "Basic auth credentials are not set. Put the username_env / password_env values in a .env file (or export them), then re-run.\n\nstream-debugger loads .env automatically when reading a config."
+		return "Basic auth credentials are not set. Put the username_env / password_env values in a .env file (or export them), then re-run.\n\nagent-stream-dbg loads .env automatically when reading a config."
 	default:
 		return ""
 	}

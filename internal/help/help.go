@@ -139,7 +139,7 @@ func styleCommandHelp(cmd *cli.Command) string {
 	b.WriteString(sectionStyle.Render("USAGE"))
 	b.WriteString("\n  ")
 
-	usagePattern := fmt.Sprintf("stream-debugger %s", cmd.Name)
+	usagePattern := fmt.Sprintf("agent-stream-dbg %s", cmd.Name)
 	if len(cmd.VisibleFlags()) > 0 {
 		usagePattern += " [options]"
 	}

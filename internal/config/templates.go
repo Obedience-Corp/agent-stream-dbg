@@ -23,7 +23,7 @@ func NewConfigYAML(kind TemplateKind, dialect, baseURL, endpoint, authEnv, grpcT
 	}
 
 	var body strings.Builder
-	body.WriteString("# Stream Debugger run configuration\n")
+	body.WriteString("# agent-stream-dbg run configuration\n")
 	body.WriteString("# Edit in the TUI home hub or with your editor. Secrets stay in env vars.\n")
 	body.WriteString("transport:\n")
 

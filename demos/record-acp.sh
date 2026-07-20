@@ -18,7 +18,7 @@ ADDR="127.0.0.1:${PORT}"
 
 echo "→ building binaries"
 mkdir -p bin docs/assets
-go build -o bin/stream-debugger ./cmd/stream-debugger
+go build -o bin/agent-stream-dbg ./cmd/agent-stream-dbg
 go build -o bin/fixture-sse-server ./cmd/fixture-sse-server
 
 echo "→ starting ACP fixture SSE server on :${PORT}"
@@ -45,7 +45,7 @@ if ! nc -z 127.0.0.1 "${PORT}" 2>/dev/null; then
 fi
 
 # Sanity: dialect explain must exit 0 before we burn VHS time.
-./bin/stream-debugger explain \
+./bin/agent-stream-dbg explain \
   --dialect dialects/acp.yaml \
   --from testdata/fixtures/acp-session.jsonl \
   >/dev/null

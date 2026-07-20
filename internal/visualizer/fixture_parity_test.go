@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/Obedience-Corp/stream-debugger/internal/bridge"
-	"github.com/Obedience-Corp/stream-debugger/internal/config"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/bridge"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
 )
 
 // TestApplyParsedEvent_ReferenceFixture_AggregatorMetricsMatchOriginal is
