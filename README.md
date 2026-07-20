@@ -259,7 +259,20 @@ just build
 just test
 ```
 
-`just --list` shows all recipes (demo, race, lint, multi-platform builds, etc.).
+`just --list` shows the top-level recipes. Use `just test`, `just release`, and
+`just vhs` to list the recipes in those focused modules.
+
+Release a tagged version with generated GitHub notes after merging the changes
+that should ship:
+
+```bash
+just release create v0.1.0
+```
+
+For a staged release, use `just release tag v0.1.0` followed by
+`just release publish v0.1.0`. Build release binaries with
+`just release build-all-platforms`. Live TUI recording recipes are grouped
+under `just vhs`; the source file is `.justfiles/vhs.just`.
 
 VHS recordings:
 
@@ -268,7 +281,7 @@ just record-home-ux               # docs/assets/home-ux-*.gif
 just record-acp                   # docs/assets/tui-acp-demo.gif
 just record-acp-live              # docs/assets/tui-acp-live.gif
 bash demos/record-stream-anim.sh  # docs/assets/tui-stream-anim.gif
-# Live gRPC/SSE tapes: demos/record-obey-*.sh, vhs.just (need local services)
+# Live gRPC/SSE tapes: demos/record-obey-*.sh, .justfiles/vhs.just (need local services)
 ```
 
 ## Contributing

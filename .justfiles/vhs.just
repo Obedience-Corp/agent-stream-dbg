@@ -6,30 +6,35 @@
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
-root := justfile_directory()
+root := justfile_directory() + "/.."
 content := root + "/docs/termcast"
 assets := root + "/docs/assets"
 termcast := env_var_or_default("TERMCAST", "termcast")
 brainyard_binary := "/tmp/stream-debugger-brainyard-tui"
 obey_binary := "/tmp/stream-debugger-obey-tui"
 
+[private]
 default:
     @just --list --justfile {{source_file()}}
 
 # Check the external TermCast/VHS/ffmpeg toolchain.
+[no-cd]
 doctor:
     "{{termcast}}" doctor --content "{{content}}"
 
 # Validate the existing TermCast content pack.
+[no-cd]
 validate:
     "{{termcast}}" validate --content "{{content}}"
 
 # Build the binaries referenced by the existing live tapes outside the repo.
+[no-cd]
 build:
     go build -o "{{brainyard_binary}}" ./cmd/stream-debugger
     go build -o "{{obey_binary}}" ./cmd/stream-debugger
 
 # Require both live backends before attempting a recording.
+[no-cd]
 services:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -43,17 +48,21 @@ services:
     fi
 
 # Record and verify the Brainyard integration flow.
+[no-cd]
 record-brainyard: doctor validate build services
     "{{termcast}}" tui brainyard-live --content "{{content}}" --dest "{{assets}}" --width 1500 --fps 30 --colors 256
 
 # Record and verify the Obey gRPC integration flow.
+[no-cd]
 record-obey: doctor validate build services
     "{{termcast}}" tui obey-grpc --content "{{content}}" --dest "{{assets}}" --width 1500 --fps 30 --colors 256
 
 # Run the live recording integration suite.
+[no-cd]
 integration: record-brainyard record-obey verify
 
 # Check that the recordings are usable README assets.
+[no-cd]
 verify:
     #!/usr/bin/env bash
     set -euo pipefail
