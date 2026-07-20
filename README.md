@@ -1,8 +1,16 @@
 # Stream Debugger
 
-CLI debugger for SSE and gRPC streams. Point it at a live endpoint (or a
-recorded fixture), watch events in a TUI, and analyze parallel multi-agent
-execution from logs.
+TUI debugger for **agent and multi-agent streams** — not video streaming.
+
+Point it at a live backend or a recorded fixture, watch frames in a multi-pane
+terminal UI, and decode them through a **dialect** (what the bytes mean).
+
+| Transport | What it is |
+|-----------|------------|
+| **SSE** | HTTP Server-Sent Events |
+| **gRPC** | Streaming RPCs (reflection, descriptor set, or `.proto`) |
+| **ACP** | [Agent Client Protocol](https://agentclientprotocol.com/) over stdio |
+| **Replay** | JSONL fixture through the same pipeline (offline / CI) |
 
 [![Go Version](https://img.shields.io/badge/go-1.25+-blue.svg)](https://golang.org/dl/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
@@ -23,40 +31,65 @@ just install   # or: go install ./cmd/stream-debugger
 
 ## Quick start
 
-After install, just run:
-
 ```bash
 stream-debugger
 ```
 
-That opens the **home hub**: create or pick a run config, try an offline demo
-(no network), then open an interactive session. Quit a session to return home.
+Bare launch opens the **home hub**:
 
-Or jump straight in with a YAML run config:
+1. Create or pick a run configuration  
+2. Or try an **offline demo** (bundled fixtures, no network)  
+3. Open an interactive session  
+4. Quit the session → return to the home hub  
+
+<p align="center">
+  <img src="docs/assets/home-ux-first-run.gif" alt="Home hub first launch" width="900">
+</p>
+
+| Key | Home hub |
+|-----|----------|
+| `↑` `↓` / `j` `k` | Move |
+| `Enter` | Open session (or edit if incomplete) |
+| `n` | New configuration wizard |
+| `e` | Edit selected config |
+| `d` | Delete |
+| `q` | Quit |
+
+Jump straight into interactive mode with a YAML file (demos, scripts, CI):
 
 ```bash
-cp config.yaml.example my-config.yaml
-# edit transport, dialect, auth
 stream-debugger --config my-config.yaml
+# or
+stream-debugger -c demos/configs/acp-demo.yaml
 ```
 
-From a clone, CLI offline demos still work without the TUI:
-
-```bash
-just demo       # multi-agent timeline (bundled fixture)
-just demo-acp   # ACP dialect: explain + timeline + replay
-```
-
-Single-shot stream (useful for scripts):
+Single-shot stream (no home hub):
 
 ```bash
 stream-debugger stream --config my-config.yaml "your message"
 ```
 
+From a clone, CLI offline recipes without the TUI:
+
+```bash
+just demo       # multi-agent timeline (bundled fixture)
+just demo-acp   # ACP explain + timeline + replay
+```
+
 ## Demos
 
-Recordings under [`docs/assets/`](docs/assets/) show different ways to use the
-tool. Offline ones need no API key or live service.
+Recordings under [`docs/assets/`](docs/assets/). Offline ones need no API key
+or live service.
+
+### Home hub
+
+First run, multi-config select, and new-config wizard:
+
+| Flow | Recording |
+|------|-----------|
+| Empty first launch | [`home-ux-first-run.gif`](docs/assets/home-ux-first-run.gif) |
+| Select → open → return home | [`home-ux-select-open.gif`](docs/assets/home-ux-select-open.gif) |
+| New configuration wizard | [`home-ux-new-config.gif`](docs/assets/home-ux-new-config.gif) |
 
 ### Multi-agent TUI
 
@@ -66,17 +99,9 @@ Live multi-agent stream with agent lanes (fixture-backed recording):
   <img src="docs/assets/tui-brainyard-live.gif" alt="Multi-agent stream TUI" width="900">
 </p>
 
-### First-run configuration
-
-Launch without a config — setup panel, save with `Ctrl+S`:
-
-<p align="center">
-  <img src="docs/assets/tui-first-run-config.gif" alt="First-run configuration panel" width="900">
-</p>
-
 ### TUI motion chrome
 
-Energy strip, agent pulses, and flow-stage animation during a stream
+Energy strip, agent pulses, and flow-stage animation
 (`demos/record-stream-anim.sh`):
 
 <p align="center">
@@ -109,14 +134,16 @@ gRPC multi-agent activity view (local daemon; not a public hosted service):
   <img src="docs/assets/tui-obey-activity.gif" alt="gRPC multi-agent activity TUI" width="900">
 </p>
 
-Also available: [`tui-obey-grpc.gif`](docs/assets/tui-obey-grpc.gif) (campaign-state
-stream setup) and [`tui-obey-live.gif`](docs/assets/tui-obey-live.gif).
+Also: [`tui-obey-grpc.gif`](docs/assets/tui-obey-grpc.gif),
+[`tui-obey-live.gif`](docs/assets/tui-obey-live.gif).
+
 ## Commands
 
 | Command | Purpose |
 |---------|---------|
-| `stream-debugger --config <file>` | Interactive TUI (default) |
-| `stream-debugger stream --config <file> "msg"` | One message, then exit |
+| `stream-debugger` | Home hub (default) |
+| `stream-debugger -c <file>` | Interactive TUI with a run config |
+| `stream-debugger stream -c <file> "msg"` | One message, then exit |
 | `stream-debugger timeline <session.jsonl>` | Parallel execution timeline |
 | `stream-debugger replay <session.jsonl>` | Replay a recorded session |
 | `stream-debugger explain ...` | Trace dialect matching per frame |
@@ -124,19 +151,41 @@ stream setup) and [`tui-obey-live.gif`](docs/assets/tui-obey-live.gif).
 
 Flags for `stream` must come **before** the message argument.
 
-In the TUI: type and Enter to send, `Ctrl+T` toggles RAW (wire) vs PARSED
-(agent-organized) views, `c` opens the config panel, `Ctrl+C` quits.
+### Interactive TUI keys
+
+| Key | Action |
+|-----|--------|
+| Type + Enter | Send (insert mode: `i`) |
+| `1`–`5` | Switch panes (flow, app, timeline, events, …) |
+| `Ctrl+T` | Toggle RAW (wire) vs PARSED (agent-organized) |
+| `c` | Open config panel |
+| `Ctrl+S` | Save config (in panel) |
+| `Ctrl+C` / quit | Leave session (returns to home when launched from hub) |
+
+See [USAGE.md](USAGE.md) for the full keyboard map and troubleshooting.
 
 ## Configuration
 
-A run config selects transport and dialect. Transports:
+A **run config** is YAML that picks a transport and a dialect. Create one in
+the home hub wizard, or copy [`config.yaml.example`](config.yaml.example).
 
-- `sse` — HTTP Server-Sent Events
-- `grpc` — streaming RPCs (reflection, descriptor set, or `.proto`)
-- `replay` — JSONL fixture through the same pipeline
-- `acp` — Agent Client Protocol agent over stdio (spawn + handshake; multi-turn reuses the process)
+Configs are loaded from:
 
-Example:
+- The path you pass with `-c` / `--config`
+- Well-known names in the working directory (`stream-debugger.yaml`, `config.yaml`, …)
+- `configs/*.yaml` in the working directory
+- `~/.config/stream-debugger/*.yaml` (user library used by the home hub)
+
+### Transports
+
+| Type | Role |
+|------|------|
+| `sse` | HTTP Server-Sent Events |
+| `grpc` | Streaming RPCs |
+| `acp` | ACP agent process over stdio (multi-turn reuses the process) |
+| `replay` | JSONL fixture path in `base_url` (offline / demos) |
+
+Example (SSE + OpenAI-style dialect):
 
 ```yaml
 transport:
@@ -156,25 +205,27 @@ logging:
   dir: "./logs"
 ```
 
-Auth is opt-in: omit `auth:` to send no credential. See
-[`config.yaml.example`](config.yaml.example) for the full field set.
+Auth is opt-in: omit `auth:` to send no credential. Full field set:
+[`config.yaml.example`](config.yaml.example).
 
 ### Dialects
+
+Dialects are YAML **data** embedded in the binary — they define how frames
+map to agents, tools, and content.
 
 | Dialect | Wire | Offline without a live backend |
 |---------|------|--------------------------------|
 | `openai` | Chat Completions SSE | `testdata/fixtures/openai-chat.jsonl` |
 | `anthropic` | Messages SSE | `testdata/fixtures/anthropic-messages.jsonl` |
 | `a2a` | Agent2Agent | `testdata/fixtures/a2a-session.jsonl` |
-| `acp` | Agent Client Protocol JSON-RPC | `just demo-acp`; live: `configs/acp-stdio.yaml` |
-| `brainyard` | Private multi-agent SSE | Fixture only — backend is **not** public |
+| `acp` | Agent Client Protocol JSON-RPC | Home offline demos; `just demo-acp`; live: `configs/acp-stdio.yaml` |
+| `brainyard` | Private multi-agent SSE | Fixture / home offline demo — backend is **not** public |
 | `obey` / `obey-activity` | Private Obey gRPC daemon | Needs a local `obey serve` socket |
 
-Dialects are YAML data embedded in the binary. Private backends (Brainyard,
-Obey) are **not** published with this repo; their dialects ship so you can
-decode recorded streams and so CI can golden-test them. Public use starts
-from `openai` / `anthropic` / `a2a` / `acp`, or `stream-debugger init` against
-your own recording.
+Private backends (Brainyard, Obey) are **not** published with this repo; their
+dialects ship so you can decode recorded streams and so CI can golden-test
+them. Public use starts from `openai` / `anthropic` / `a2a` / `acp`, or
+`stream-debugger init` against your own recording.
 
 ### Example configs
 
@@ -182,9 +233,9 @@ your own recording.
 |------|--------|
 | `config.yaml.example` | Full field reference |
 | `demos/configs/acp-demo.yaml` | Offline ACP fixture SSE demo |
-| `configs/acp-stdio.yaml` | Live ACP agent over stdio (`npx … agent stdio`, etc.) |
+| `configs/acp-stdio.yaml` | Live ACP agent over stdio |
 | `configs/brainyard-v3.yaml` | Shape sample for a private multi-agent SSE API |
-| `configs/obey-grpc.yaml` | Shape sample for a local Obey daemon (not a public service) |
+| `configs/obey-grpc.yaml` | Shape sample for a local Obey daemon |
 | `configs/obey-activity-grpc.yaml` | Shape sample for Obey activity streams |
 
 ## Logging
@@ -213,18 +264,19 @@ just test
 VHS recordings:
 
 ```bash
-just record-acp                   # docs/assets/tui-acp-demo.gif (fixture dialect)
-just record-acp-live              # docs/assets/tui-acp-live.gif (multi-turn stdio)
+just record-home-ux               # docs/assets/home-ux-*.gif
+just record-acp                   # docs/assets/tui-acp-demo.gif
+just record-acp-live              # docs/assets/tui-acp-live.gif
 bash demos/record-stream-anim.sh  # docs/assets/tui-stream-anim.gif
 # Live gRPC/SSE tapes: demos/record-obey-*.sh, vhs.just (need local services)
 ```
 
 ## Contributing
 
-1. Fork and branch
-2. Add tests for new behavior
-3. Run `just test`
-4. Open a pull request
+1. Fork and branch  
+2. Add tests for new behavior  
+3. Run `just test`  
+4. Open a pull request  
 
 ## License
 
