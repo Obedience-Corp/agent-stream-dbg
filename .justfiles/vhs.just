@@ -42,8 +42,9 @@ services:
         echo "Brainyard is not reachable at 127.0.0.1:5003" >&2
         exit 1
     fi
-    if ! test -S /tmp/obey-agent-stream-dbg.sock; then
-        echo "Obey is not listening on /tmp/obey-agent-stream-dbg.sock" >&2
+    # Obey daemon socket is product-owned (/tmp/obey.sock), not tool-named.
+    if ! test -S /tmp/obey.sock; then
+        echo "Obey is not listening on /tmp/obey.sock" >&2
         exit 1
     fi
 

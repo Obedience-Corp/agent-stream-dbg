@@ -28,7 +28,7 @@ Tab
 Type "grpc" Sleep 150ms
 Tab
 Tab
-Type "unix:///tmp/obey-agent-stream-dbg.sock" Sleep 150ms
+Type "unix:///tmp/obey.sock" Sleep 150ms
 Tab
 Type "plaintext" Sleep 150ms
 Tab
