@@ -8,8 +8,9 @@ execution from logs.
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 <p align="center">
-  <img src="docs/assets/tui-brainyard-live.gif" alt="Live multi-agent stream in the TUI" width="900">
+  <img src="docs/assets/tui-brainyard-live.gif" alt="Multi-agent stream TUI (fixture-backed demo)" width="900">
 </p>
+
 
 ## Install
 
@@ -27,17 +28,11 @@ just install   # or: go install ./cmd/stream-debugger
 
 ## Quick start
 
-No backend required — timeline demo against a bundled fixture:
+No backend required — offline demos against bundled fixtures:
 
 ```bash
-just demo
-```
-
-ACP (Agent Client Protocol) dialect against a bundled Grok-style session
-fixture — explain, timeline, and replay:
-
-```bash
-just demo-acp
+just demo       # multi-agent timeline (bundled fixture)
+just demo-acp   # ACP dialect: explain + timeline + replay
 ```
 
 <p align="center">
@@ -108,15 +103,32 @@ logging:
 Auth is opt-in: omit `auth:` to send no credential. See
 [`config.yaml.example`](config.yaml.example) for the full field set.
 
-### Examples and dialects
+### Dialects
+
+| Dialect | Wire | Offline without a live backend |
+|---------|------|--------------------------------|
+| `openai` | Chat Completions SSE | `testdata/fixtures/openai-chat.jsonl` |
+| `anthropic` | Messages SSE | `testdata/fixtures/anthropic-messages.jsonl` |
+| `a2a` | Agent2Agent | `testdata/fixtures/a2a-session.jsonl` |
+| `acp` | Agent Client Protocol JSON-RPC | `just demo-acp` |
+| `brainyard` | Private multi-agent SSE | Fixture only — backend is **not** public |
+| `obey` / `obey-activity` | Private Obey gRPC daemon | Needs a local `obey serve` socket |
+
+Dialects are YAML data embedded in the binary. Private backends (Brainyard,
+Obey) are **not** published with this repo; their dialects ship so you can
+decode recorded streams and so CI can golden-test them. Public use starts
+from `openai` / `anthropic` / `a2a` / `acp`, or `stream-debugger init` against
+your own recording.
+
+### Example configs
 
 | Path | Notes |
 |------|--------|
-| `configs/brainyard-v3.yaml` | Multi-agent SSE example |
-| `configs/obey-grpc.yaml` | Obey daemon campaign-state stream |
-| `configs/obey-activity-grpc.yaml` | Obey multi-agent activity stream |
-| `demos/configs/acp-demo.yaml` | Offline ACP fixture demo (with `just demo-acp` / `just record-acp`) |
-| `dialects/` | `openai`, `anthropic`, `a2a`, `acp`, `brainyard`, `obey`, `obey-activity` |
+| `config.yaml.example` | Full field reference |
+| `demos/configs/acp-demo.yaml` | Offline ACP fixture SSE demo |
+| `configs/brainyard-v3.yaml` | Shape sample for a private multi-agent SSE API |
+| `configs/obey-grpc.yaml` | Shape sample for a local Obey daemon (not a public service) |
+| `configs/obey-activity-grpc.yaml` | Shape sample for Obey activity streams |
 
 ## Logging
 
