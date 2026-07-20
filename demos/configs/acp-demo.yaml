@@ -1,0 +1,29 @@
+# Offline ACP dialect demo — point at fixture-sse-server replaying
+# testdata/fixtures/acp-session.jsonl (see demos/record-acp.sh / just demo-acp).
+
+transport:
+  type: "sse"
+  base_url: "http://127.0.0.1:18767"
+
+  stream_endpoint:
+    url: "/stream"
+    method: "POST"
+    headers:
+      Accept: "text/event-stream"
+    auth:
+      type: "none"
+
+dialect:
+  file: "acp"
+
+session:
+  id: "acp-demo"
+  auto_setup: false
+
+logging:
+  dir: "/tmp/stream-debugger-acp-demo-logs"
+  dimensions:
+    by_event_type: true
+    by_agent: true
+    by_session: true
+    api_calls: false
