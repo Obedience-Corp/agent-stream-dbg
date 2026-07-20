@@ -60,7 +60,8 @@ func runFakeACPAgent() {
 				"result":  map[string]any{"sessionId": "sess_test_1"},
 			})
 		case "session/prompt":
-			// Emit a short turn then complete.
+			// Emit a short turn then complete. Multi-turn tests issue multiple
+			// prompts against the same process — each gets a full reply cycle.
 			_ = enc.Encode(map[string]any{
 				"jsonrpc": "2.0",
 				"method":  "session/update",
@@ -237,5 +238,71 @@ func TestTransport_SendAfterConnect(t *testing.T) {
 	payload := []byte(`{"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":"x"}}`)
 	if err := tr.Send(ctx, payload); err != nil {
 		t.Fatalf("Send: %v", err)
+	}
+}
+
+func TestTransport_MultiTurnPromptReusesSession(t *testing.T) {
+	// Connect with no initial prompt, then Prompt twice — same session id.
+	tr := New(Config{
+		Command:                os.Args[0],
+		Args:                   []string{"-test.run=TestHelperProcess_FakeACPAgent", "--"},
+		Env:                    []string{"GO_WANT_HELPER_PROCESS=1"},
+		AutoApprovePermissions: true,
+		// empty Prompt: handshake only
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := tr.Connect(ctx); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	defer func() { _ = tr.Close() }()
+
+	if !tr.Alive() {
+		t.Fatal("expected Alive after Connect")
+	}
+	sid := tr.SessionID()
+	if sid != "sess_test_1" {
+		t.Fatalf("session = %q", sid)
+	}
+
+	collectUntil := func(substr string) {
+		t.Helper()
+		deadline := time.After(5 * time.Second)
+		var got strings.Builder
+		for !strings.Contains(got.String(), substr) {
+			select {
+			case <-deadline:
+				t.Fatalf("timeout waiting for %q; got:\n%s", substr, got.String())
+			case f, ok := <-tr.Frames():
+				if !ok {
+					t.Fatalf("frames closed; got:\n%s", got.String())
+				}
+				got.Write(f.Data)
+				got.WriteByte('\n')
+			}
+		}
+	}
+
+	// Drain handshake responses (initialize + session/new) that arrived as frames.
+	// Then first prompt turn.
+	if err := tr.Prompt(ctx, "first turn"); err != nil {
+		t.Fatalf("Prompt 1: %v", err)
+	}
+	collectUntil("hello from fake agent")
+	collectUntil("end_turn")
+
+	if tr.SessionID() != sid {
+		t.Fatalf("session changed after first prompt: %q vs %q", tr.SessionID(), sid)
+	}
+	if !tr.Alive() {
+		t.Fatal("expected Alive after first turn")
+	}
+
+	if err := tr.Prompt(ctx, "second turn"); err != nil {
+		t.Fatalf("Prompt 2: %v", err)
+	}
+	collectUntil("hello from fake agent")
+	if tr.SessionID() != sid {
+		t.Fatalf("session changed after second prompt")
 	}
 }

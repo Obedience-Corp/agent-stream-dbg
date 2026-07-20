@@ -89,6 +89,10 @@ demo-acp:
 record-acp:
     bash demos/record-acp.sh
 
+# Record docs/assets/tui-acp-live.gif — multi-turn ACP process/session reuse.
+record-acp-live:
+    bash demos/record-acp-live.sh
+
 # Run the OpenAI fixture through the mock SSE server and report decode counts.
 demo-openai:
     go test ./internal/client -run TestOpenAIDialectMockSSESmoke -count=1 -v

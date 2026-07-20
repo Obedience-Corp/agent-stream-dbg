@@ -231,23 +231,61 @@ func (t *Transport) handshake(ctx context.Context) error {
 	t.sessionID = newResult.SessionID
 	t.mu.Unlock()
 
-	prompt := strings.TrimSpace(t.cfg.Prompt)
-	if prompt == "" {
-		return nil
+	// Optional first prompt from Config (one-shot stream mode). Interactive
+	// multi-turn uses Prompt() after Connect instead so the same process
+	// handles every subsequent message.
+	if prompt := strings.TrimSpace(t.cfg.Prompt); prompt != "" {
+		return t.Prompt(ctx, prompt)
+	}
+	return nil
+}
+
+// Alive reports whether the child process is still open for Prompt calls.
+func (t *Transport) Alive() bool {
+	select {
+	case <-t.closed:
+		return false
+	default:
+		return t.stdin != nil && t.cmd != nil && t.cmd.Process != nil
+	}
+}
+
+// Prompt starts a new session/prompt turn on an already-connected agent.
+// Connect must have completed (with a session id) first. Safe for multi-turn:
+// the process and session are reused; only a new prompt RPC is issued.
+//
+// The JSON-RPC response is awaited in the background so this returns once the
+// request is on the wire; session/update frames continue on Frames().
+func (t *Transport) Prompt(ctx context.Context, message string) error {
+	select {
+	case <-t.closed:
+		return fmt.Errorf("acp: transport closed")
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	if !t.Alive() {
+		return fmt.Errorf("acp: not connected")
+	}
+	text := strings.TrimSpace(message)
+	if text == "" {
+		return fmt.Errorf("acp: empty prompt")
+	}
+	sessionID := t.SessionID()
+	if sessionID == "" {
+		return fmt.Errorf("acp: no session (handshake incomplete)")
 	}
 	promptParams := map[string]any{
-		"sessionId": newResult.SessionID,
+		"sessionId": sessionID,
 		"prompt": []any{
-			map[string]any{"type": "text", "text": prompt},
+			map[string]any{"type": "text", "text": text},
 		},
 	}
 	// Fire-and-forget wait: the prompt response may arrive after many
-	// session/update notifications. Wait in the background so Connect can
-	// return once the turn is started; frames already stream via readStdout.
+	// session/update notifications. Frames stream via readStdout.
 	t.wg.Add(1)
 	go func() {
 		defer t.wg.Done()
-		// Long timeout: agent turns can take minutes.
 		pctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
 		_, _ = t.call(pctx, "session/prompt", promptParams)
