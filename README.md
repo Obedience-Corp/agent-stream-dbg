@@ -7,11 +7,6 @@ execution from logs.
 [![Go Version](https://img.shields.io/badge/go-1.25+-blue.svg)](https://golang.org/dl/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-<p align="center">
-  <img src="docs/assets/tui-brainyard-live.gif" alt="Multi-agent stream TUI (fixture-backed demo)" width="900">
-</p>
-
-
 ## Install
 
 ```bash
@@ -35,10 +30,6 @@ just demo       # multi-agent timeline (bundled fixture)
 just demo-acp   # ACP dialect: explain + timeline + replay
 ```
 
-<p align="center">
-  <img src="docs/assets/tui-acp-demo.gif" alt="ACP dialect explain, timeline, and TUI demo" width="900">
-</p>
-
 Connect to a stream with a YAML run config:
 
 ```bash
@@ -56,6 +47,55 @@ Single-shot stream (useful for scripts):
 stream-debugger stream --config my-config.yaml "your message"
 ```
 
+## Demos
+
+Recordings under [`docs/assets/`](docs/assets/) show different ways to use the
+tool. Offline ones need no API key or live service.
+
+### Multi-agent TUI
+
+Live multi-agent stream with agent lanes (fixture-backed recording):
+
+<p align="center">
+  <img src="docs/assets/tui-brainyard-live.gif" alt="Multi-agent stream TUI" width="900">
+</p>
+
+### First-run configuration
+
+Launch without a config — setup panel, save with `Ctrl+S`:
+
+<p align="center">
+  <img src="docs/assets/tui-first-run-config.gif" alt="First-run configuration panel" width="900">
+</p>
+
+### TUI motion chrome
+
+Energy strip, agent pulses, and flow-stage animation during a stream
+(`demos/record-stream-anim.sh`):
+
+<p align="center">
+  <img src="docs/assets/tui-stream-anim.gif" alt="TUI stream animation and motion chrome" width="900">
+</p>
+
+### ACP dialect (explain, timeline, replay)
+
+Decode Agent Client Protocol JSON-RPC sessions offline — `just demo-acp` /
+`just record-acp`:
+
+<p align="center">
+  <img src="docs/assets/tui-acp-demo.gif" alt="ACP dialect explain, timeline, and TUI demo" width="900">
+</p>
+
+### gRPC activity stream
+
+gRPC multi-agent activity view (local daemon; not a public hosted service):
+
+<p align="center">
+  <img src="docs/assets/tui-obey-activity.gif" alt="gRPC multi-agent activity TUI" width="900">
+</p>
+
+Also available: [`tui-obey-grpc.gif`](docs/assets/tui-obey-grpc.gif) (campaign-state
+stream setup) and [`tui-obey-live.gif`](docs/assets/tui-obey-live.gif).
 ## Commands
 
 | Command | Purpose |
@@ -152,6 +192,14 @@ just test
 ```
 
 `just --list` shows all recipes (demo, race, lint, multi-platform builds, etc.).
+
+VHS recordings:
+
+```bash
+just record-acp                 # docs/assets/tui-acp-demo.gif
+bash demos/record-stream-anim.sh  # docs/assets/tui-stream-anim.gif
+# Live gRPC/SSE tapes: demos/record-obey-*.sh, vhs.just (need local services)
+```
 
 ## Contributing
 
