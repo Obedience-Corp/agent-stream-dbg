@@ -1,0 +1,21 @@
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientInfo":{"name":"stream-debugger","version":"0.1.0"}}}
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1,"agentInfo":{"name":"grok","version":"open-source"},"agentCapabilities":{"loadSession":true}}}
+{"jsonrpc":"2.0","id":2,"method":"session/new","params":{"cwd":"/Users/dev/project","mcpServers":[]}}
+{"jsonrpc":"2.0","id":2,"result":{"sessionId":"sess_abc123"}}
+{"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{"sessionId":"sess_abc123","prompt":[{"type":"text","text":"List files in src/ and summarize main.go"}]}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"List files in src/ and summarize main.go"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123","update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"I'll list the directory then read main.go."}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123","update":{"sessionUpdate":"agent_message_chunk","messageId":"msg_agent_1","content":{"type":"text","text":"I'll inspect "}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123","update":{"sessionUpdate":"agent_message_chunk","messageId":"msg_agent_1","content":{"type":"text","text":"the project structure first."}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123","update":{"sessionUpdate":"plan","entries":[{"content":"List src/","priority":"high","status":"pending"},{"content":"Read main.go","priority":"high","status":"pending"}]}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123","update":{"sessionUpdate":"tool_call","toolCallId":"call_001","title":"List src/","kind":"search","status":"pending","locations":[{"path":"/Users/dev/project/src"}]}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123","update":{"sessionUpdate":"tool_call_update","toolCallId":"call_001","status":"in_progress"}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123","update":{"sessionUpdate":"tool_call_update","toolCallId":"call_001","status":"completed","content":[{"type":"content","content":{"type":"text","text":"main.go\nutil.go\n"}}]}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123","update":{"sessionUpdate":"tool_call","toolCallId":"call_002","title":"Read main.go","kind":"read","status":"pending","locations":[{"path":"/Users/dev/project/src/main.go"}]}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123","update":{"sessionUpdate":"tool_call_update","toolCallId":"call_002","status":"completed","content":[{"type":"content","content":{"type":"text","text":"package main\n\nfunc main() {}\n"}}]}}}
+{"jsonrpc":"2.0","method":"_x.ai/session/update","params":{"sessionId":"sess_abc123","update":{"sessionUpdate":"subagent_spawned","subagent_id":"sa_1","parent_session_id":"sess_abc123","child_session_id":"sess_child_1","subagent_type":"general-purpose","description":"Summarize main.go"}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_child_1","update":{"sessionUpdate":"agent_message_chunk","messageId":"msg_child_1","content":{"type":"text","text":"main.go is a minimal entrypoint."}}}}
+{"jsonrpc":"2.0","method":"_x.ai/session/update","params":{"sessionId":"sess_abc123","update":{"sessionUpdate":"subagent_finished","subagent_id":"sa_1","child_session_id":"sess_child_1","status":"completed","tool_calls":0,"turns":1,"duration_ms":420}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123","update":{"sessionUpdate":"agent_message_chunk","messageId":"msg_agent_2","content":{"type":"text","text":"src/ has main.go and util.go. main.go is a minimal entrypoint."}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess_abc123","update":{"sessionUpdate":"usage_update","used":1200,"size":200000,"cost":{"amount":0.012,"currency":"USD"}}}}
+{"jsonrpc":"2.0","id":3,"result":{"stopReason":"end_turn"}}

@@ -1,0 +1,127 @@
+frame 1  event=
+  ✓ rules[0] matched {path: method, equals: initialize}
+      method           ← method                   = "initialize"
+      protocol_version ← params.protocolVersion   = "1"
+frame 2  event=
+  ✓ rules[8] matched {exists: result.protocolVersion}
+      agent_name       ← result.agentInfo.name      = "grok"
+      agent_version    ← result.agentInfo.version   = "open-source"
+      protocol_version ← result.protocolVersion     = "1"
+frame 3  event=
+  ✓ rules[1] matched {path: method, equals: session/new}
+      cwd    ← params.cwd   = "/Users/dev/project"
+      method ← method       = "session/new"
+frame 4  event=
+  ✓ rules[7] matched {exists: result.sessionId}
+      session_id ← result.sessionId   = "sess_abc123"
+frame 5  event=
+  ✓ rules[3] matched {path: method, equals: session/prompt}
+      source     ← const: user            = "user"
+      content    ← params.prompt.0.text   = "List files in src/ and summarize main.go"
+      method     ← method                 = "session/prompt"
+      session_id ← params.sessionId       = "sess_abc123"
+frame 6  event=user_message_chunk
+  ✓ rules[9] matched {event: user_message_chunk}
+      source       ← const: user                  = "user"
+      content      ← params.update.content.text   = "List files in src/ and summarize main.go"
+      content_type ← params.update.content.type   = "text"
+      session_id   ← params.sessionId             = "sess_abc123"
+frame 7  event=agent_thought_chunk
+  ✓ rules[11] matched {event: agent_thought_chunk}
+      source     ← const: agent                 = "agent"
+      content    ← params.update.content.text   = "I'll list the directory then read main.go."
+      session_id ← params.sessionId             = "sess_abc123"
+frame 8  event=agent_message_chunk
+  ✓ rules[10] matched {event: agent_message_chunk}
+      source       ← const: agent                 = "agent"
+      content      ← params.update.content.text   = "I'll inspect "
+      content_type ← params.update.content.type   = "text"
+      session_id   ← params.sessionId             = "sess_abc123"
+frame 9  event=agent_message_chunk
+  ✓ rules[10] matched {event: agent_message_chunk}
+      source       ← const: agent                 = "agent"
+      content      ← params.update.content.text   = "the project structure first."
+      content_type ← params.update.content.type   = "text"
+      session_id   ← params.sessionId             = "sess_abc123"
+frame 10  event=plan
+  ✓ rules[15] matched {event: plan}
+      source     ← const: agent            = "agent"
+      entries    ← params.update.entries   = "[map[content:List src/ priority:high status:pending] map[content:Read main.go priority:high status:pending]]"
+      session_id ← params.sessionId        = "sess_abc123"
+frame 11  event=tool_call
+  ✓ rules[12] matched {event: tool_call}
+      source     ← params.update.toolCallId         = "call_001"
+      call_id    ← params.update.toolCallId         = "call_001"
+      path       ← params.update.locations.0.path   = "/Users/dev/project/src"
+      session_id ← params.sessionId                 = "sess_abc123"
+      status     ← params.update.status             = "pending"
+      tool_kind  ← params.update.kind               = "search"
+      tool_name  ← params.update.title              = "List src/"
+frame 12  event=tool_call_update
+  ✓ rules[14] matched {event: tool_call_update}
+      source     ← params.update.toolCallId   = "call_001"
+      call_id    ← params.update.toolCallId   = "call_001"
+      session_id ← params.sessionId           = "sess_abc123"
+      status     ← params.update.status       = "in_progress"
+frame 13  event=tool_call_update
+  ✓ rules[13] matched {event: tool_call_update, path: params.update.status, equals: completed}
+      source     ← params.update.toolCallId               = "call_001"
+      content    ← params.update.content.0.content.text   = "main.go\nutil.go\n"
+      call_id    ← params.update.toolCallId               = "call_001"
+      session_id ← params.sessionId                       = "sess_abc123"
+      status     ← params.update.status                   = "completed"
+frame 14  event=tool_call
+  ✓ rules[12] matched {event: tool_call}
+      source     ← params.update.toolCallId         = "call_002"
+      call_id    ← params.update.toolCallId         = "call_002"
+      path       ← params.update.locations.0.path   = "/Users/dev/project/src/main.go"
+      session_id ← params.sessionId                 = "sess_abc123"
+      status     ← params.update.status             = "pending"
+      tool_kind  ← params.update.kind               = "read"
+      tool_name  ← params.update.title              = "Read main.go"
+frame 15  event=tool_call_update
+  ✓ rules[13] matched {event: tool_call_update, path: params.update.status, equals: completed}
+      source     ← params.update.toolCallId               = "call_002"
+      content    ← params.update.content.0.content.text   = "package main\n\nfunc main() {}\n"
+      call_id    ← params.update.toolCallId               = "call_002"
+      session_id ← params.sessionId                       = "sess_abc123"
+      status     ← params.update.status                   = "completed"
+frame 16  event=subagent_spawned
+  ✓ rules[19] matched {event: subagent_spawned}
+      source            ← params.update.subagent_id         = "sa_1"
+      child_session_id  ← params.update.child_session_id    = "sess_child_1"
+      description       ← params.update.description         = "Summarize main.go"
+      parent_session_id ← params.update.parent_session_id   = "sess_abc123"
+      session_id        ← params.sessionId                  = "sess_abc123"
+      subagent_id       ← params.update.subagent_id         = "sa_1"
+      subagent_type     ← params.update.subagent_type       = "general-purpose"
+frame 17  event=agent_message_chunk
+  ✓ rules[10] matched {event: agent_message_chunk}
+      source       ← const: agent                 = "agent"
+      content      ← params.update.content.text   = "main.go is a minimal entrypoint."
+      content_type ← params.update.content.type   = "text"
+      session_id   ← params.sessionId             = "sess_child_1"
+frame 18  event=subagent_finished
+  ✓ rules[20] matched {event: subagent_finished}
+      source           ← params.update.subagent_id        = "sa_1"
+      child_session_id ← params.update.child_session_id   = "sess_child_1"
+      duration_ms      ← params.update.duration_ms        = "420"
+      session_id       ← params.sessionId                 = "sess_abc123"
+      status           ← params.update.status             = "completed"
+      subagent_id      ← params.update.subagent_id        = "sa_1"
+frame 19  event=agent_message_chunk
+  ✓ rules[10] matched {event: agent_message_chunk}
+      source       ← const: agent                 = "agent"
+      content      ← params.update.content.text   = "src/ has main.go and util.go. main.go is a minimal entrypoint."
+      content_type ← params.update.content.type   = "text"
+      session_id   ← params.sessionId             = "sess_abc123"
+frame 20  event=usage_update
+  ✓ rules[16] matched {event: usage_update}
+      cost_amount   ← params.update.cost.amount     = "0.012"
+      cost_currency ← params.update.cost.currency   = "USD"
+      session_id    ← params.sessionId              = "sess_abc123"
+      size          ← params.update.size            = "200000"
+      used          ← params.update.used            = "1200"
+frame 21  event=
+  ✓ rules[6] matched {exists: result.stopReason}
+      stop_reason ← result.stopReason   = "end_turn"

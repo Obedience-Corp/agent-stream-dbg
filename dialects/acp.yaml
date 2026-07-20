@@ -1,0 +1,210 @@
+# Agent Client Protocol (ACP) dialect — JSON-RPC 2.0 session streams.
+#
+# Wire shapes verified against:
+#   - https://agentclientprotocol.com/protocol/overview
+#   - https://agentclientprotocol.com/protocol/prompt-turn
+#   - Grok Build (obey-chat-2) session storage / stdio tests:
+#       crates/codegen/xai-grok-shell/src/session/storage/
+#       crates/codegen/xai-acp-lib/
+#
+# Framing target: one NDJSON line per JSON-RPC message (stdio transport),
+# including client→agent methods, agent→client session/update notifications,
+# and prompt-turn result responses. Grok Build's on-disk transcript lines
+# often omit the jsonrpc envelope but keep method/params — the paths below
+# work for both as long as params.* is present.
+#
+# Discriminator is params.update.sessionUpdate (path mode), the official
+# sessionUpdate tag on every session/update notification. Lifecycle frames
+# that lack that field (initialize, session/new, session/prompt, results)
+# match via path/equals on method or result fields instead.
+#
+# v1 scope: decode + explain + replay only. No live stdio transport and no
+# reverse-RPC host (fs/*, terminal/*, request_permission).
+version: 1
+name: acp
+description: Agent Client Protocol (ACP) JSON-RPC session stream dialect.
+discriminator:
+  path: params.update.sessionUpdate
+
+rules:
+  # --- Client → agent lifecycle (no sessionUpdate tag) ---------------------
+
+  - match: {path: method, equals: initialize}
+    kind: session_start
+    fields:
+      method: method
+      protocol_version: params.protocolVersion
+
+  - match: {path: method, equals: session/new}
+    kind: stream_start
+    fields:
+      method: method
+      cwd: params.cwd
+
+  - match: {path: method, equals: session/load}
+    kind: stream_start
+    fields:
+      method: method
+      session_id: params.sessionId
+
+  - match: {path: method, equals: session/prompt}
+    kind: step_start
+    source: {const: user}
+    content: params.prompt.0.text
+    fields:
+      method: method
+      session_id: params.sessionId
+
+  - match: {path: method, equals: session/cancel}
+    kind: status_change
+    fields:
+      method: method
+      session_id: params.sessionId
+
+  # Reverse client methods the agent may emit while a turn runs.
+  - match: {path: method, equals: session/request_permission}
+    kind: status_change
+    source: params.params.toolCall.toolCallId
+    fields:
+      method: method
+      session_id: params.sessionId
+
+  # JSON-RPC success responses (no method / no sessionUpdate tag).
+  # Prompt-turn terminal response.
+  - match: {exists: result.stopReason}
+    kind: stream_end
+    fields:
+      stop_reason: result.stopReason
+
+  # session/new (and load) reply carrying the assigned session id.
+  - match: {exists: result.sessionId}
+    kind: stream_start
+    fields:
+      session_id: result.sessionId
+
+  # initialize reply — capability negotiation result.
+  - match: {exists: result.protocolVersion}
+    kind: session_start
+    fields:
+      protocol_version: result.protocolVersion
+      agent_name: result.agentInfo.name
+      agent_version: result.agentInfo.version
+
+  # --- Standard session/update notifications (discriminator = event name) --
+
+  - match: {event: user_message_chunk}
+    kind: content
+    source: {const: user}
+    content: params.update.content.text
+    fields:
+      session_id: params.sessionId
+      content_type: params.update.content.type
+
+  - match: {event: agent_message_chunk}
+    kind: content
+    source: {const: agent}
+    content: params.update.content.text
+    fields:
+      session_id: params.sessionId
+      content_type: params.update.content.type
+
+  - match: {event: agent_thought_chunk}
+    kind: reasoning
+    source: {const: agent}
+    content: params.update.content.text
+    fields:
+      session_id: params.sessionId
+
+  - match: {event: tool_call}
+    kind: tool_call
+    source: params.update.toolCallId
+    fields:
+      session_id: params.sessionId
+      call_id: params.update.toolCallId
+      tool_name: params.update.title
+      tool_kind: params.update.kind
+      status: params.update.status
+      path: params.update.locations.0.path
+
+  # Completed updates carry tool output; in_progress / other statuses are
+  # status_change so the timeline still shows progress without treating them
+  # as results.
+  - match:
+      event: tool_call_update
+      path: params.update.status
+      equals: completed
+    kind: tool_result
+    source: params.update.toolCallId
+    content: params.update.content.0.content.text
+    fields:
+      session_id: params.sessionId
+      call_id: params.update.toolCallId
+      status: params.update.status
+
+  - match: {event: tool_call_update}
+    kind: status_change
+    source: params.update.toolCallId
+    fields:
+      session_id: params.sessionId
+      call_id: params.update.toolCallId
+      status: params.update.status
+
+  - match: {event: plan}
+    kind: detail
+    source: {const: agent}
+    fields:
+      session_id: params.sessionId
+      entries: params.update.entries
+
+  - match: {event: usage_update}
+    kind: usage
+    fields:
+      session_id: params.sessionId
+      used: params.update.used
+      size: params.update.size
+      cost_amount: params.update.cost.amount
+      cost_currency: params.update.cost.currency
+
+  - match: {event: available_commands_update}
+    kind: topology
+    fields:
+      session_id: params.sessionId
+
+  - match: {event: turn_completed}
+    kind: stream_end
+    fields:
+      session_id: params.sessionId
+      stop_reason: params.update.stopReason
+
+  # --- Grok Build / xAI extensions (still sessionUpdate-tagged) ------------
+  # Emitted under method session/update or _x.ai/session/update; the
+  # discriminator path is the same.
+
+  - match: {event: subagent_spawned}
+    kind: handoff
+    source: params.update.subagent_id
+    fields:
+      session_id: params.sessionId
+      subagent_id: params.update.subagent_id
+      child_session_id: params.update.child_session_id
+      parent_session_id: params.update.parent_session_id
+      subagent_type: params.update.subagent_type
+      description: params.update.description
+
+  - match: {event: subagent_finished}
+    kind: step_end
+    source: params.update.subagent_id
+    fields:
+      session_id: params.sessionId
+      subagent_id: params.update.subagent_id
+      child_session_id: params.update.child_session_id
+      status: params.update.status
+      duration_ms: params.update.duration_ms
+
+flow:
+  default_role: worker
+  lanes:
+    - match: {source: user}
+      role: human
+    - match: {source: agent}
+      role: worker

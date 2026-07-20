@@ -32,6 +32,7 @@ var goldenCases = []goldenCase{
 	{"openai.yaml", "../testdata/fixtures/openai-chat.jsonl", "../testdata/goldens/openai.explain.txt"},
 	{"anthropic.yaml", "../testdata/fixtures/anthropic-messages.jsonl", "../testdata/goldens/anthropic.explain.txt"},
 	{"a2a.yaml", "../testdata/fixtures/a2a-session.jsonl", "../testdata/goldens/a2a.explain.txt"},
+	{"acp.yaml", "../testdata/fixtures/acp-session.jsonl", "../testdata/goldens/acp.explain.txt"},
 }
 
 // renderExplain runs every frame in fixturePath through the dialect
