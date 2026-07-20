@@ -1,245 +1,82 @@
 # Stream Debugger
 
-**A configuration-driven CLI tool for visualizing and debugging SSE and gRPC streams from any API.**
-
-Real-time TUI for watching streams + timeline analysis for understanding parallel execution patterns.
+CLI debugger for SSE and gRPC streams. Point it at a live endpoint (or a
+recorded fixture), watch events in a TUI, and analyze parallel multi-agent
+execution from logs.
 
 [![Go Version](https://img.shields.io/badge/go-1.25+-blue.svg)](https://golang.org/dl/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 <p align="center">
-  <img src="docs/assets/tui-brainyard-live.gif" alt="Live Brainyard TUI setup and streaming" width="900">
+  <img src="docs/assets/tui-brainyard-live.gif" alt="Live multi-agent stream in the TUI" width="900">
 </p>
 
----
-
-## Features
-
-🎬 **Real-Time TUI** - Watch SSE and gRPC streams live in your terminal
-⚡ **Live motion chrome** - Stream energy strip, agent pulses, and flow-stage chase (respects `STREAM_DEBUGGER_REDUCED_MOTION` / `NO_MOTION`)
-📊 **Timeline Visualization** - Analyze parallel execution from logs
-⚙️ **Configuration-Driven** - Select a wire dialect and SSE, gRPC, or replay transport via YAML config
-📝 **Multi-Dimensional Logging** - Events logged by type, agent, session, and API calls
-🎯 **19 Event Types** - Full SSE lifecycle support
-🚀 **Performance Tracking** - Tokens/sec, latency, sequence numbers
-
----
-
-## Installation
-
-### Via Go Install (Recommended)
+## Install
 
 ```bash
 go install github.com/lancekrogers/stream-debugger/cmd/stream-debugger@latest
 ```
 
-### From Source
+From source:
 
 ```bash
 git clone https://github.com/lancekrogers/stream-debugger.git
 cd stream-debugger
-
-# Build locally
-go build -o bin/stream-debugger ./cmd/stream-debugger
-
-# Install to $GOPATH/bin (recommended)
-go install ./cmd/stream-debugger
-# OR use just:
-just install
+just install   # or: go install ./cmd/stream-debugger
 ```
 
-### From Binary Release
+## Quick start
 
-Download the latest release from [GitHub Releases](https://github.com/lancekrogers/stream-debugger/releases).
-
----
-
-## Quick Start
-
-### 1. Try It (No Setup Required)
+No backend required — timeline demo against a bundled fixture:
 
 ```bash
-git clone https://github.com/lancekrogers/stream-debugger.git
-cd stream-debugger
 just demo
 ```
 
-This renders a timeline from a bundled fixture — no backend, API key, or network required.
-
-### 2. Connect to Your Backend
+Connect to a stream with a YAML run config:
 
 ```bash
-# Copy example config
-cp configs/generic-sse.yaml my-config.yaml
-
-# Edit config and set your API key in .env
-cat > .env << EOF
-API_KEY=your-api-key
-SESSION_ID=debug-session
-EOF
-```
-
-### 3. Interactive Mode (Multi-Turn Chat)
-
-```bash
+cp config.yaml.example my-config.yaml
+# edit transport, dialect, auth
 stream-debugger --config my-config.yaml
 ```
 
-If you run `stream-debugger` without a config, it creates a private starter
-config in your user config directory and opens the TUI configuration panel so
-you can enter the connection details without first hand-editing YAML. Press
-`Ctrl+S` in the panel to save the config for future launches.
+Running without `--config` creates a starter config and opens the TUI
+configuration panel. Press `Ctrl+S` to save.
 
-This opens an **interactive chat interface** where you can:
-- Type messages and press Enter
-- Press **Ctrl+T** to toggle between RAW (wire) and PARSED (agent-organized) views
-- Use arrow keys to scroll
-- Press **Ctrl+C** to exit
-
-### 4. Stream Mode (Single Message)
+Single-shot stream (useful for scripts):
 
 ```bash
-stream-debugger stream --config my-config.yaml "What is consciousness?"
-```
-
-This sends a single message and exits when complete. Useful for CI/CD and scripting.
-
-### 5. Analyze (Timeline from Logs)
-
-```bash
-stream-debugger timeline logs/by-session/session_*.jsonl
-```
-
-This prints a visual timeline showing which agents ran in parallel.
-
-**📖 See [USAGE.md](USAGE.md) for detailed documentation of all modes and features.**
-
----
-
-## Usage
-
-```bash
-# Interactive mode (multi-turn chat)
-stream-debugger --config my-config.yaml
-
-# Stream mode (single message) - ⚠️ flags MUST come before the message
 stream-debugger stream --config my-config.yaml "your message"
-
-# Timeline visualization from logs
-stream-debugger timeline logs/by-session/session_*.jsonl
-
-# Detailed event log
-stream-debugger replay logs/by-session/session_*.jsonl
-
-# Help
-stream-debugger --help
 ```
 
-**📖 Full documentation:** See [USAGE.md](USAGE.md) for detailed guide with examples, keyboard controls, and troubleshooting.
+## Commands
 
----
+| Command | Purpose |
+|---------|---------|
+| `stream-debugger --config <file>` | Interactive TUI (default) |
+| `stream-debugger stream --config <file> "msg"` | One message, then exit |
+| `stream-debugger timeline <session.jsonl>` | Parallel execution timeline |
+| `stream-debugger replay <session.jsonl>` | Replay a recorded session |
+| `stream-debugger explain ...` | Trace dialect matching per frame |
+| `stream-debugger init ...` | Draft a dialect from a stream or recording |
 
-## Interactive Mode Features
+Flags for `stream` must come **before** the message argument.
 
-The interactive mode provides a **full-screen chat interface** with:
-
-### RAW View (Pretty-Printed Wire Payload)
-```
-event: agent_content
-data:
-  {
-    "type": "agent_content",
-    "agent_id": "sam_harris",
-    "message_id": "msg_abc123",
-    "content": "Consciousness is a complex...",
-    "sequence": 1,
-    "timestamp": "2025-10-31T16:08:08.760689+00:00"
-  }
-```
-
-### PARSED View (Agent-Organized Responses)
-```
-sam_harris (145 tokens) ✓
-Consciousness is a complex and multifaceted concept that has been
-studied by philosophers, neuroscientists, and psychologists...
-
-eckhart_tolle (98 tokens) ✓
-The present moment is where true awareness resides...
-
-wizard (243 tokens) ✓
-Integrating both perspectives, consciousness can be understood...
-```
-
-**Keyboard Controls:**
-
-| Key | Action |
-|-----|--------|
-| **Type & Enter** | Send message |
-| **Ctrl+T** | Toggle RAW (wire) ↔ PARSED (agent responses) |
-| **↑ ↓** | Scroll line by line |
-| **PgUp / PgDn** | Scroll page by page |
-| **Home / End** | Jump to top/bottom |
-| **Ctrl+C** | Quit and save logs |
-
----
-
-## Timeline Analysis
-
-After streaming, analyze what happened:
-
-```bash
-stream-debugger timeline logs/by-session/session_*.jsonl
-```
-
-**Output:**
-
-```
-📊 Timeline View - Parallel Execution Visualization
-
-Duration: 5.234s | Events: 487 | Agents: 3
-
-Time (ms)  sam_harris      eckhart_tolle   wizard
-─────────────────────────────────────────────────────────
-      0    ▶ START         │               │
-    100    █                ▶ START         │
-    200    █                █               │
-    500    ■ DONE           █               │
-    700    │                ■ DONE          ▶ START
-   1000    │                │               ■ DONE
-
-Legend: ▶ START  █ Streaming  ■ DONE  ✗ ERROR  │ Idle
-
-🔀 Parallel Execution Summary
-
-sam_harris ran in parallel with: eckhart_tolle
-eckhart_tolle ran in parallel with: sam_harris
-wizard ran sequentially after all agents
-```
-
----
+In the TUI: type and Enter to send, `Ctrl+T` toggles RAW (wire) vs PARSED
+(agent-organized) views, `c` opens the config panel, `Ctrl+C` quits.
 
 ## Configuration
 
-Stream Debugger uses YAML configuration files to work with any supported stream
-transport and dialect.
+A run config selects transport and dialect. Transports:
 
-### Transport Types
+- `sse` — HTTP Server-Sent Events
+- `grpc` — streaming RPCs (reflection, descriptor set, or `.proto`)
+- `replay` — JSONL fixture through the same pipeline
 
-Set `transport.type` in a run config:
-
-- `sse` (default) — connect to an HTTP Server-Sent Events endpoint using the
-  dialect's `send:` request template.
-- `grpc` — discover the configured streaming method through reflection, a
-  descriptor set, or a `.proto` fallback, then decode frames with the same
-  dialect engine. The optional `transport.request` map fills the protobuf
-  request before a server stream opens.
-- `replay` — read a JSONL fixture from `transport.base_url` through the same
-  client/event pipeline without a live backend.
-
-### Example Config
+Example:
 
 ```yaml
-# configs/my-api.yaml
 transport:
   type: sse
   base_url: "http://localhost:5003"
@@ -255,237 +92,50 @@ dialect:
 
 logging:
   dir: "./logs"
-  dimensions:
-    by_event_type: true
-    by_agent: true
-    by_session: true
-    api_calls: true
 ```
 
-### Obey daemon (Unix-socket gRPC)
+Auth is opt-in: omit `auth:` to send no credential. See
+[`config.yaml.example`](config.yaml.example) for the full field set.
 
-Obey exposes its local daemon API over a Unix socket. Start the daemon, copy
-[`configs/obey-grpc.yaml`](configs/obey-grpc.yaml), and replace its socket
-target with the path used by your Obey setup:
+### Examples and dialects
 
-```sh
-obey serve --foreground
-stream-debugger --config configs/obey-grpc.yaml
-```
+| Path | Notes |
+|------|--------|
+| `configs/brainyard-v3.yaml` | Multi-agent SSE example |
+| `configs/obey-grpc.yaml` | Obey daemon campaign-state stream |
+| `configs/obey-activity-grpc.yaml` | Obey multi-agent activity stream |
+| `dialects/` | `openai`, `anthropic`, `a2a`, `brainyard`, `obey`, `obey-activity` |
 
-The TUI's `c` configuration panel exposes the same fields. For a
-reflection-enabled daemon, choose `grpc`, enter the target and security, then
-press `Ctrl+G` to discover streaming RPCs. Select an RPC to fill its
-fully-qualified method, request JSON starter, and a sensible discriminator;
-review the request and press `Enter` to connect. The optional auth environment
-and metadata-key fields cover services that require gRPC metadata credentials.
-If reflection is disabled, the same panel still supports manual method and
-request entry, or the descriptor-set/`.proto` fallback fields in YAML. Obey's
-local socket does not require authentication.
+## Logging
 
-The checked-in example uses Obey's campaign-state stream and requests the
-initial snapshot:
-
-```yaml
-transport:
-  type: grpc
-  target: "unix:///path/to/obey/daemon.sock"
-  method: "/local.v1.LocalDaemonService/WatchCampaignState"
-  plaintext: true
-  discriminator: oneof
-  request:
-    include_initial_snapshot: true
-dialect:
-  file: obey
-```
-
-That campaign-state stream is useful for daemon connectivity and state
-inspection. To debug agent execution itself, use the activity profile in
-[`configs/obey-activity-grpc.yaml`](configs/obey-activity-grpc.yaml). It
-connects to `WatchAllActivity`, then the [`obey-activity`](dialects/obey-activity.yaml)
-dialect maps nested activity types such as message deltas, reasoning, tool
-calls, completions, errors, turn lifecycle, and dropped-event counters into
-the same generic event model used by every transport.
-
-The gRPC request map supports the shared `{session_id}`, `{message}`, and
-declared `vars:` placeholders, including nested request fields. For another
-protobuf agent system, keep the transport connection settings and replace
-only the dialect's JSON paths and normalized event rules.
-
-<p align="center">
-  <img src="docs/assets/tui-obey-grpc.gif" alt="Live Obey gRPC TUI setup and streaming" width="900">
-</p>
-
-Authentication is opt-in. Omitting `auth:` sends no credential and does not
-read `API_KEY`; set an explicit `auth.type` and `token_env` to attach a
-credential. SSE sends the credential as an HTTP header, while gRPC sends
-metadata to the configured target. This is a breaking change for configs that
-relied on the former implicit `API_KEY` bearer default.
-
-See [`config.yaml.example`](config.yaml.example) for all options.
-
-Dialect `setup:` and `send:` templates can use the built-ins `{base_url}`,
-`{session_id}`, `{message}`, and `{agents}`, plus names declared under the
-config's `vars:` map. In JSON body templates every placeholder (including user
-vars) is JSON-escaped. In URL templates only `{message}` is URL-escaped; other
-placeholders — including user `vars:` — are substituted as trusted structural
-config values. User vars cannot shadow the built-ins; an undeclared placeholder
-fails before a request is sent.
-
-### Pre-configured Examples
-
-- `configs/brainyard-v3.yaml` - BrainyardV3 multi-agent system
-- `configs/generic-sse.yaml` - Generic SSE API template
-- `configs/obey-grpc.yaml` - Obey local daemon campaign-state stream
-- `configs/obey-activity-grpc.yaml` - Obey multi-agent activity stream
-
----
-
-## Log Files
-
-All events are automatically logged to 4 categories:
-
-```
-logs/
-├── by-event-type/       # All events of one type
-│   ├── session_start.jsonl
-│   ├── agent_content.jsonl
-│   └── error.jsonl
-├── by-agent/            # All events from one agent
-│   ├── sam_harris.jsonl
-│   └── wizard.jsonl
-├── by-session/          # Complete session timelines
-│   └── session_xxx_20250128.jsonl
-└── api-calls/           # HTTP requests and responses
-    └── http_20250128.jsonl
-```
-
-### Analyzing Logs
-
-```bash
-# See which agents responded
-ls logs/by-agent/
-
-# Read full conversation
-cat logs/by-session/session_*.jsonl | jq -r '.event.content' | tr -d '\n'
-
-# Count events by type
-wc -l logs/by-event-type/*.jsonl
-
-# Find errors
-cat logs/by-event-type/error.jsonl | jq
-```
-
----
+Sessions write under `logs/` by event type, agent, session, and API call.
+Analyze with `timeline` / `replay`, or inspect the JSONL directly.
 
 ## Documentation
 
-- **User Guides**
-  - [Quick Start](docs/user-guide/quickstart.md)
-  - [TUI vs Timeline Mode](docs/user-guide/tui-vs-timeline.md)
-
-- **Development**
-  - [Implementation Details](docs/development/implementation.md)
-  - [Testing Guide](docs/development/testing.md)
-
-- **Configuration**
-  - [`config.yaml.example`](config.yaml.example) - Full config reference
-  - [`configs/`](configs/) - Example configurations
-
----
+- [USAGE.md](USAGE.md) — modes, keyboard controls, troubleshooting
+- [Quick start](docs/user-guide/quickstart.md)
+- [TUI vs timeline](docs/user-guide/tui-vs-timeline.md)
+- [Implementation](docs/development/implementation.md)
+- [Testing](docs/development/testing.md)
 
 ## Development
 
-For contributors, we use `just` for development convenience:
-
 ```bash
-# Install dependencies
 just deps
-
-# Build binary
-just build              # Creates bin/stream-debugger
-
-# Build and sign for macOS
-just build-signed       # Includes code signing
-
-# Run tests
+just build
 just test
-
-# Development shortcuts (calls the binary)
-just stream "test message"        # Quick test
-just timeline logs/session_*.jsonl
 ```
 
-### Code Signing (macOS)
-
-```bash
-# Ad-hoc signing for local use
-just sign-macos
-
-# Or manually with Developer ID for distribution
-codesign --sign "Developer ID Application: Your Name" bin/stream-debugger
-```
-
----
-
-## Use Cases
-
-- **Multi-Agent Debugging** - See which agents run in parallel
-- **Performance Analysis** - Identify bottlenecks and slowdowns
-- **API Integration Testing** - Validate SSE event flows
-- **Production Monitoring** - Real-time streaming observability
-- **Log Analysis** - Understand complex multi-agent conversations
-
----
-
-## Architecture
-
-```
-stream-debugger/
-├── cmd/stream-debugger/  # CLI entry point
-├── internal/
-│   ├── client/          # Transport-neutral streaming client
-│   ├── config/          # YAML config loading
-│   ├── events/          # Event type definitions
-│   ├── logger/          # Multi-dimensional logging
-│   └── visualizer/      # TUI + Timeline views
-├── configs/             # Pre-configured setups
-├── docs/                # Documentation
-└── logs/                # Generated logs (gitignored)
-```
-
----
+`just --list` shows all recipes (demo, race, lint, multi-platform builds, etc.).
 
 ## Contributing
 
-Contributions welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Run `just test` to ensure all tests pass
-5. Submit a pull request
-
----
+1. Fork and branch
+2. Add tests for new behavior
+3. Run `just test`
+4. Open a pull request
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
-
----
-
-## Credits
-
-Built for debugging complex SSE and gRPC streaming systems. Originally created for a private multi-agent backend but designed to be generic and reusable.
-
-**Technologies:**
-- [Bubbletea](https://github.com/charmbracelet/bubbletea) - Terminal UI framework
-- [Lipgloss](https://github.com/charmbracelet/lipgloss) - Terminal styling
-- [Zerolog](https://github.com/rs/zerolog) - Fast structured logging
-- [r3labs/sse](https://github.com/r3labs/sse) - SSE client library
-
----
-
-**Made for debugging SSE and gRPC streaming systems** 🚀
-
-Visualize parallel execution • Real-time monitoring • Configuration-driven • Log analysis
+Apache License 2.0 — see [LICENSE](LICENSE).
