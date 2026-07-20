@@ -11,6 +11,7 @@ import (
 	"github.com/lancekrogers/stream-debugger/internal/config"
 	"github.com/lancekrogers/stream-debugger/internal/mapping"
 	"github.com/lancekrogers/stream-debugger/internal/transport"
+	acptransport "github.com/lancekrogers/stream-debugger/internal/transport/acp"
 	grpctransport "github.com/lancekrogers/stream-debugger/internal/transport/grpc"
 	"github.com/lancekrogers/stream-debugger/internal/transport/replay"
 	"github.com/lancekrogers/stream-debugger/internal/transport/sse"
@@ -51,9 +52,23 @@ func newTransport(cfg *config.EnhancedConfig, parser *bridge.Parser, vars mappin
 			return nil, err
 		}
 		return tr, nil
+	case "acp":
+		return newACPTransport(cfg, vars), nil
 	default:
-		return nil, fmt.Errorf("unsupported transport.type %q (want sse, grpc, or replay)", cfg.Transport.Type)
+		return nil, fmt.Errorf("unsupported transport.type %q (want sse, grpc, replay, or acp)", cfg.Transport.Type)
 	}
+}
+
+func newACPTransport(cfg *config.EnhancedConfig, vars mapping.InterpolationVars) transport.Transport {
+	return acptransport.New(acptransport.Config{
+		Command:                cfg.Transport.Command,
+		Args:                   append([]string(nil), cfg.Transport.Args...),
+		Cwd:                    cfg.Transport.Cwd,
+		Env:                    append([]string(nil), cfg.Transport.Env...),
+		Prompt:                 vars.Message,
+		AutoApprovePermissions: cfg.Transport.AutoApprove,
+		ClientName:             "stream-debugger",
+	})
 }
 
 // NewTransport builds the configured raw transport for one rendered message.

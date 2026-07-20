@@ -60,6 +60,13 @@ type YAMLConfig struct {
 		ProtoImportPath    []string       `yaml:"proto_import_path"` // import roots for ProtoFile and its own imports, mirroring protoc's -I/--proto_path
 		Request            map[string]any `yaml:"request"`
 		Auth               authYAML       `yaml:"auth"`
+
+		// ACP stdio (type: acp): spawn an Agent Client Protocol agent process.
+		Command     string   `yaml:"command"`      // agent binary, e.g. npx or grok
+		Args        []string `yaml:"args"`         // e.g. [agent, stdio]
+		Cwd         string   `yaml:"cwd"`          // child working directory
+		Env         []string `yaml:"env"`          // extra KEY=VALUE entries
+		AutoApprove *bool    `yaml:"auto_approve"` // nil/true: allow permission requests; false: cancel
 	} `yaml:"transport"`
 
 	// Dialect declares which mapping file or embedded dialect name interprets
@@ -121,8 +128,8 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 	if transportType == "" {
 		transportType = "sse"
 	}
-	if transportType != "sse" && transportType != "grpc" && transportType != "replay" {
-		return nil, fmt.Errorf("unknown transport.type %q (must be \"sse\", \"grpc\", or \"replay\")", transportType)
+	if transportType != "sse" && transportType != "grpc" && transportType != "replay" && transportType != "acp" {
+		return nil, fmt.Errorf("unknown transport.type %q (must be \"sse\", \"grpc\", \"replay\", or \"acp\")", transportType)
 	}
 
 	// Load environment variables (for secrets like API_KEY)
@@ -165,6 +172,28 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 			BaseURL:        yamlCfg.Transport.BaseURL,
 			StreamEndpoint: yamlCfg.Transport.StreamEndpoint.URL,
 			Auth:           auth,
+		}
+	case "acp":
+		if strings.TrimSpace(yamlCfg.Transport.Command) == "" {
+			return nil, fmt.Errorf("transport.command is required when transport.type is \"acp\"")
+		}
+		auth, resolvedToken, err := resolveAuth(yamlCfg.Transport.Auth, "none")
+		if err != nil {
+			return nil, err
+		}
+		apiKey = resolvedToken
+		autoApprove := true
+		if yamlCfg.Transport.AutoApprove != nil {
+			autoApprove = *yamlCfg.Transport.AutoApprove
+		}
+		transport = TransportConfig{
+			Type:        "acp",
+			Command:     yamlCfg.Transport.Command,
+			Args:        append([]string(nil), yamlCfg.Transport.Args...),
+			Cwd:         yamlCfg.Transport.Cwd,
+			Env:         append([]string(nil), yamlCfg.Transport.Env...),
+			AutoApprove: autoApprove,
+			Auth:        auth,
 		}
 	default: // sse
 		auth, resolvedToken, err := resolveAuth(yamlCfg.Transport.StreamEndpoint.Auth, "none")
@@ -324,7 +353,7 @@ type DebugConfig struct {
 // TransportConfig holds transport-level connection configuration for
 // either transport type; which fields apply is determined by Type.
 type TransportConfig struct {
-	Type string // "sse" (default), "grpc", or "replay"
+	Type string // "sse" (default), "grpc", "replay", or "acp"
 
 	// SSE fields.
 	BaseURL        string
@@ -347,6 +376,13 @@ type TransportConfig struct {
 	ProtoFile          string         // path to a raw .proto — lowest-priority fallback, compiled at runtime
 	ProtoImportPath    []string       // import roots for ProtoFile and its own imports
 	Request            map[string]any // gRPC request fields set before a server stream opens
+
+	// ACP stdio fields (type: acp).
+	Command     string   // agent binary
+	Args        []string // agent args
+	Cwd         string   // child working directory
+	Env         []string // extra KEY=VALUE env entries
+	AutoApprove bool     // auto-approve session/request_permission (default true)
 
 	// Shared: one auth vocabulary for both transports.
 	Auth AuthConfig

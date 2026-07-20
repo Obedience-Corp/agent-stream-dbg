@@ -119,6 +119,7 @@ A run config selects transport and dialect. Transports:
 - `sse` — HTTP Server-Sent Events
 - `grpc` — streaming RPCs (reflection, descriptor set, or `.proto`)
 - `replay` — JSONL fixture through the same pipeline
+- `acp` — Agent Client Protocol agent over stdio (spawn + handshake)
 
 Example:
 
@@ -150,7 +151,7 @@ Auth is opt-in: omit `auth:` to send no credential. See
 | `openai` | Chat Completions SSE | `testdata/fixtures/openai-chat.jsonl` |
 | `anthropic` | Messages SSE | `testdata/fixtures/anthropic-messages.jsonl` |
 | `a2a` | Agent2Agent | `testdata/fixtures/a2a-session.jsonl` |
-| `acp` | Agent Client Protocol JSON-RPC | `just demo-acp` |
+| `acp` | Agent Client Protocol JSON-RPC | `just demo-acp`; live: `configs/acp-stdio.yaml` |
 | `brainyard` | Private multi-agent SSE | Fixture only — backend is **not** public |
 | `obey` / `obey-activity` | Private Obey gRPC daemon | Needs a local `obey serve` socket |
 
@@ -166,6 +167,7 @@ your own recording.
 |------|--------|
 | `config.yaml.example` | Full field reference |
 | `demos/configs/acp-demo.yaml` | Offline ACP fixture SSE demo |
+| `configs/acp-stdio.yaml` | Live ACP agent over stdio (`npx … agent stdio`, etc.) |
 | `configs/brainyard-v3.yaml` | Shape sample for a private multi-agent SSE API |
 | `configs/obey-grpc.yaml` | Shape sample for a local Obey daemon (not a public service) |
 | `configs/obey-activity-grpc.yaml` | Shape sample for Obey activity streams |

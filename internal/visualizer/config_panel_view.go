@@ -80,7 +80,7 @@ func configTransportHint(transportType string) string {
 	case "sse":
 		return "SSE selected: fill Base URL + endpoint. Auth env is optional (for example API_KEY). gRPC target is not used."
 	default:
-		return "Choose sse, grpc, or replay; only the selected transport's fields are used."
+		return "Choose sse, grpc, replay, or acp; only the selected transport's fields are used."
 	}
 }
 

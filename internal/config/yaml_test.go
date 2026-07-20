@@ -228,6 +228,59 @@ vars:
 	}
 }
 
+func TestLoadConfigFile_ACPTransport(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "acp.yaml")
+	content := `
+transport:
+  type: acp
+  command: npx
+  args: ["@xai-official/grok", "agent", "stdio"]
+  cwd: /tmp/project
+  env:
+    - "FOO=bar"
+dialect:
+  file: acp
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfigFile(path)
+	if err != nil {
+		t.Fatalf("LoadConfigFile: %v", err)
+	}
+	if cfg.Transport.Type != "acp" {
+		t.Fatalf("type = %q, want acp", cfg.Transport.Type)
+	}
+	if cfg.Transport.Command != "npx" {
+		t.Fatalf("command = %q", cfg.Transport.Command)
+	}
+	if len(cfg.Transport.Args) != 3 || cfg.Transport.Args[0] != "@xai-official/grok" {
+		t.Fatalf("args = %#v", cfg.Transport.Args)
+	}
+	if cfg.Transport.Cwd != "/tmp/project" {
+		t.Fatalf("cwd = %q", cfg.Transport.Cwd)
+	}
+	if !cfg.Transport.AutoApprove {
+		t.Fatal("expected AutoApprove true by default")
+	}
+	if cfg.Dialect.File != "acp" {
+		t.Fatalf("dialect = %q", cfg.Dialect.File)
+	}
+}
+
+func TestLoadConfigFile_ACPTransport_RequiresCommand(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "acp-bad.yaml")
+	if err := os.WriteFile(path, []byte("transport:\n  type: acp\ndialect:\n  file: acp\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadConfigFile(path)
+	if err == nil || !strings.Contains(err.Error(), "command is required") {
+		t.Fatalf("expected command required error, got %v", err)
+	}
+}
+
 func TestLoadConfigFile_GRPCTransport(t *testing.T) {
 	_ = os.Setenv("GRPC_TOKEN", "grpc-secret")
 	defer func() { _ = os.Unsetenv("GRPC_TOKEN") }()
