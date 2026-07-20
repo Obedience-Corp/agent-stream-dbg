@@ -1,0 +1,22 @@
+# Offline multi-turn ACP live demo — uses cmd/demo-acp-agent (no network).
+# Built by demos/record-acp-live.sh into bin/demo-acp-agent.
+
+transport:
+  type: acp
+  command: ./bin/demo-acp-agent
+  auto_approve: true
+
+dialect:
+  file: acp
+
+session:
+  id: acp-live-demo
+  auto_setup: false
+
+logging:
+  dir: "/tmp/stream-debugger-acp-live-demo-logs"
+  dimensions:
+    by_event_type: true
+    by_agent: true
+    by_session: true
+    api_calls: false

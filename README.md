@@ -86,6 +86,15 @@ Decode Agent Client Protocol JSON-RPC sessions offline — `just demo-acp` /
   <img src="docs/assets/tui-acp-demo.gif" alt="ACP dialect explain, timeline, and TUI demo" width="900">
 </p>
 
+### ACP live multi-turn (session reuse)
+
+Interactive TUI over stdio ACP: two prompts, same agent process and
+`sessionId` — `just record-acp-live` (uses `cmd/demo-acp-agent`, no network):
+
+<p align="center">
+  <img src="docs/assets/tui-acp-live.gif" alt="ACP live multi-turn session reuse" width="900">
+</p>
+
 ### gRPC activity stream
 
 gRPC multi-agent activity view (local daemon; not a public hosted service):
@@ -198,7 +207,8 @@ just test
 VHS recordings:
 
 ```bash
-just record-acp                 # docs/assets/tui-acp-demo.gif
+just record-acp                   # docs/assets/tui-acp-demo.gif (fixture dialect)
+just record-acp-live              # docs/assets/tui-acp-live.gif (multi-turn stdio)
 bash demos/record-stream-anim.sh  # docs/assets/tui-stream-anim.gif
 # Live gRPC/SSE tapes: demos/record-obey-*.sh, vhs.just (need local services)
 ```
