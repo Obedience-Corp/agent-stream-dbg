@@ -1,6 +1,6 @@
 # Stream Debugger
 
-TUI debugger for **agent and multi-agent streams** — not video streaming.
+TUI debugger for **agent and multi-agent streams**.
 
 Point it at a live backend or a recorded fixture, watch frames in a multi-pane
 terminal UI, and decode them through a **dialect** (what the bytes mean).
