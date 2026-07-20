@@ -28,24 +28,24 @@ frame 6  event=user_message_chunk
       session_id   ← params.sessionId             = "sess_abc123"
 frame 7  event=agent_thought_chunk
   ✓ rules[11] matched {event: agent_thought_chunk}
-      source     ← const: agent                 = "agent"
+      source     ← params.sessionId             = "sess_abc123"
       content    ← params.update.content.text   = "I'll list the directory then read main.go."
       session_id ← params.sessionId             = "sess_abc123"
 frame 8  event=agent_message_chunk
   ✓ rules[10] matched {event: agent_message_chunk}
-      source       ← const: agent                 = "agent"
+      source       ← params.sessionId             = "sess_abc123"
       content      ← params.update.content.text   = "I'll inspect "
       content_type ← params.update.content.type   = "text"
       session_id   ← params.sessionId             = "sess_abc123"
 frame 9  event=agent_message_chunk
   ✓ rules[10] matched {event: agent_message_chunk}
-      source       ← const: agent                 = "agent"
+      source       ← params.sessionId             = "sess_abc123"
       content      ← params.update.content.text   = "the project structure first."
       content_type ← params.update.content.type   = "text"
       session_id   ← params.sessionId             = "sess_abc123"
 frame 10  event=plan
   ✓ rules[15] matched {event: plan}
-      source     ← const: agent            = "agent"
+      source     ← params.sessionId        = "sess_abc123"
       entries    ← params.update.entries   = "[map[content:List src/ priority:high status:pending] map[content:Read main.go priority:high status:pending]]"
       session_id ← params.sessionId        = "sess_abc123"
 frame 11  event=tool_call
@@ -97,7 +97,7 @@ frame 16  event=subagent_spawned
       subagent_type     ← params.update.subagent_type       = "general-purpose"
 frame 17  event=agent_message_chunk
   ✓ rules[10] matched {event: agent_message_chunk}
-      source       ← const: agent                 = "agent"
+      source       ← params.sessionId             = "sess_child_1"
       content      ← params.update.content.text   = "main.go is a minimal entrypoint."
       content_type ← params.update.content.type   = "text"
       session_id   ← params.sessionId             = "sess_child_1"
@@ -111,7 +111,7 @@ frame 18  event=subagent_finished
       subagent_id      ← params.update.subagent_id        = "sa_1"
 frame 19  event=agent_message_chunk
   ✓ rules[10] matched {event: agent_message_chunk}
-      source       ← const: agent                 = "agent"
+      source       ← params.sessionId             = "sess_abc123"
       content      ← params.update.content.text   = "src/ has main.go and util.go. main.go is a minimal entrypoint."
       content_type ← params.update.content.type   = "text"
       session_id   ← params.sessionId             = "sess_abc123"

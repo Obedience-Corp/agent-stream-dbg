@@ -33,6 +33,17 @@ No backend required — timeline demo against a bundled fixture:
 just demo
 ```
 
+ACP (Agent Client Protocol) dialect against a bundled Grok-style session
+fixture — explain, timeline, and replay:
+
+```bash
+just demo-acp
+```
+
+<p align="center">
+  <img src="docs/assets/tui-acp-demo.gif" alt="ACP dialect explain, timeline, and TUI demo" width="900">
+</p>
+
 Connect to a stream with a YAML run config:
 
 ```bash
@@ -104,7 +115,8 @@ Auth is opt-in: omit `auth:` to send no credential. See
 | `configs/brainyard-v3.yaml` | Multi-agent SSE example |
 | `configs/obey-grpc.yaml` | Obey daemon campaign-state stream |
 | `configs/obey-activity-grpc.yaml` | Obey multi-agent activity stream |
-| `dialects/` | `openai`, `anthropic`, `a2a`, `brainyard`, `obey`, `obey-activity` |
+| `demos/configs/acp-demo.yaml` | Offline ACP fixture demo (with `just demo-acp` / `just record-acp`) |
+| `dialects/` | `openai`, `anthropic`, `a2a`, `acp`, `brainyard`, `obey`, `obey-activity` |
 
 ## Logging
 

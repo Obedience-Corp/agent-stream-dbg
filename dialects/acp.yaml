@@ -18,13 +18,22 @@
 # that lack that field (initialize, session/new, session/prompt, results)
 # match via path/equals on method or result fields instead.
 #
-# v1 scope: decode + explain + replay only. No live stdio transport and no
-# reverse-RPC host (fs/*, terminal/*, request_permission).
+# v1 scope: decode + explain + replay (+ offline SSE fixture demos). No live
+# stdio transport and no reverse-RPC host (fs/*, terminal/*, request_permission).
 version: 1
 name: acp
 description: Agent Client Protocol (ACP) JSON-RPC session stream dialect.
 discriminator:
   path: params.update.sessionUpdate
+
+# Offline fixture demos (fixture-sse-server) need a send: block so stream /
+# interactive mode can open the mock SSE endpoint. Real ACP is stdio JSON-RPC;
+# this is only for replaying recorded ACP NDJSON over SSE.
+send:
+  request:
+    method: POST
+    url: "{base_url}/stream"
+    body: '{"message":"{message}"}'
 
 rules:
   # --- Client → agent lifecycle (no sessionUpdate tag) ---------------------
@@ -100,9 +109,12 @@ rules:
       session_id: params.sessionId
       content_type: params.update.content.type
 
+  # Source is sessionId so parent vs child ACP sessions get separate timeline
+  # lanes (Grok Build subagents open child sessions that stream their own
+  # agent_message_chunk notifications).
   - match: {event: agent_message_chunk}
     kind: content
-    source: {const: agent}
+    source: params.sessionId
     content: params.update.content.text
     fields:
       session_id: params.sessionId
@@ -110,7 +122,7 @@ rules:
 
   - match: {event: agent_thought_chunk}
     kind: reasoning
-    source: {const: agent}
+    source: params.sessionId
     content: params.update.content.text
     fields:
       session_id: params.sessionId
@@ -151,7 +163,7 @@ rules:
 
   - match: {event: plan}
     kind: detail
-    source: {const: agent}
+    source: params.sessionId
     fields:
       session_id: params.sessionId
       entries: params.update.entries
@@ -206,5 +218,3 @@ flow:
   lanes:
     - match: {source: user}
       role: human
-    - match: {source: agent}
-      role: worker

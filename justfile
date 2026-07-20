@@ -69,6 +69,26 @@ demo:
     @test -f bin/stream-debugger || just build
     ./bin/stream-debugger timeline testdata/fixtures/brainyard-session.jsonl
 
+# ACP dialect demo: explain + timeline + replay against the bundled fixture.
+# No backend, API key, or network. See demos/record-acp.sh for the VHS recording.
+demo-acp:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p bin
+    test -f bin/stream-debugger || just build
+    echo "=== explain ==="
+    ./bin/stream-debugger explain --dialect dialects/acp.yaml --from testdata/fixtures/acp-session.jsonl
+    echo
+    echo "=== timeline ==="
+    ./bin/stream-debugger timeline --dialect acp testdata/fixtures/acp-session.jsonl
+    echo
+    echo "=== replay ==="
+    ./bin/stream-debugger replay --dialect acp testdata/fixtures/acp-session.jsonl
+
+# Record docs/assets/tui-acp-demo.gif (requires vhs + ffmpeg on PATH).
+record-acp:
+    bash demos/record-acp.sh
+
 # Run the OpenAI fixture through the mock SSE server and report decode counts.
 demo-openai:
     go test ./internal/client -run TestOpenAIDialectMockSSESmoke -count=1 -v
