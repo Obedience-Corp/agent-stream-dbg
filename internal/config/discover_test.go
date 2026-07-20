@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -56,6 +57,48 @@ dialect:
 	}
 	if entries[1].Status != EntryNeedsSetup {
 		t.Fatalf("second entry status = %s, want needs setup", entries[1].Status)
+	}
+}
+
+func TestListConfigsAuthNeededNotError(t *testing.T) {
+	_ = os.Unsetenv("LIST_AUTH_NEEDED_KEY")
+	cwd := t.TempDir()
+	body := `transport:
+  type: sse
+  base_url: "http://localhost:8080"
+  stream_endpoint:
+    url: "/stream"
+    auth:
+      type: bearer
+      token_env: LIST_AUTH_NEEDED_KEY
+dialect:
+  file: brainyard
+logging:
+  dir: ./logs
+`
+	if err := os.WriteFile(filepath.Join(cwd, "config.yaml"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	entries := ListConfigs(cwd, t.TempDir())
+	if len(entries) != 1 {
+		t.Fatalf("got %d entries", len(entries))
+	}
+	if entries[0].Status != EntryAuthNeeded {
+		t.Fatalf("status = %s, want auth needed (err=%q)", entries[0].Status, entries[0].Err)
+	}
+	if entries[0].Transport != "sse" {
+		t.Fatalf("transport = %q", entries[0].Transport)
+	}
+	if !strings.Contains(entries[0].Err, "LIST_AUTH_NEEDED_KEY") || !strings.Contains(entries[0].Err, ".env") {
+		t.Fatalf("err should explain .env setup, got %q", entries[0].Err)
+	}
+}
+
+func TestDisplayPathRelativeAndUser(t *testing.T) {
+	cwd := t.TempDir()
+	path := filepath.Join(cwd, "configs", "brainyard-v3.yaml")
+	if got := DisplayPath(path, cwd); got != filepath.Join("configs", "brainyard-v3.yaml") {
+		t.Fatalf("relative display = %q", got)
 	}
 }
 

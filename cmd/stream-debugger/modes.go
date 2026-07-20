@@ -31,9 +31,19 @@ func runInteractiveWithOptions(configPath, dialectOverride string, openConfigPan
 	defer cancel()
 
 	fmt.Printf("🔧 Configuration loaded from: %s\n", configPath)
-	fmt.Printf("   Backend: %s\n", cfg.Transport.BaseURL)
+	fmt.Printf("   Backend: %s\n", streamTarget(cfg))
 	fmt.Printf("   Session: %s\n", cfg.Session.ID)
 	fmt.Printf("   Log Dir: %s\n\n", cfg.LogDir)
+
+	// Missing auth env (e.g. API_KEY): fail with .env setup instructions unless
+	// we are opening the config panel explicitly (e.g. home hub "e" to edit).
+	// Secrets live in the environment, not the YAML panel.
+	if !openConfigPanel {
+		if err := cfg.ValidateAuth(); err != nil {
+			return err
+		}
+	}
+
 	// A newly-created starter config has no endpoint yet. Defer its setup
 	// handshake until the user saves the first-run panel and sends a message.
 	// Existing configs keep the historical eager setup behavior.
@@ -68,6 +78,10 @@ func runStream(configPath string, message string, dialectOverride string) error 
 	parser, err := bridge.NewParserFor(cfg.Dialect.File)
 	if err != nil {
 		return fmt.Errorf("failed to load dialect: %w", err)
+	}
+	// Stream mode is non-interactive: fail fast if required secrets are missing.
+	if err := cfg.ValidateAuth(); err != nil {
+		return err
 	}
 	transportName := cfg.Transport.Type
 	if transportName == "" {

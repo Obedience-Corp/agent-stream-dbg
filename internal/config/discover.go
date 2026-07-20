@@ -16,6 +16,7 @@ type EntryStatus string
 const (
 	EntryReady      EntryStatus = "ready"
 	EntryNeedsSetup EntryStatus = "needs setup"
+	EntryAuthNeeded EntryStatus = "auth needed"
 	EntryError      EntryStatus = "error"
 )
 
@@ -104,10 +105,12 @@ func statusRank(s EntryStatus) int {
 	switch s {
 	case EntryReady:
 		return 0
-	case EntryNeedsSetup:
+	case EntryAuthNeeded:
 		return 1
-	default:
+	case EntryNeedsSetup:
 		return 2
+	default:
+		return 3
 	}
 }
 
@@ -131,7 +134,8 @@ func inspectConfig(path, source string) ConfigEntry {
 		Source: source,
 	}
 
-	cfg, err := LoadConfigFile(path)
+	// Inspect without creating log dirs or failing on missing API_KEY etc.
+	cfg, err := InspectConfigFile(path)
 	if err != nil {
 		entry.Status = EntryError
 		entry.Err = err.Error()
@@ -148,15 +152,25 @@ func inspectConfig(path, source string) ConfigEntry {
 	if entry.Dialect == "" {
 		entry.Dialect = "—"
 	}
-	if ConfigReady(cfg) {
-		entry.Status = EntryReady
-	} else {
+	switch {
+	case !ConfigReady(cfg):
 		entry.Status = EntryNeedsSetup
+	case !cfg.Transport.Auth.AuthSecretsPresent():
+		entry.Status = EntryAuthNeeded
+		entry.Err = cfg.Transport.Auth.AuthMissingSummary()
+		if full := cfg.Transport.Auth.AuthMissingMessage(); full != "" {
+			// Full multi-line guidance for status line / Enter on home.
+			entry.Err = full
+		}
+	default:
+		entry.Status = EntryReady
 	}
 	return entry
 }
 
-// ConfigReady reports whether cfg has the minimum fields to open a session.
+// ConfigReady reports whether cfg has the minimum structural fields to open a
+// session. It does not require auth env secrets to be present (see
+// AuthConfig.AuthSecretsPresent / EnhancedConfig.ValidateAuth).
 func ConfigReady(cfg *EnhancedConfig) bool {
 	if cfg == nil {
 		return false
@@ -174,6 +188,38 @@ func ConfigReady(cfg *EnhancedConfig) bool {
 	default: // sse
 		return strings.TrimSpace(cfg.Transport.BaseURL) != "" && strings.TrimSpace(cfg.Transport.StreamEndpoint) != ""
 	}
+}
+
+// DisplayPath returns a short path for UI: relative to cwd when possible,
+// otherwise ~/.config/stream-debugger/… for user configs.
+func DisplayPath(path, cwd string) string {
+	if path == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(path)
+	if err == nil {
+		path = abs
+	}
+	if cwd != "" {
+		if rel, err := filepath.Rel(cwd, path); err == nil && rel != "" && !strings.HasPrefix(rel, "..") {
+			return rel
+		}
+	}
+	if ud, err := UserConfigDir(); err == nil {
+		udAbs, _ := filepath.Abs(ud)
+		if udAbs != "" && (path == udAbs || strings.HasPrefix(path, udAbs+string(filepath.Separator))) {
+			rest := strings.TrimPrefix(path, udAbs)
+			rest = strings.TrimPrefix(rest, string(filepath.Separator))
+			if rest == "" {
+				return "~/.config/stream-debugger"
+			}
+			return filepath.Join("~/.config/stream-debugger", rest)
+		}
+	}
+	if len(path) > 64 {
+		return "…" + path[len(path)-60:]
+	}
+	return path
 }
 
 // UserConfigDir returns ~/.config/stream-debugger (or platform equivalent).

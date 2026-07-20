@@ -8,13 +8,14 @@ import (
 
 func TestLoadConfigFile_AuthErrors(t *testing.T) {
 	tests := []struct {
-		name       string
-		yaml       string
-		env        map[string]string
-		wantErrSub string
+		name           string
+		yaml           string
+		env            map[string]string
+		wantLoadErrSub string // empty = load must succeed
+		wantAuthErrSub string // non-empty = ValidateAuth must mention this
 	}{
 		{
-			name: "bearer without token",
+			name: "bearer without token loads but ValidateAuth fails",
 			yaml: `
 transport:
   base_url: "http://localhost:8080"
@@ -23,11 +24,13 @@ transport:
     auth:
       type: "bearer"
       token_env: "MISSING_TOKEN"
+dialect:
+  file: openai
 `,
-			wantErrSub: "MISSING_TOKEN",
+			wantAuthErrSub: ".env",
 		},
 		{
-			name: "basic without username/password",
+			name: "basic without username/password loads but ValidateAuth fails",
 			yaml: `
 transport:
   base_url: "http://localhost:8080"
@@ -37,8 +40,10 @@ transport:
       type: "basic"
       username_env: "BASIC_USER"
       password_env: "BASIC_PASS"
+dialect:
+  file: openai
 `,
-			wantErrSub: "basic auth requires",
+			wantAuthErrSub: ".env",
 		},
 		{
 			name: "unknown auth type",
@@ -50,7 +55,7 @@ transport:
     auth:
       type: "oauth2"
 `,
-			wantErrSub: "unknown auth.type",
+			wantLoadErrSub: "unknown auth.type",
 		},
 		{
 			name: "unknown transport type",
@@ -63,7 +68,7 @@ transport:
     auth:
       type: "none"
 `,
-			wantErrSub: "unknown transport.type",
+			wantLoadErrSub: "unknown transport.type",
 		},
 	}
 
@@ -79,12 +84,31 @@ transport:
 			}()
 
 			path := writeYAMLConfig(t, tt.yaml)
-			_, err := LoadConfigFile(path)
-			if err == nil {
-				t.Fatalf("expected error, got nil")
+			cfg, err := LoadConfigFile(path)
+			if tt.wantLoadErrSub != "" {
+				if err == nil {
+					t.Fatalf("expected load error, got nil")
+				}
+				if !strings.Contains(err.Error(), tt.wantLoadErrSub) {
+					t.Errorf("expected load error containing %q, got: %v", tt.wantLoadErrSub, err)
+				}
+				return
 			}
-			if !strings.Contains(err.Error(), tt.wantErrSub) {
-				t.Errorf("expected error containing %q, got: %v", tt.wantErrSub, err)
+			if err != nil {
+				t.Fatalf("LoadConfigFile: %v", err)
+			}
+			authErr := cfg.ValidateAuth()
+			if tt.wantAuthErrSub == "" {
+				if authErr != nil {
+					t.Fatalf("ValidateAuth: %v", authErr)
+				}
+				return
+			}
+			if authErr == nil {
+				t.Fatal("expected ValidateAuth error, got nil")
+			}
+			if !strings.Contains(authErr.Error(), tt.wantAuthErrSub) {
+				t.Errorf("expected ValidateAuth containing %q, got: %v", tt.wantAuthErrSub, authErr)
 			}
 		})
 	}
