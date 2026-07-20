@@ -5,8 +5,8 @@ import (
 	neturl "net/url"
 	"os"
 
-	"github.com/lancekrogers/stream-debugger/internal/help"
-	"github.com/lancekrogers/stream-debugger/internal/mapping"
+	"github.com/Obedience-Corp/stream-debugger/internal/help"
+	"github.com/Obedience-Corp/stream-debugger/internal/mapping"
 	"github.com/urfave/cli/v2"
 )
 

@@ -5,7 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/lancekrogers/stream-debugger/internal/visualizer/anim"
+	"github.com/Obedience-Corp/stream-debugger/internal/visualizer/anim"
 )
 
 // animTickMsg drives energy decay sampling + flow-chase glyph frames.

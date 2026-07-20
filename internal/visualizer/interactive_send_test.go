@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lancekrogers/stream-debugger/internal/config"
-	"github.com/lancekrogers/stream-debugger/internal/testutil"
+	"github.com/Obedience-Corp/stream-debugger/internal/config"
+	"github.com/Obedience-Corp/stream-debugger/internal/testutil"
 )
 
 // TestStartStreamingCmd_SendsViaDialectTemplate proves interactive mode's

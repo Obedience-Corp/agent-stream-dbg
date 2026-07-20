@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lancekrogers/stream-debugger/internal/events"
+	"github.com/Obedience-Corp/stream-debugger/internal/events"
 )
 
 // TestRenderTimelinePane is a floor-level test for render_timeline_pane.go

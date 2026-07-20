@@ -12,8 +12,8 @@ deps:
 # transport client is reflection/descriptor-driven and never imports these).
 # Requires: protoc, protoc-gen-go, protoc-gen-go-grpc on PATH.
 proto-gen:
-    protoc --go_out=. --go_opt=module=github.com/lancekrogers/stream-debugger \
-        --go-grpc_out=. --go-grpc_opt=module=github.com/lancekrogers/stream-debugger \
+    protoc --go_out=. --go_opt=module=github.com/Obedience-Corp/stream-debugger \
+        --go-grpc_out=. --go-grpc_opt=module=github.com/Obedience-Corp/stream-debugger \
         --proto_path=testdata/proto testdata/proto/agentstream.proto
 
 # Regenerate Go stubs for the A2A-shaped mock service used by
@@ -23,8 +23,8 @@ proto-gen:
 # agentstream concern. Requires: protoc, protoc-gen-go, protoc-gen-go-grpc
 # on PATH.
 proto-gen-a2a:
-    protoc --go_out=. --go_opt=module=github.com/lancekrogers/stream-debugger \
-        --go-grpc_out=. --go-grpc_opt=module=github.com/lancekrogers/stream-debugger \
+    protoc --go_out=. --go_opt=module=github.com/Obedience-Corp/stream-debugger \
+        --go-grpc_out=. --go-grpc_opt=module=github.com/Obedience-Corp/stream-debugger \
         --proto_path=testdata/proto testdata/proto/a2a.proto
 
 # Regenerate the compiled FileDescriptorSet used to test the gRPC

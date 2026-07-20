@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/lancekrogers/stream-debugger/internal/config"
+	"github.com/Obedience-Corp/stream-debugger/internal/config"
 )
 
 // TestNewInteractiveModel_Defaults is a floor-level test for model.go

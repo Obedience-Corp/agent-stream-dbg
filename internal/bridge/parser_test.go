@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lancekrogers/stream-debugger/dialects"
-	"github.com/lancekrogers/stream-debugger/internal/events"
-	"github.com/lancekrogers/stream-debugger/internal/testutil"
+	"github.com/Obedience-Corp/stream-debugger/dialects"
+	"github.com/Obedience-Corp/stream-debugger/internal/events"
+	"github.com/Obedience-Corp/stream-debugger/internal/testutil"
 )
 
 func TestLoadDialect_EmbeddedByName(t *testing.T) {

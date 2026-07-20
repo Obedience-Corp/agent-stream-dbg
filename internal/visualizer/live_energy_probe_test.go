@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lancekrogers/stream-debugger/internal/bridge"
-	"github.com/lancekrogers/stream-debugger/internal/client"
-	"github.com/lancekrogers/stream-debugger/internal/config"
-	"github.com/lancekrogers/stream-debugger/internal/events"
+	"github.com/Obedience-Corp/stream-debugger/internal/bridge"
+	"github.com/Obedience-Corp/stream-debugger/internal/client"
+	"github.com/Obedience-Corp/stream-debugger/internal/config"
+	"github.com/Obedience-Corp/stream-debugger/internal/events"
 )
 
 // TestLiveBrainyardEnergy_TracksRealContentTokens requires a running Brainyard

@@ -3,7 +3,7 @@ package client
 import (
 	"testing"
 
-	"github.com/lancekrogers/stream-debugger/internal/mapping"
+	"github.com/Obedience-Corp/stream-debugger/internal/mapping"
 )
 
 func TestWithDebugQueryPreservesAndSetsQueryValues(t *testing.T) {

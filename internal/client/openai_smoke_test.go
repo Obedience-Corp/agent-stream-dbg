@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lancekrogers/stream-debugger/internal/config"
-	"github.com/lancekrogers/stream-debugger/internal/events"
-	"github.com/lancekrogers/stream-debugger/internal/testutil"
-	"github.com/lancekrogers/stream-debugger/internal/transport/sse"
+	"github.com/Obedience-Corp/stream-debugger/internal/config"
+	"github.com/Obedience-Corp/stream-debugger/internal/events"
+	"github.com/Obedience-Corp/stream-debugger/internal/testutil"
+	"github.com/Obedience-Corp/stream-debugger/internal/transport/sse"
 )
 
 // TestOpenAIDialectMockSSESmoke exercises the live SSE frame path with the

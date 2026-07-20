@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lancekrogers/stream-debugger/internal/mapping"
+	"github.com/Obedience-Corp/stream-debugger/internal/mapping"
 )
 
 func testEngine(t *testing.T) *mapping.Engine {

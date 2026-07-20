@@ -10,13 +10,13 @@ execution from logs.
 ## Install
 
 ```bash
-go install github.com/lancekrogers/stream-debugger/cmd/stream-debugger@latest
+go install github.com/Obedience-Corp/stream-debugger/cmd/stream-debugger@latest
 ```
 
 From source:
 
 ```bash
-git clone https://github.com/lancekrogers/stream-debugger.git
+git clone https://github.com/Obedience-Corp/stream-debugger.git
 cd stream-debugger
 just install   # or: go install ./cmd/stream-debugger
 ```

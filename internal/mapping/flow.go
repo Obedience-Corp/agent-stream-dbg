@@ -3,7 +3,7 @@ package mapping
 import (
 	"fmt"
 
-	"github.com/lancekrogers/stream-debugger/internal/events"
+	"github.com/Obedience-Corp/stream-debugger/internal/events"
 	"gopkg.in/yaml.v3"
 )
 

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/lancekrogers/stream-debugger/internal/config"
+	"github.com/Obedience-Corp/stream-debugger/internal/config"
 )
 
 var interactiveConfigNames = []string{

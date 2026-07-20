@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lancekrogers/stream-debugger/internal/events"
+	"github.com/Obedience-Corp/stream-debugger/internal/events"
 )
 
 // TestRenderToolEventSummary_DistinctFromContent is this task's explicit

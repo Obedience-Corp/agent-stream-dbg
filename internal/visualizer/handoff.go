@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/lancekrogers/stream-debugger/internal/events"
+	"github.com/Obedience-Corp/stream-debugger/internal/events"
 )
 
 // Handoff modes, per architecture.md's "Edges | handoff events (from→to,

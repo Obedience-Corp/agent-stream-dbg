@@ -3,7 +3,7 @@ package mapping
 import (
 	"testing"
 
-	"github.com/lancekrogers/stream-debugger/internal/events"
+	"github.com/Obedience-Corp/stream-debugger/internal/events"
 )
 
 func testEngine(t *testing.T) *Engine {

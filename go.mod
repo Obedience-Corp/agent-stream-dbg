@@ -1,4 +1,4 @@
-module github.com/lancekrogers/stream-debugger
+module github.com/Obedience-Corp/stream-debugger
 
 go 1.25.0
 

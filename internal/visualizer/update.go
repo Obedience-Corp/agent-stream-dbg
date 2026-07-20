@@ -6,10 +6,10 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/lancekrogers/stream-debugger/internal/bridge"
-	"github.com/lancekrogers/stream-debugger/internal/events"
-	dblogger "github.com/lancekrogers/stream-debugger/internal/logger"
-	"github.com/lancekrogers/stream-debugger/internal/transport"
+	"github.com/Obedience-Corp/stream-debugger/internal/bridge"
+	"github.com/Obedience-Corp/stream-debugger/internal/events"
+	dblogger "github.com/Obedience-Corp/stream-debugger/internal/logger"
+	"github.com/Obedience-Corp/stream-debugger/internal/transport"
 )
 
 func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

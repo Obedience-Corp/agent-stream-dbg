@@ -24,7 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/lancekrogers/stream-debugger/internal/transport"
+	"github.com/Obedience-Corp/stream-debugger/internal/transport"
 )
 
 // Config configures an ACP stdio agent process.

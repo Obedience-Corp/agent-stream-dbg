@@ -3,9 +3,9 @@ package visualizer
 import (
 	"testing"
 
-	"github.com/lancekrogers/stream-debugger/internal/config"
-	"github.com/lancekrogers/stream-debugger/internal/events"
-	"github.com/lancekrogers/stream-debugger/internal/logger"
+	"github.com/Obedience-Corp/stream-debugger/internal/config"
+	"github.com/Obedience-Corp/stream-debugger/internal/events"
+	"github.com/Obedience-Corp/stream-debugger/internal/logger"
 )
 
 // newTestModel returns a Model ready for handleEvent, with a real

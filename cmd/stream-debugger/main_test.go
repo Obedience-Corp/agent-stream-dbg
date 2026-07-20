@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lancekrogers/stream-debugger/dialects"
-	"github.com/lancekrogers/stream-debugger/internal/config"
-	"github.com/lancekrogers/stream-debugger/internal/events"
+	"github.com/Obedience-Corp/stream-debugger/dialects"
+	"github.com/Obedience-Corp/stream-debugger/internal/config"
+	"github.com/Obedience-Corp/stream-debugger/internal/events"
 )
 
 func TestReplayPathUsesConfiguredOpenAIDialect(t *testing.T) {

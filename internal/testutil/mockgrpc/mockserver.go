@@ -27,7 +27,7 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 
-	"github.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc/agentstreampb"
+	"github.com/Obedience-Corp/stream-debugger/internal/testutil/mockgrpc/agentstreampb"
 )
 
 // Server replays a scripted sequence of StreamEvents to every Stream

@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lancekrogers/stream-debugger/internal/config"
-	"github.com/lancekrogers/stream-debugger/internal/events"
-	"github.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc"
-	"github.com/lancekrogers/stream-debugger/internal/testutil/mockgrpc/a2apb"
+	"github.com/Obedience-Corp/stream-debugger/internal/config"
+	"github.com/Obedience-Corp/stream-debugger/internal/events"
+	"github.com/Obedience-Corp/stream-debugger/internal/testutil/mockgrpc"
+	"github.com/Obedience-Corp/stream-debugger/internal/testutil/mockgrpc/a2apb"
 )
 
 func TestConfiguredGRPCTransportUsesA2ADialect(t *testing.T) {

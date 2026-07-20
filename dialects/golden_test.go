@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lancekrogers/stream-debugger/internal/explain"
-	"github.com/lancekrogers/stream-debugger/internal/mapping"
-	"github.com/lancekrogers/stream-debugger/internal/transport/replay"
+	"github.com/Obedience-Corp/stream-debugger/internal/explain"
+	"github.com/Obedience-Corp/stream-debugger/internal/mapping"
+	"github.com/Obedience-Corp/stream-debugger/internal/transport/replay"
 )
 
 // updateGoldens regenerates testdata/goldens/*.explain.txt from the

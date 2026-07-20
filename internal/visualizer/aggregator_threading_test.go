@@ -3,9 +3,9 @@ package visualizer
 import (
 	"testing"
 
-	"github.com/lancekrogers/stream-debugger/internal/config"
-	"github.com/lancekrogers/stream-debugger/internal/events"
-	"github.com/lancekrogers/stream-debugger/internal/mapping"
+	"github.com/Obedience-Corp/stream-debugger/internal/config"
+	"github.com/Obedience-Corp/stream-debugger/internal/events"
+	"github.com/Obedience-Corp/stream-debugger/internal/mapping"
 )
 
 // newTestInteractiveModel returns a model ready for applyParsedEvent,
