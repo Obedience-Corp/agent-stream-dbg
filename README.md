@@ -119,7 +119,7 @@ A run config selects transport and dialect. Transports:
 - `sse` — HTTP Server-Sent Events
 - `grpc` — streaming RPCs (reflection, descriptor set, or `.proto`)
 - `replay` — JSONL fixture through the same pipeline
-- `acp` — Agent Client Protocol agent over stdio (spawn + handshake)
+- `acp` — Agent Client Protocol agent over stdio (spawn + handshake; multi-turn reuses the process)
 
 Example:
 

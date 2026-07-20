@@ -121,31 +121,64 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Append the exact raw frame and decode through the same bridge parser
 		// used by every noninteractive transport path. applyParsedEvent owns
 		// the Events list — do not append here or every event is duplicated.
-		if m.streamIndex < len(m.messages) {
-			transportName := m.messages[m.streamIndex].TransportName
+		//
+		// For sessionful transports (ACP), frames may arrive after the user
+		// turn ends (late updates / reverse-RPC traffic). We still attach them
+		// to the latest message index and keep reading so the agent does not
+		// stall on a full Frames buffer.
+		targetIdx := m.streamIndex
+		if targetIdx < 0 || targetIdx >= len(m.messages) {
+			if len(m.messages) > 0 {
+				targetIdx = len(m.messages) - 1
+			}
+		}
+		if targetIdx >= 0 && targetIdx < len(m.messages) {
+			transportName := m.messages[targetIdx].TransportName
 			if transportName == "" && m.streamTransport != nil {
 				transportName = m.streamTransport.Name()
 			}
 			if transportName == "" {
 				transportName = "sse"
 			}
-			m.messages[m.streamIndex].TransportName = transportName
-			m.messages[m.streamIndex].Frames = append(m.messages[m.streamIndex].Frames, captureFrame(msg.frame))
+			m.messages[targetIdx].TransportName = transportName
+			m.messages[targetIdx].Frames = append(m.messages[targetIdx].Frames, captureFrame(msg.frame))
 			if transportName == "sse" && len(msg.frame.Raw) > 0 {
-				m.messages[m.streamIndex].RawSSE += string(msg.frame.Raw)
+				m.messages[targetIdx].RawSSE += string(msg.frame.Raw)
 			}
 			if msg.frame.Err != nil {
 				m.closeActiveStream()
 				m.err = msg.frame.Err
 				m.streaming = false
-				m.messages[m.streamIndex].Streaming = false
+				m.messages[targetIdx].Streaming = false
 				m.contentDirty = true
 				break
 			}
-			if evt, err := m.parser.Parse(msg.frame.Name, msg.frame.Data); err == nil && evt != nil {
+			var evt *events.Event
+			if parsed, err := m.parser.Parse(msg.frame.Name, msg.frame.Data); err == nil && parsed != nil {
+				evt = parsed
+				// applyParsedEvent always uses streamIndex; align for multi-turn.
+				prev := m.streamIndex
+				m.streamIndex = targetIdx
 				m.applyParsedEvent(evt)
+				m.streamIndex = prev
 			}
 			m.contentDirty = true
+
+			// Sessionful turn boundary: end UI "streaming" but keep the process.
+			if m.streaming && turnEnded(evt) {
+				if _, ok := m.streamTransport.(transport.SessionTransport); ok {
+					if len(m.messages[targetIdx].AgentResponses) == 0 {
+						m.messages[targetIdx].AgentResponses = m.buildAgentResponses(m.messages[targetIdx].Events)
+					}
+					m.messages[targetIdx].Streaming = false
+					m.streaming = false
+					if m.follow {
+						m.viewport.GotoBottom()
+					}
+					// Keep draining frames for reverse RPC / late notifications.
+					return m, m.readStreamFrameCmd()
+				}
+			}
 		}
 		return m, m.readStreamFrameCmd()
 

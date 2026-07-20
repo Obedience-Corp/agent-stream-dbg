@@ -1,8 +1,9 @@
 # Live ACP (Agent Client Protocol) agent over stdio.
 #
 # Spawns an ACP-compatible coding agent as a subprocess, performs
-# initialize → session/new → session/prompt, and feeds every agent→client
-# JSON-RPC line through the embedded `acp` dialect.
+# initialize → session/new, then session/prompt per user turn. Interactive
+# multi-turn reuses the same process and session (does not re-spawn).
+# Every agent→client JSON-RPC line goes through the embedded `acp` dialect.
 #
 # Reverse RPC (permissions, fs, terminal) is stubbed: permissions are
 # auto-approved by default; other reverse methods return JSON-RPC errors

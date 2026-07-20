@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/lancekrogers/stream-debugger/internal/config"
+	"github.com/lancekrogers/stream-debugger/internal/events"
 )
 
 // TestUrlQueryEscape is a floor-level test for streaming.go's small
@@ -16,6 +17,21 @@ func TestUrlQueryEscape(t *testing.T) {
 	}
 	if got := urlQueryEscape("a&b=c"); got != "a%26b%3Dc" {
 		t.Errorf("expected special characters escaped, got %q", got)
+	}
+}
+
+func TestTurnEnded(t *testing.T) {
+	if turnEnded(nil) {
+		t.Fatal("nil should not end turn")
+	}
+	if turnEnded(&events.Event{Kind: events.KindContent}) {
+		t.Fatal("content should not end turn")
+	}
+	if !turnEnded(&events.Event{Kind: events.KindStreamEnd}) {
+		t.Fatal("stream_end should end turn")
+	}
+	if !turnEnded(&events.Event{Kind: events.KindSessionEnd}) {
+		t.Fatal("session_end should end turn")
 	}
 }
 

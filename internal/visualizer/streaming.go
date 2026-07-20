@@ -18,8 +18,25 @@ func urlQueryEscape(s string) string { return neturl.QueryEscape(s) }
 // startStreamingCmd initiates the shared configured transport and hands off to
 // the frame reader. The dialect send template is rendered by client.NewTransport;
 // this model only adapts raw transport frames into Bubble Tea messages.
+//
+// Sessionful transports (ACP) are reused across turns: the first message
+// Connects, later messages call Prompt on the same process/session.
 func (m InteractiveModel) startStreamingCmd(message string, index int) tea.Cmd {
+	existing := m.streamTransport
 	return func() tea.Msg {
+		// Reuse a live session transport (e.g. ACP stdio) for multi-turn chat.
+		if existing != nil {
+			if st, ok := existing.(transport.SessionTransport); ok && st.Alive() {
+				if err := st.Prompt(m.streamContext, message); err != nil {
+					_ = existing.Close()
+					return streamErrorMsg{err: fmt.Errorf("failed to prompt session transport: %w", err)}
+				}
+				return streamStartMsg{index: index, stream: existing, sessionReady: false, reused: true}
+			}
+			// Stale or non-session transport: drop before opening a new one.
+			_ = existing.Close()
+		}
+
 		setupCompleted := false
 		if m.cfg.Session.AutoSetup && !m.sessionReady {
 			vars := config.InterpolationVarsFromConfig(m.cfg)
@@ -89,6 +106,18 @@ type streamStartMsg struct {
 	index        int
 	stream       transport.Transport
 	sessionReady bool
+	// reused is true when an existing SessionTransport was prompted again
+	// instead of Connect-ing a new process.
+	reused bool
+}
+
+// turnEnded reports whether a decoded event marks the end of a user turn
+// for a sessionful transport (keep process; stop "streaming" UI state).
+func turnEnded(evt *events.Event) bool {
+	if evt == nil {
+		return false
+	}
+	return evt.Kind == events.KindStreamEnd || evt.Kind == events.KindSessionEnd
 }
 
 // streamFrameMsg carries one transport frame from the streaming response.
