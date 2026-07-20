@@ -4,7 +4,8 @@
 # dialect engine lands, what the bytes mean (dialect). It never encodes
 # any one system's defaults — every value below must be set explicitly.
 
-# Transport: how bytes arrive. Supported values are "sse", "grpc", and "replay".
+# Transport: how bytes arrive.
+# Supported: sse | grpc | acp | replay
 transport:
   type: "sse"
   base_url: "http://localhost:5003"
@@ -17,6 +18,16 @@ transport:
   # plaintext: true
   # request:
   #   session_id: "demo-session"  # protobuf request fields, when needed
+
+  # ACP example (type: acp) — spawn an Agent Client Protocol agent over stdio:
+  # type: acp
+  # command: "npx"
+  # args: ["@agentclientprotocol/example", "stdio"]
+  # auto_approve: true
+
+  # Replay example (type: replay) — JSONL fixture path in base_url:
+  # type: replay
+  # base_url: "testdata/fixtures/brainyard-session.jsonl"
 
   # How to initiate streaming
   stream_endpoint:
