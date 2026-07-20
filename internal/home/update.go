@@ -86,7 +86,9 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.status = entry.Err
 				return m, nil
 			}
-			openPanel := entry.Status == config.EntryNeedsSetup
+			// Incomplete structure or missing auth env: open with the config
+			// panel so the user can fix fields / see which token_env is needed.
+			openPanel := entry.Status == config.EntryNeedsSetup || entry.Status == config.EntryAuthNeeded
 			return m.exitOpen(entry.Path, openPanel, "")
 		}
 	}

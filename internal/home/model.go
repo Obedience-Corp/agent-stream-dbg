@@ -1,9 +1,6 @@
 package home
 
 import (
-	"path/filepath"
-	"strings"
-
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/Obedience-Corp/stream-debugger/dialects"
@@ -169,20 +166,5 @@ func (m model) exitQuit() (tea.Model, tea.Cmd) {
 }
 
 func shortPath(path string) string {
-	if home, err := filepath.Abs(path); err == nil {
-		path = home
-	}
-	if ud, err := config.UserConfigDir(); err == nil {
-		if strings.HasPrefix(path, ud) {
-			return "~/.config/stream-debugger/" + strings.TrimPrefix(path, ud+string(filepath.Separator))
-		}
-	}
-	if homeDir, err := filepath.Abs(filepath.Join(filepath.Dir(path), "..")); err == nil {
-		_ = homeDir
-	}
-	// Fall back to basenamed parent when long
-	if len(path) > 64 {
-		return "…" + path[len(path)-60:]
-	}
-	return path
+	return config.DisplayPath(path, "")
 }

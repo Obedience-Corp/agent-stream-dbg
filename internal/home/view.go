@@ -87,7 +87,7 @@ func (m model) viewHome() string {
 			entry := m.entries[i]
 			chip := chipReady.Render(string(entry.Status))
 			switch entry.Status {
-			case config.EntryNeedsSetup:
+			case config.EntryNeedsSetup, config.EntryAuthNeeded:
 				chip = chipNeed.Render(string(entry.Status))
 			case config.EntryError:
 				chip = chipErr.Render(string(entry.Status))
@@ -100,7 +100,11 @@ func (m model) viewHome() string {
 			b.WriteString(style.Render(line))
 			b.WriteString("\n")
 			if i == m.cursor {
-				b.WriteString(dimStyle.Render("    " + shortPath(entry.Path)))
+				b.WriteString(dimStyle.Render("    " + config.DisplayPath(entry.Path, m.opts.Cwd)))
+				if entry.Status == config.EntryAuthNeeded && entry.Err != "" {
+					b.WriteString("\n")
+					b.WriteString(dimStyle.Render("    " + entry.Err + " — export the env var or press e to edit"))
+				}
 				b.WriteString("\n")
 			}
 			continue
@@ -218,7 +222,7 @@ func (m model) viewWizardSave() string {
 		dir = m.opts.Cwd
 	}
 	path := filepath.Join(dir, config.SanitizeConfigName(name)+".yaml")
-	b.WriteString(dimStyle.Render("File  " + shortPath(path)))
+	b.WriteString(dimStyle.Render("File  " + config.DisplayPath(path, m.opts.Cwd)))
 	b.WriteString("\n\n")
 	choices := []string{"Save and open session", "Save and return to home"}
 	for i, c := range choices {

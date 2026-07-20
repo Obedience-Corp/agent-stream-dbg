@@ -108,8 +108,37 @@ type YAMLConfig struct {
 	} `yaml:"display"`
 }
 
-// LoadConfigFile loads configuration from a YAML file and merges with environment
+type loadOptions struct {
+	// requireSecrets fails when auth.type needs credentials that are not in
+	// the environment. Listing configs in the home hub leaves this false so a
+	// missing API_KEY is "auth needed", not a hard parse error.
+	requireSecrets bool
+	// createLogDirs creates logging.dir on disk. Inspection/listing leaves
+	// this false so browsing configs does not side-effect the filesystem.
+	createLogDirs bool
+}
+
+// LoadConfigFile loads configuration from a YAML file and merges with environment.
+// Missing auth env vars (for example API_KEY) are allowed: the config still
+// loads so the home hub and config panel can display it. Call
+// EnhancedConfig.ValidateAuth before connecting if the transport needs secrets.
 func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
+	return loadConfigFile(configPath, loadOptions{
+		requireSecrets: false,
+		createLogDirs:  true,
+	})
+}
+
+// InspectConfigFile loads a run config for listing/status only: no log-dir
+// creation and missing secrets do not fail the load.
+func InspectConfigFile(configPath string) (*EnhancedConfig, error) {
+	return loadConfigFile(configPath, loadOptions{
+		requireSecrets: false,
+		createLogDirs:  false,
+	})
+}
+
+func loadConfigFile(configPath string, opts loadOptions) (*EnhancedConfig, error) {
 	// Read YAML file
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -139,7 +168,7 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 	var apiKey string
 	switch transportType {
 	case "grpc":
-		auth, resolvedToken, err := resolveAuth(yamlCfg.Transport.Auth, "none")
+		auth, resolvedToken, err := resolveAuth(yamlCfg.Transport.Auth, "none", opts.requireSecrets)
 		if err != nil {
 			return nil, err
 		}
@@ -162,7 +191,7 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 			Auth:               auth,
 		}
 	case "replay":
-		auth, resolvedToken, err := resolveAuth(yamlCfg.Transport.Auth, "none")
+		auth, resolvedToken, err := resolveAuth(yamlCfg.Transport.Auth, "none", opts.requireSecrets)
 		if err != nil {
 			return nil, err
 		}
@@ -177,7 +206,7 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 		if strings.TrimSpace(yamlCfg.Transport.Command) == "" {
 			return nil, fmt.Errorf("transport.command is required when transport.type is \"acp\"")
 		}
-		auth, resolvedToken, err := resolveAuth(yamlCfg.Transport.Auth, "none")
+		auth, resolvedToken, err := resolveAuth(yamlCfg.Transport.Auth, "none", opts.requireSecrets)
 		if err != nil {
 			return nil, err
 		}
@@ -196,7 +225,7 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 			Auth:        auth,
 		}
 	default: // sse
-		auth, resolvedToken, err := resolveAuth(yamlCfg.Transport.StreamEndpoint.Auth, "none")
+		auth, resolvedToken, err := resolveAuth(yamlCfg.Transport.StreamEndpoint.Auth, "none", opts.requireSecrets)
 		if err != nil {
 			return nil, err
 		}
@@ -256,9 +285,10 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 	// Normalize defaults for endpoints if missing
 	cfg.Normalize()
 
-	// Ensure log directories exist
-	if err := cfg.createLogDirs(); err != nil {
-		return nil, fmt.Errorf("failed to create log directories: %w", err)
+	if opts.createLogDirs {
+		if err := cfg.createLogDirs(); err != nil {
+			return nil, fmt.Errorf("failed to create log directories: %w", err)
+		}
 	}
 
 	return cfg, nil
@@ -271,7 +301,11 @@ func LoadConfigFile(configPath string) (*EnhancedConfig, error) {
 // token separately since callers outside the transport itself (session
 // auto-setup) still read EnhancedConfig.APIKey directly, regardless of
 // which auth type the primary transport ends up using.
-func resolveAuth(y authYAML, defaultType string) (AuthConfig, string, error) {
+//
+// When requireSecrets is false, missing env credentials are left empty on the
+// AuthConfig instead of failing — so listing and editing configs works before
+// the user exports API_KEY.
+func resolveAuth(y authYAML, defaultType string, requireSecrets bool) (AuthConfig, string, error) {
 	tokenEnv := y.TokenEnv
 	var apiKey string
 	if tokenEnv != "" {
@@ -292,19 +326,19 @@ func resolveAuth(y authYAML, defaultType string) (AuthConfig, string, error) {
 
 	switch authType {
 	case "bearer", "api_key", "metadata":
-		if apiKey == "" {
-			if tokenEnv == "" {
-				return AuthConfig{}, "", fmt.Errorf("auth.type %q requires token_env", authType)
-			}
-			return AuthConfig{}, "", fmt.Errorf("%s environment variable not set", tokenEnv)
+		if tokenEnv == "" && apiKey == "" {
+			return AuthConfig{}, "", fmt.Errorf("auth.type %q requires token_env", authType)
 		}
 		if authType == "metadata" && auth.HeaderName == "" {
 			return AuthConfig{}, "", fmt.Errorf("auth.type \"metadata\" requires header_name (the metadata key to attach)")
 		}
+		if apiKey == "" && requireSecrets {
+			return AuthConfig{}, "", fmt.Errorf("%s environment variable not set", tokenEnv)
+		}
 	case "basic":
 		auth.Username = os.Getenv(y.UsernameEnv)
 		auth.Password = os.Getenv(y.PasswordEnv)
-		if auth.Username == "" || auth.Password == "" {
+		if (auth.Username == "" || auth.Password == "") && requireSecrets {
 			return AuthConfig{}, "", fmt.Errorf("basic auth requires %s and %s environment variables",
 				y.UsernameEnv, y.PasswordEnv)
 		}
@@ -315,6 +349,42 @@ func resolveAuth(y authYAML, defaultType string) (AuthConfig, string, error) {
 	}
 
 	return auth, apiKey, nil
+}
+
+// AuthSecretsPresent reports whether credentials required by auth.type are
+// currently resolved from the environment (or set on the struct).
+func (a AuthConfig) AuthSecretsPresent() bool {
+	switch a.Type {
+	case "bearer", "api_key", "metadata":
+		return a.Token != ""
+	case "basic":
+		return a.Username != "" && a.Password != ""
+	default:
+		return true
+	}
+}
+
+// ValidateAuth returns an error when this transport needs credentials that
+// are not available. Safe to call before connecting or auto-setup.
+func (c *EnhancedConfig) ValidateAuth() error {
+	if c == nil {
+		return fmt.Errorf("config is nil")
+	}
+	a := c.Transport.Auth
+	if a.AuthSecretsPresent() {
+		return nil
+	}
+	switch a.Type {
+	case "bearer", "api_key", "metadata":
+		if a.TokenEnv == "" {
+			return fmt.Errorf("auth.type %q requires token_env", a.Type)
+		}
+		return fmt.Errorf("%s environment variable not set (export it or edit auth in the config panel)", a.TokenEnv)
+	case "basic":
+		return fmt.Errorf("basic auth credentials are not set (export the username/password env vars)")
+	default:
+		return nil
+	}
 }
 
 // EnhancedConfig is the unified configuration structure
