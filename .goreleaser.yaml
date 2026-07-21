@@ -1,0 +1,88 @@
+# GoReleaser config — same distribution model as Obedience-Corp/festival:
+# multi-platform archives, checksums, Homebrew Formula on homebrew-tap,
+# GitHub Release assets that npm postinstall downloads.
+version: 2
+
+builds:
+  - id: agent-stream-dbg
+    main: ./cmd/agent-stream-dbg
+    binary: agent-stream-dbg
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+archives:
+  - id: agent-stream-dbg
+    ids: [agent-stream-dbg]
+    name_template: >-
+      agent-stream-dbg-
+      {{- .Version }}-
+      {{- if eq .Os "darwin" }}macOS
+      {{- else }}{{ .Os }}{{ end }}-
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    files:
+      - README.md
+      - LICENSE
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+# Formula (CLI) — not a Cask. Casks are for macOS GUI apps.
+brews:
+  - name: agent-stream-dbg
+    ids:
+      - agent-stream-dbg
+    repository:
+      owner: Obedience-Corp
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/Obedience-Corp/agent-stream-dbg"
+    description: "TUI debugger for multi-agent event streams (SSE, gRPC, ACP)"
+    license: "Apache-2.0"
+    skip_upload: auto
+    install: |
+      bin.install "agent-stream-dbg"
+    test: |
+      assert_match "agent-stream-dbg", shell_output("#{bin}/agent-stream-dbg --help")
+    commit_msg_template: "agent-stream-dbg {{ .Tag }}"
+
+release:
+  github:
+    owner: Obedience-Corp
+    name: agent-stream-dbg
+  prerelease: auto
+  header: |
+    ## agent-stream-dbg {{ .Tag }}
+
+    TUI debugger for multi-agent event streams (SSE, gRPC, ACP, replay).
+
+  footer: |
+    **Full Changelog**: https://github.com/Obedience-Corp/agent-stream-dbg/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+    ## Installation
+
+    | Channel | Command |
+    |---------|---------|
+    | Go | `go install github.com/Obedience-Corp/agent-stream-dbg/cmd/agent-stream-dbg@{{ .Tag }}` |
+    | npm | `npm install -g @obedience-corp/agent-stream-dbg` |
+    | Homebrew | `brew tap Obedience-Corp/tap && brew trust Obedience-Corp/tap && brew install agent-stream-dbg` |

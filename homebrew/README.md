@@ -1,42 +1,43 @@
 # Homebrew distribution
 
-## Install (recommended — org tap)
-
-Prebuilt binaries from GitHub Releases, published in
-[Obedience-Corp/homebrew-tap](https://github.com/Obedience-Corp/homebrew-tap):
+**Production installs** use the org tap, updated automatically by GoReleaser on
+each tag (same pattern as Festival):
 
 ```bash
 brew tap Obedience-Corp/tap
-brew trust Obedience-Corp/tap   # Homebrew 6+ (once per machine)
+brew trust Obedience-Corp/tap   # Homebrew 6+ once
 brew install agent-stream-dbg
 ```
 
-## Install (this repo — source build)
-
-Useful for development. Formula: [`agent-stream-dbg.rb`](./agent-stream-dbg.rb)
-
-```bash
-git clone https://github.com/Obedience-Corp/agent-stream-dbg.git
-cd agent-stream-dbg
-brew install --formula ./homebrew/agent-stream-dbg.rb
-```
+Formula path in the tap:  
+https://github.com/Obedience-Corp/homebrew-tap/blob/main/Formula/agent-stream-dbg.rb
 
 ## Formula vs Cask
 
 | | **Formula** | **Cask** |
 |--|-------------|----------|
-| For | CLIs, libraries, daemons, TUIs | macOS GUI `.app` bundles |
-| Install | `brew install name` | `brew install --cask name` |
+| For | CLIs / TUIs | macOS GUI `.app` |
 | This tool | **Yes** | No |
 
-Homebrew “taps” are third-party formula/cask repos. A **tap** can contain both
-`Formula/` and `Casks/`. **agent-stream-dbg** is a terminal debugger, so it
-ships as a **Formula**, not a cask.
+A **tap** is just a third-party formula/cask repo. Festival puts GUI helpers under
+`Casks/`; agent-stream-dbg is a terminal tool under `Formula/`.
 
-## After a release
+## In-repo source formula
 
-1. Upload platform assets: `just release package-binaries vX.Y.Z`
-2. Update `Obedience-Corp/homebrew-tap` → `Formula/agent-stream-dbg.rb`
-   (version, URLs, sha256s)
-3. Optionally refresh the in-repo source formula sha256:
-   `just release homebrew-sha vX.Y.Z`
+[`agent-stream-dbg.rb`](./agent-stream-dbg.rb) builds from a GitHub source
+tarball (useful for local brew testing). Production users should use the tap.
+
+```bash
+brew install --formula ./homebrew/agent-stream-dbg.rb
+```
+
+## Release automation
+
+On `git push origin vX.Y.Z`, CI runs GoReleaser which:
+
+1. Builds multi-platform archives + `checksums.txt`
+2. Creates/updates the GitHub Release
+3. Commits an updated Formula to `Obedience-Corp/homebrew-tap`
+4. Publishes `@obedience-corp/agent-stream-dbg` to npm
+
+Requires repo secret `HOMEBREW_TAP_GITHUB_TOKEN` (write to the tap).

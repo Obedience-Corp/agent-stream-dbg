@@ -42,14 +42,16 @@ Issues and PRs are welcome. There is no guarantee of review turnaround; this is 
 
 ## Distribution packages
 
-| Channel | Location |
-|---------|----------|
-| Homebrew formula | [`homebrew/`](homebrew/) |
-| npm wrapper | [`npm/`](npm/) |
+Same model as Festival:
 
-Release maintainers: `just release create vX.Y.Z` builds notes and uploads
-platform tarballs. Update `homebrew/agent-stream-dbg.rb` sha256 via
-`just release homebrew-sha vX.Y.Z`. Publish npm with `cd npm && npm publish`.
+| Channel | How it ships |
+|---------|----------------|
+| GitHub Releases | GoReleaser archives + `checksums.txt` |
+| Homebrew | GoReleaser updates `Obedience-Corp/homebrew-tap` **Formula** (not Cask) |
+| npm | `@obedience-corp/agent-stream-dbg` published after GoReleaser |
+
+Release: `just release tag vX.Y.Z` (or `create`). Requires secrets
+`HOMEBREW_TAP_GITHUB_TOKEN` and `NPM_TOKEN` on the GitHub repo.
 
 ## Security
 
