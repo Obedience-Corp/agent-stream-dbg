@@ -68,11 +68,7 @@ func newModel(opts Options) model {
 }
 
 func (m *model) reload() {
-	dirs := m.opts.UserConfigDirs
-	if len(dirs) == 0 && m.opts.UserConfigDir != "" {
-		dirs = []string{m.opts.UserConfigDir}
-	}
-	m.entries = config.ListConfigs(m.opts.Cwd, dirs...)
+	m.entries = config.ListConfigs(m.opts.Cwd, m.opts.UserConfigDir)
 	if m.cursor >= len(m.homeItems()) {
 		m.cursor = 0
 	}

@@ -32,19 +32,15 @@ type ConfigEntry struct {
 }
 
 // interactiveConfigNames are the well-known basenames scanned in the cwd.
-// Legacy stream-debugger.* names remain so older checkouts keep working.
 var interactiveConfigNames = []string{
 	"agent-stream-dbg.yaml",
 	"agent-stream-dbg.yml",
-	"stream-debugger.yaml", // legacy
-	"stream-debugger.yml",  // legacy
 	"config.yaml",
 	"config.yml",
 }
 
 // ListConfigs returns run configs from the working directory and one or more
-// user config directories. It never creates files and never invents paths —
-// callers that want legacy ~/.config/stream-debugger must pass it explicitly.
+// user config directories. It never creates files.
 func ListConfigs(cwd string, userConfigDirs ...string) []ConfigEntry {
 	seen := make(map[string]struct{})
 	var out []ConfigEntry
@@ -214,21 +210,15 @@ func DisplayPath(path, cwd string) string {
 			return rel
 		}
 	}
-	if base, err := os.UserConfigDir(); err == nil {
-		for _, name := range []string{"agent-stream-dbg", "stream-debugger"} {
-			udAbs, _ := filepath.Abs(filepath.Join(base, name))
-			if udAbs == "" {
-				continue
+	if ud, err := UserConfigDir(); err == nil {
+		udAbs, _ := filepath.Abs(ud)
+		if udAbs != "" && (path == udAbs || strings.HasPrefix(path, udAbs+string(filepath.Separator))) {
+			rest := strings.TrimPrefix(path, udAbs)
+			rest = strings.TrimPrefix(rest, string(filepath.Separator))
+			if rest == "" {
+				return "~/.config/agent-stream-dbg"
 			}
-			if path == udAbs || strings.HasPrefix(path, udAbs+string(filepath.Separator)) {
-				rest := strings.TrimPrefix(path, udAbs)
-				rest = strings.TrimPrefix(rest, string(filepath.Separator))
-				prefix := "~/.config/" + name
-				if rest == "" {
-					return prefix
-				}
-				return filepath.Join(prefix, rest)
-			}
+			return filepath.Join("~/.config/agent-stream-dbg", rest)
 		}
 	}
 	if len(path) > 64 {
@@ -244,28 +234,6 @@ func UserConfigDir() (string, error) {
 		return "", fmt.Errorf("find user config directory: %w", err)
 	}
 	return filepath.Join(base, "agent-stream-dbg"), nil
-}
-
-// LegacyUserConfigDir returns the pre-rename ~/.config/stream-debugger path.
-func LegacyUserConfigDir() (string, error) {
-	base, err := os.UserConfigDir()
-	if err != nil {
-		return "", fmt.Errorf("find user config directory: %w", err)
-	}
-	return filepath.Join(base, "stream-debugger"), nil
-}
-
-// UserConfigDirs returns primary + legacy user config directories for listing.
-func UserConfigDirs() ([]string, error) {
-	primary, err := UserConfigDir()
-	if err != nil {
-		return nil, err
-	}
-	dirs := []string{primary}
-	if legacy, err := LegacyUserConfigDir(); err == nil && legacy != primary {
-		dirs = append(dirs, legacy)
-	}
-	return dirs, nil
 }
 
 // WriteNewConfig writes a new private run-config file. path must not already exist.

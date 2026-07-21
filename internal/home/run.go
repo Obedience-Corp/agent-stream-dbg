@@ -25,10 +25,9 @@ type Result struct {
 
 // Options configure the home hub.
 type Options struct {
-	Cwd            string
-	UserConfigDir  string   // primary dir for new configs
-	UserConfigDirs []string // all dirs to list (primary + legacy)
-	Notice         string
+	Cwd           string
+	UserConfigDir string
+	Notice        string
 }
 
 // Run launches the home hub TUI and blocks until the user quits or opens a session.

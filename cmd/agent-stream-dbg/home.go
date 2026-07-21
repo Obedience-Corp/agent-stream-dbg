@@ -23,18 +23,13 @@ func runHome(dialectOverride string) error {
 	if err := os.MkdirAll(userConfigDir, 0o700); err != nil {
 		return fmt.Errorf("create user config directory: %w", err)
 	}
-	userConfigDirs, err := config.UserConfigDirs()
-	if err != nil {
-		return fmt.Errorf("find user config directories: %w", err)
-	}
 
 	notice := ""
 	for {
 		result, err := home.Run(home.Options{
-			Cwd:            cwd,
-			UserConfigDir:  userConfigDir, // writes go here
-			UserConfigDirs: userConfigDirs,
-			Notice:         notice,
+			Cwd:           cwd,
+			UserConfigDir: userConfigDir,
+			Notice:        notice,
 		})
 		if err != nil {
 			return err

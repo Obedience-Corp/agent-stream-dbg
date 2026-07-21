@@ -176,7 +176,6 @@ Configs are loaded from:
 - Well-known names in the working directory (`agent-stream-dbg.yaml`, `config.yaml`, …)
 - `configs/*.yaml` in the working directory
 - `~/.config/agent-stream-dbg/*.yaml` (user library used by the home hub)
-- Legacy: `stream-debugger.yaml` and `~/.config/stream-debugger/` are still scanned
 
 ### Transports
 
