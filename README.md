@@ -14,6 +14,7 @@ terminal UI, and decode them through a **dialect** (what the bytes mean).
 
 [![Go Version](https://img.shields.io/badge/go-1.25+-blue.svg)](https://golang.org/dl/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![CI](https://github.com/Obedience-Corp/agent-stream-dbg/actions/workflows/ci.yml/badge.svg)](https://github.com/Obedience-Corp/agent-stream-dbg/actions/workflows/ci.yml)
 
 ## Install
 
@@ -249,6 +250,8 @@ Analyze with `timeline` / `replay`, or inspect the JSONL directly.
 - [USAGE.md](USAGE.md) — modes, keyboard controls, troubleshooting
 - [Quick start](docs/user-guide/quickstart.md)
 - [TUI vs timeline](docs/user-guide/tui-vs-timeline.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)
 - [Implementation](docs/development/implementation.md)
 - [Testing](docs/development/testing.md)
 
@@ -287,10 +290,14 @@ bash demos/record-stream-anim.sh  # docs/assets/tui-stream-anim.gif
 
 ## Contributing
 
+See [CONTRIBUTING.md](CONTRIBUTING.md). Short version:
+
 1. Fork and branch  
 2. Add tests for new behavior  
-3. Run `just test`  
+3. Run `just test` (or `go test ./...`)  
 4. Open a pull request  
+
+Security issues: [SECURITY.md](SECURITY.md) (please report privately).
 
 ## License
 
