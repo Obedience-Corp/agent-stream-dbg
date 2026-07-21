@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to (re)build assets for (e.g. v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  binaries:
+    name: Build and upload release binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build platform archives
+        env:
+          VERSION: ${{ steps.tag.outputs.value }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          build() {
+            local goos="$1" goarch="$2"
+            local out="bin/agent-stream-dbg-${goos}-${goarch}"
+            CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
+              go build -ldflags="-s -w" -o "$out" ./cmd/agent-stream-dbg
+            local stage
+            stage=$(mktemp -d)
+            cp "$out" "${stage}/agent-stream-dbg"
+            chmod +x "${stage}/agent-stream-dbg"
+            tar -C "$stage" -czf "dist/agent-stream-dbg_${VERSION}_${goos}_${goarch}.tar.gz" agent-stream-dbg
+            rm -rf "$stage"
+          }
+          mkdir -p bin
+          build darwin arm64
+          build darwin amd64
+          build linux amd64
+          build linux arm64
+          ls -la dist/
+
+      - name: Upload to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.tag.outputs.value }}
+        run: |
+          set -euo pipefail
+          # Wait briefly if the release is still being created by another job/process.
+          for _ in $(seq 1 30); do
+            if gh release view "$VERSION" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          gh release upload "$VERSION" dist/agent-stream-dbg_${VERSION}_*.tar.gz --clobber

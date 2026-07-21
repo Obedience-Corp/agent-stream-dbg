@@ -40,6 +40,17 @@ Private-backend names (e.g. Brainyard personas) may appear in dialect **data** a
 
 Issues and PRs are welcome. There is no guarantee of review turnaround; this is maintained as a small open-source tool.
 
+## Distribution packages
+
+| Channel | Location |
+|---------|----------|
+| Homebrew formula | [`homebrew/`](homebrew/) |
+| npm wrapper | [`npm/`](npm/) |
+
+Release maintainers: `just release create vX.Y.Z` builds notes and uploads
+platform tarballs. Update `homebrew/agent-stream-dbg.rb` sha256 via
+`just release homebrew-sha vX.Y.Z`. Publish npm with `cd npm && npm publish`.
+
 ## Security
 
 See [SECURITY.md](SECURITY.md) for private vulnerability reporting.

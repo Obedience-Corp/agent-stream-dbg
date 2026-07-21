@@ -49,6 +49,7 @@ publish version:
 create version:
     just release tag "{{version}}"
     just release publish "{{version}}"
+    just release package-binaries "{{version}}"
 
 # Build binaries for the supported release platforms.
 [no-cd]
@@ -58,13 +59,57 @@ build-all-platforms:
     mkdir -p bin
 
     echo "🔨 Building for darwin/arm64 (M1/M2/M3 Macs)..."
-    GOOS=darwin GOARCH=arm64 go build -o bin/agent-stream-dbg-darwin-arm64 ./cmd/agent-stream-dbg
+    CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o bin/agent-stream-dbg-darwin-arm64 ./cmd/agent-stream-dbg
 
     echo "🔨 Building for darwin/amd64 (Intel Macs)..."
-    GOOS=darwin GOARCH=amd64 go build -o bin/agent-stream-dbg-darwin-amd64 ./cmd/agent-stream-dbg
+    CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o bin/agent-stream-dbg-darwin-amd64 ./cmd/agent-stream-dbg
 
-    echo "🔨 Building for linux/amd64 (Docker/Railway)..."
-    GOOS=linux GOARCH=amd64 go build -o bin/agent-stream-dbg-linux-amd64 ./cmd/agent-stream-dbg
+    echo "🔨 Building for linux/amd64..."
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/agent-stream-dbg-linux-amd64 ./cmd/agent-stream-dbg
+
+    echo "🔨 Building for linux/arm64..."
+    CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o bin/agent-stream-dbg-linux-arm64 ./cmd/agent-stream-dbg
 
     echo "✅ All platforms built:"
     ls -la bin/agent-stream-dbg-*
+
+# Package platform binaries as release assets (npm install downloads these).
+# Asset names: agent-stream-dbg_<tag>_<os>_<arch>.tar.gz
+# Usage: just release package-binaries v0.1.0
+[no-cd]
+package-binaries version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ ! "{{version}}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+        echo "version must look like vX.Y.Z (received: {{version}})" >&2
+        exit 1
+    fi
+    just release build-all-platforms
+    mkdir -p dist
+    package() {
+        local goos="$1" goarch="$2" bin="bin/agent-stream-dbg-${1}-${2}"
+        local asset="agent-stream-dbg_{{version}}_${goos}_${goarch}.tar.gz"
+        local stage
+        stage=$(mktemp -d)
+        cp "$bin" "${stage}/agent-stream-dbg"
+        chmod +x "${stage}/agent-stream-dbg"
+        tar -C "$stage" -czf "dist/${asset}" agent-stream-dbg
+        rm -rf "$stage"
+        echo "packed dist/${asset}"
+    }
+    package darwin arm64
+    package darwin amd64
+    package linux amd64
+    package linux arm64
+    gh release upload "{{version}}" dist/agent-stream-dbg_{{version}}_*.tar.gz --clobber
+    echo "✅ Uploaded platform assets to {{version}}"
+    ls -la dist/agent-stream-dbg_{{version}}_*.tar.gz
+
+# Print the Homebrew source tarball sha256 for a tag (update homebrew/agent-stream-dbg.rb).
+[no-cd]
+homebrew-sha version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    url="https://github.com/Obedience-Corp/agent-stream-dbg/archive/refs/tags/{{version}}.tar.gz"
+    echo "url: ${url}"
+    curl -sL "$url" | shasum -a 256

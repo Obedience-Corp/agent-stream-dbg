@@ -1,5 +1,5 @@
-# Binaries
-bin/
+# Built binaries (repo root only; npm/bin is the package entrypoint)
+/bin/
 *.exe
 
 # Environment
@@ -10,9 +10,11 @@ logs/
 *.log
 *.jsonl
 !testdata/**/*.jsonl
+!internal/home/fixtures/**/*.jsonl
 
 # Go
 vendor/
 
-# Local TUI recordings
+# Local TUI recordings / release artifacts
 out/
+dist/

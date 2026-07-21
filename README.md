@@ -18,9 +18,31 @@ terminal UI, and decode them through a **dialect** (what the bytes mean).
 
 ## Install
 
+**Go**
+
 ```bash
 go install github.com/Obedience-Corp/agent-stream-dbg/cmd/agent-stream-dbg@latest
+# pin a release:
+go install github.com/Obedience-Corp/agent-stream-dbg/cmd/agent-stream-dbg@v0.1.0
 ```
+
+**npm** (downloads a release binary on install)
+
+```bash
+npm install -g agent-stream-dbg
+npx agent-stream-dbg --help
+```
+
+**Homebrew** (prebuilt binaries)
+
+```bash
+brew tap Obedience-Corp/tap
+brew trust Obedience-Corp/tap   # Homebrew 6+ once
+brew install agent-stream-dbg
+```
+
+Source formula (from a clone): `brew install --formula ./homebrew/agent-stream-dbg.rb`  
+This is a **Formula** (CLI), not a **Cask** (macOS GUI apps). See [`homebrew/README.md`](homebrew/README.md).
 
 From source:
 
@@ -29,6 +51,8 @@ git clone https://github.com/Obedience-Corp/agent-stream-dbg.git
 cd agent-stream-dbg
 just install   # or: go install ./cmd/agent-stream-dbg
 ```
+
+See also [`homebrew/README.md`](homebrew/README.md) and [`npm/README.md`](npm/README.md).
 
 
 ## Quick start
@@ -266,17 +290,30 @@ just test
 `just --list` shows the top-level recipes. Use `just test`, `just release`, and
 `just vhs` to list the recipes in those focused modules.
 
-Release a tagged version with generated GitHub notes after merging the changes
-that should ship:
+Release a tagged version with generated GitHub notes and platform binaries
+(for npm) after merging the changes that should ship:
 
 ```bash
 just release create v0.1.0
+# tag + GitHub release notes + upload darwin/linux archives
 ```
 
-For a staged release, use `just release tag v0.1.0` followed by
-`just release publish v0.1.0`. Build release binaries with
-`just release build-all-platforms`. Live TUI recording recipes are grouped
-under `just vhs`; the source file is `.justfiles/vhs.just`.
+Staged steps:
+
+```bash
+just release tag v0.1.0
+just release publish v0.1.0
+just release package-binaries v0.1.0   # assets npm postinstall downloads
+just release homebrew-sha v0.1.0       # print sha256 for homebrew/agent-stream-dbg.rb
+```
+
+Publishing the npm wrapper (after assets exist on the GitHub release):
+
+```bash
+cd npm && npm publish --access public
+```
+
+Live TUI recording recipes are grouped under `just vhs`.
 
 VHS recordings:
 
