@@ -33,16 +33,16 @@ npm install -g agent-stream-dbg
 npx agent-stream-dbg --help
 ```
 
-**Homebrew** (builds from source)
+**Homebrew** (prebuilt binaries)
 
 ```bash
-# from a clone of this repo:
-brew install --formula ./homebrew/agent-stream-dbg.rb
-
-# or, after publishing the formula to an org tap:
-# brew tap Obedience-Corp/tap
-# brew install agent-stream-dbg
+brew tap Obedience-Corp/tap
+brew trust Obedience-Corp/tap   # Homebrew 6+ once
+brew install agent-stream-dbg
 ```
+
+Source formula (from a clone): `brew install --formula ./homebrew/agent-stream-dbg.rb`  
+This is a **Formula** (CLI), not a **Cask** (macOS GUI apps). See [`homebrew/README.md`](homebrew/README.md).
 
 From source:
 
