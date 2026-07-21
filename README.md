@@ -5,8 +5,6 @@ TUI debugger for **agent and multi-agent event streams** (SSE, gRPC, ACP, replay
 Point it at a live backend or a recorded fixture, watch frames in a multi-pane
 terminal UI, and decode them through a **dialect** (what the bytes mean).
 
-> Formerly `stream-debugger`. The binary and module path are now `agent-stream-dbg`.
-
 | Transport | What it is |
 |-----------|------------|
 | **SSE** | HTTP Server-Sent Events |
