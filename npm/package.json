@@ -1,0 +1,49 @@
+{
+  "name": "agent-stream-dbg",
+  "version": "0.1.0",
+  "description": "TUI debugger for multi-agent event streams (SSE, gRPC, ACP) — Go binary distributed via npm",
+  "license": "Apache-2.0",
+  "author": "Obedience Corp",
+  "homepage": "https://github.com/Obedience-Corp/agent-stream-dbg#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Obedience-Corp/agent-stream-dbg.git",
+    "directory": "npm"
+  },
+  "bugs": {
+    "url": "https://github.com/Obedience-Corp/agent-stream-dbg/issues"
+  },
+  "keywords": [
+    "agents",
+    "debugging",
+    "tui",
+    "grpc",
+    "sse",
+    "acp",
+    "cli"
+  ],
+  "bin": {
+    "agent-stream-dbg": "bin/cli.js"
+  },
+  "files": [
+    "bin/",
+    "scripts/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/install.js",
+    "prepack": "node -e \"const fs=require('fs'); fs.copyFileSync('../LICENSE','LICENSE')\""
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ]
+}

@@ -10,9 +10,11 @@ logs/
 *.log
 *.jsonl
 !testdata/**/*.jsonl
+!internal/home/fixtures/**/*.jsonl
 
 # Go
 vendor/
 
-# Local TUI recordings
+# Local TUI recordings / release artifacts
 out/
+dist/
