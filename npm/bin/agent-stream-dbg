@@ -1,0 +1,8 @@
+#!/usr/bin/env node
+
+const { runBinary } = require("../lib/run");
+
+runBinary().catch((err) => {
+  console.error(`Failed to run agent-stream-dbg: ${err.message}`);
+  process.exit(1);
+});

@@ -26,14 +26,14 @@ go install github.com/Obedience-Corp/agent-stream-dbg/cmd/agent-stream-dbg@lates
 go install github.com/Obedience-Corp/agent-stream-dbg/cmd/agent-stream-dbg@v0.1.0
 ```
 
-**npm** (downloads a release binary on install)
+**npm** (downloads a GoReleaser archive on install; same model as Festival)
 
 ```bash
-npm install -g agent-stream-dbg
-npx agent-stream-dbg --help
+npm install -g @obedience-corp/agent-stream-dbg
+npx @obedience-corp/agent-stream-dbg --help
 ```
 
-**Homebrew** (prebuilt binaries)
+**Homebrew** (Formula on the org tap — **not** a Cask; casks are for GUI apps)
 
 ```bash
 brew tap Obedience-Corp/tap
@@ -41,8 +41,7 @@ brew trust Obedience-Corp/tap   # Homebrew 6+ once
 brew install agent-stream-dbg
 ```
 
-Source formula (from a clone): `brew install --formula ./homebrew/agent-stream-dbg.rb`  
-This is a **Formula** (CLI), not a **Cask** (macOS GUI apps). See [`homebrew/README.md`](homebrew/README.md).
+See [`homebrew/README.md`](homebrew/README.md) and [`npm/README.md`](npm/README.md).
 
 From source:
 
@@ -290,30 +289,17 @@ just test
 `just --list` shows the top-level recipes. Use `just test`, `just release`, and
 `just vhs` to list the recipes in those focused modules.
 
-Release a tagged version with generated GitHub notes and platform binaries
-(for npm) after merging the changes that should ship:
+Release (same pipeline as Festival): tag push → **GoReleaser** (binaries,
+checksums, Homebrew Formula on `homebrew-tap`) → **npm publish**.
 
 ```bash
-just release create v0.1.0
-# tag + GitHub release notes + upload darwin/linux archives
+just release create v0.1.1   # validates, tags, pushes; CI does the rest
+# or: just release tag v0.1.1
 ```
 
-Staged steps:
+Local GoReleaser dry-run: `just release snapshot` (requires `goreleaser` on PATH).
 
-```bash
-just release tag v0.1.0
-just release publish v0.1.0
-just release package-binaries v0.1.0   # assets npm postinstall downloads
-just release homebrew-sha v0.1.0       # print sha256 for homebrew/agent-stream-dbg.rb
-```
-
-Publishing the npm wrapper (after assets exist on the GitHub release):
-
-```bash
-cd npm && npm publish --access public
-```
-
-Live TUI recording recipes are grouped under `just vhs`.
+Live TUI recording recipes are under `just vhs`.
 
 VHS recordings:
 

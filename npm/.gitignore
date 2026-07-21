@@ -1,4 +1,6 @@
-vendor/
-LICENSE
+bin/*-bin
+bin/*.exe
+.tmp-extract/
+*.tar.gz
+checksums.txt
 node_modules/
-*.tgz
