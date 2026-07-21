@@ -1,5 +1,5 @@
-# Binaries
-bin/
+# Built binaries (repo root only; npm/bin is the package entrypoint)
+/bin/
 *.exe
 
 # Environment
