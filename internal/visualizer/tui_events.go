@@ -14,6 +14,14 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 	}
 	m.totalEvents++
 	m.dialectFlow.observe(event)
+	if m.client != nil {
+		if c := m.client.Correlator(); c != nil {
+			// Client already stamps in readLoop; refresh logger session IDs.
+			if m.logger != nil {
+				m.logger.SetSessionTrace(c.Current())
+			}
+		}
+	}
 	_ = m.logger.LogEvent(event)
 	isAggregator := m.dialectFlow.role(event) == events.RoleAggregator
 

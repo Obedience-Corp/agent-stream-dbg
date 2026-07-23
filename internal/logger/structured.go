@@ -9,6 +9,7 @@ import (
 
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/tracectx"
 	"github.com/rs/zerolog"
 )
 
@@ -28,7 +29,22 @@ type StructuredLogger struct {
 	sessionLogger    zerolog.Logger
 	apiLogger        zerolog.Logger
 
+	// Session-level W3C context for API-call / turn-metric stamps when an
+	// event does not carry its own IDs.
+	sessionTrace tracectx.Context
+
 	mu sync.Mutex
+}
+
+// SetSessionTrace updates the session-level correlation IDs used when
+// logging API calls and turn metrics.
+func (sl *StructuredLogger) SetSessionTrace(ctx tracectx.Context) {
+	if sl == nil {
+		return
+	}
+	sl.mu.Lock()
+	defer sl.mu.Unlock()
+	sl.sessionTrace = ctx
 }
 
 // NewStructuredLogger creates a new multi-dimensional logger
@@ -136,7 +152,9 @@ func (sl *StructuredLogger) logToEventType(event *events.Event) error {
 		sl.eventTypeLoggers[eventType] = logger
 	}
 
-	logger.Info().RawJSON("event", event.Raw).Msg(eventType)
+	e := logger.Info()
+	e = withEventTrace(e, event)
+	e.RawJSON("event", event.Raw).Msg(eventType)
 	return nil
 }
 
@@ -155,21 +173,21 @@ func (sl *StructuredLogger) logToAgent(event *events.Event, agentID string) erro
 		sl.agentLoggers[agentID] = logger
 	}
 
-	logger.Info().
+	e := logger.Info().
 		Str("agent_id", agentID).
-		Str("event_type", event.Name).
-		RawJSON("event", event.Raw).
-		Msg("agent_event")
+		Str("event_type", event.Name)
+	e = withEventTrace(e, event)
+	e.RawJSON("event", event.Raw).Msg("agent_event")
 	return nil
 }
 
 // logToSession logs to session timeline
 func (sl *StructuredLogger) logToSession(event *events.Event) error {
-	sl.sessionLogger.Info().
+	e := sl.sessionLogger.Info().
 		Str("event_type", event.Name).
-		Str("agent_id", event.SourceID).
-		RawJSON("event", event.Raw).
-		Msg("session_event")
+		Str("agent_id", event.SourceID)
+	e = withEventTrace(e, event)
+	e.RawJSON("event", event.Raw).Msg("session_event")
 	return nil
 }
 
@@ -187,12 +205,38 @@ func (sl *StructuredLogger) LogAPICall(method, url string, statusCode int, durat
 		Str("url", url).
 		Int("status_code", statusCode).
 		Dur("duration_ms", duration)
+	logEvent = withSessionTrace(logEvent, sl.sessionTrace)
 
 	if err != nil {
 		logEvent = logEvent.Err(err)
 	}
 
 	logEvent.Msg("api_call")
+}
+
+// withEventTrace attaches trace_id/span_id from event.Fields when present.
+func withEventTrace(e *zerolog.Event, event *events.Event) *zerolog.Event {
+	if event == nil {
+		return e
+	}
+	if tid := event.StringField(tracectx.FieldTraceID); tid != "" {
+		e = e.Str(tracectx.FieldTraceID, tid)
+	}
+	if sid := event.StringField(tracectx.FieldSpanID); sid != "" {
+		e = e.Str(tracectx.FieldSpanID, sid)
+	}
+	return e
+}
+
+func withSessionTrace(e *zerolog.Event, ctx tracectx.Context) *zerolog.Event {
+	if !ctx.Valid() {
+		return e
+	}
+	e = e.Str(tracectx.FieldTraceID, ctx.TraceID)
+	if ctx.SpanID != "" {
+		e = e.Str(tracectx.FieldSpanID, ctx.SpanID)
+	}
+	return e
 }
 
 // AgentTurnMetrics contains computed metrics for a completed agent turn
@@ -209,6 +253,8 @@ type AgentTurnMetrics struct {
 	DurationMs   int64   `json:"duration_ms"`
 	TokensPerSec float64 `json:"tokens_per_sec,omitempty"`
 	PlanID       string  `json:"plan_id,omitempty"`
+	TraceID      string  `json:"trace_id,omitempty"`
+	SpanID       string  `json:"span_id,omitempty"`
 }
 
 // LogAgentTurnMetrics logs computed turn metrics for metrics.AgentID —
@@ -243,6 +289,18 @@ func (sl *StructuredLogger) LogAgentTurnMetrics(metrics AgentTurnMetrics) error 
 	}
 	if metrics.PlanID != "" {
 		logEvent = logEvent.Str("plan_id", metrics.PlanID)
+	}
+	traceID := metrics.TraceID
+	spanID := metrics.SpanID
+	if traceID == "" && sl.sessionTrace.Valid() {
+		traceID = sl.sessionTrace.TraceID
+		spanID = sl.sessionTrace.SpanID
+	}
+	if traceID != "" {
+		logEvent = logEvent.Str(tracectx.FieldTraceID, traceID)
+	}
+	if spanID != "" {
+		logEvent = logEvent.Str(tracectx.FieldSpanID, spanID)
 	}
 
 	logEvent.Msg("agent_turn_metrics")

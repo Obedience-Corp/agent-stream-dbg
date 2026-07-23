@@ -16,13 +16,16 @@ import (
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/visualizer"
 )
 
-func runInteractiveWithOptions(configPath, dialectOverride string, openConfigPanel bool) error {
+func runInteractiveWithOptions(configPath, dialectOverride string, openConfigPanel bool, corrFlags ...correlationFlags) error {
 	fmt.Printf("🚀 agent-stream-dbg - Interactive Mode\n\n")
 	cfg, err := config.LoadConfigFile(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 	applyDialectOverride(cfg, dialectOverride)
+	if len(corrFlags) > 0 {
+		applyCorrelationFlags(cfg, corrFlags[0])
+	}
 	parser, err := bridge.NewParserFor(cfg.Dialect.File)
 	if err != nil {
 		return fmt.Errorf("failed to load dialect: %w", err)
@@ -69,12 +72,15 @@ func runInteractiveWithOptions(configPath, dialectOverride string, openConfigPan
 	return nil
 }
 
-func runStream(configPath string, message string, dialectOverride string) error {
+func runStream(configPath string, message string, dialectOverride string, corrFlags ...correlationFlags) error {
 	cfg, err := config.LoadConfigFile(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 	applyDialectOverride(cfg, dialectOverride)
+	if len(corrFlags) > 0 {
+		applyCorrelationFlags(cfg, corrFlags[0])
+	}
 	parser, err := bridge.NewParserFor(cfg.Dialect.File)
 	if err != nil {
 		return fmt.Errorf("failed to load dialect: %w", err)
@@ -132,6 +138,20 @@ func runStream(configPath string, message string, dialectOverride string) error 
 	fmt.Printf("\n\n📊 Session Summary\n")
 	fmt.Printf("   Logs saved to: %s\n", cfg.LogDir)
 	return nil
+}
+
+func applyCorrelationFlags(cfg *config.EnhancedConfig, f correlationFlags) {
+	if cfg == nil {
+		return
+	}
+	cfg.Correlation.Observe = true
+	if f.propagate {
+		cfg.Correlation.Propagate = true
+		cfg.Correlation.Generate = true
+	}
+	if f.traceparent != "" {
+		cfg.Correlation.Traceparent = f.traceparent
+	}
 }
 
 // streamTarget returns a human-readable connection target for logging.

@@ -11,7 +11,13 @@ import (
 
 // runHome is the default bare-launch experience: list/create configs, open
 // sessions, and return to the hub when a session ends.
+// Correlation flags come from process env only on this path (no CLI context).
 func runHome(dialectOverride string) error {
+	corr := correlationFlags{}
+	if v := os.Getenv("OTEL_PROPAGATE"); v == "1" || v == "true" || v == "TRUE" {
+		corr.propagate = true
+	}
+	corr.traceparent = os.Getenv("TRACEPARENT")
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("find current directory: %w", err)
@@ -39,7 +45,7 @@ func runHome(dialectOverride string) error {
 		case home.ActionQuit:
 			return nil
 		case home.ActionOpen:
-			if err := runInteractiveWithOptions(result.Path, dialectOverride, result.OpenConfigPanel); err != nil {
+			if err := runInteractiveWithOptions(result.Path, dialectOverride, result.OpenConfigPanel, corr); err != nil {
 				// Return to home with the error so a bad setup is recoverable.
 				notice = "Session error: " + err.Error()
 				fmt.Fprintf(os.Stderr, "⚠️  %s\n", notice)

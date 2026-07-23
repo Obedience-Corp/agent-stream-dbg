@@ -349,3 +349,55 @@ func TestTransport_Close_UndrainedFullBuffer_DoesNotDeadlock(t *testing.T) {
 		t.Fatal("Close() did not return — readLoop deadlocked on a full, undrained channel")
 	}
 }
+
+func TestTransport_ResponseHeaders_Traceparent(t *testing.T) {
+	const tp = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Capture outbound inject for a separate assertion path.
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Traceparent", tp)
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, "event: ping\ndata: {}\n\n")
+	}))
+	defer srv.Close()
+
+	tr := New(http.MethodGet, srv.URL, nil, nil)
+	if err := tr.Connect(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer func() { _ = tr.Close() }()
+
+	h := tr.ResponseHeaders()
+	if h == nil {
+		t.Fatal("expected response headers after Connect")
+	}
+	if got := h.Get("Traceparent"); got != tp {
+		t.Errorf("Traceparent=%q want %q", got, tp)
+	}
+	// Drain frames
+	for range tr.Frames() {
+	}
+}
+
+func TestTransport_OutboundTraceparentHeader(t *testing.T) {
+	const want = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+	var saw string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		saw = r.Header.Get("Traceparent")
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, "data: {}\n\n")
+	}))
+	defer srv.Close()
+
+	tr := New(http.MethodGet, srv.URL, nil, map[string]string{"traceparent": want})
+	if err := tr.Connect(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer func() { _ = tr.Close() }()
+	for range tr.Frames() {
+	}
+	if saw != want {
+		t.Errorf("outbound traceparent=%q want %q", saw, want)
+	}
+}

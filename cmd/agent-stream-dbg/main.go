@@ -35,6 +35,8 @@ func main() {
 		Flags: []cli.Flag{
 			&cli.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "Path to YAML configuration file (optional for interactive mode)"},
 			&cli.StringFlag{Name: "dialect", Usage: "Embedded dialect name or path to a dialect YAML file (overrides config)"},
+			&cli.BoolFlag{Name: "otel-propagate", Usage: "Inject W3C traceparent on outbound connect/send (generates a root if none inbound)"},
+			&cli.StringFlag{Name: "otel-traceparent", Usage: "Force session W3C traceparent (00-traceid-spanid-flags)"},
 		},
 		Commands: []*cli.Command{
 			{
@@ -50,6 +52,8 @@ func main() {
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: "config", Aliases: []string{"c"}, Usage: "Path to YAML configuration file", Required: true},
 					&cli.StringFlag{Name: "dialect", Usage: "Embedded dialect name or path to a dialect YAML file (overrides config)"},
+					&cli.BoolFlag{Name: "otel-propagate", Usage: "Inject W3C traceparent on outbound connect/send"},
+					&cli.StringFlag{Name: "otel-traceparent", Usage: "Force session W3C traceparent"},
 				}, Action: streamAction,
 			},
 			{
@@ -121,7 +125,7 @@ func defaultAction(c *cli.Context) error {
 		if err != nil {
 			return err
 		}
-		return runInteractiveWithOptions(configPath, c.String("dialect"), false)
+		return runInteractiveWithOptions(configPath, c.String("dialect"), false, correlationFromCLI(c))
 	}
 	// Bare launch: home hub (list / create / offline demos / open session).
 	return runHome(c.String("dialect"))
@@ -131,7 +135,31 @@ func streamAction(c *cli.Context) error {
 	if c.NArg() < 1 {
 		return fmt.Errorf("message argument is required")
 	}
-	return runStream(c.String("config"), c.Args().Get(0), c.String("dialect"))
+	return runStream(c.String("config"), c.Args().Get(0), c.String("dialect"), correlationFromCLI(c))
+}
+
+// correlationFlags carries global OTel correlation CLI/env options applied
+// after YAML load (not stored in run configs for v1).
+type correlationFlags struct {
+	propagate   bool
+	traceparent string
+}
+
+func correlationFromCLI(c *cli.Context) correlationFlags {
+	f := correlationFlags{
+		propagate:   c.Bool("otel-propagate"),
+		traceparent: strings.TrimSpace(c.String("otel-traceparent")),
+	}
+	// Env fallbacks when flags unset (standard-ish for local tooling).
+	if !f.propagate {
+		if v := strings.TrimSpace(os.Getenv("OTEL_PROPAGATE")); v == "1" || strings.EqualFold(v, "true") {
+			f.propagate = true
+		}
+	}
+	if f.traceparent == "" {
+		f.traceparent = strings.TrimSpace(os.Getenv("TRACEPARENT"))
+	}
+	return f
 }
 
 func replayAction(c *cli.Context) error {

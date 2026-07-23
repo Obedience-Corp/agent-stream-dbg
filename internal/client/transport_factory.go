@@ -10,6 +10,7 @@ import (
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/bridge"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/mapping"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/tracectx"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport"
 	acptransport "github.com/Obedience-Corp/agent-stream-dbg/internal/transport/acp"
 	grpctransport "github.com/Obedience-Corp/agent-stream-dbg/internal/transport/grpc"
@@ -40,12 +41,12 @@ func DiscoverGRPCMethods(ctx context.Context, cfg *config.EnhancedConfig) ([]grp
 	})
 }
 
-func newTransport(cfg *config.EnhancedConfig, parser *bridge.Parser, vars mapping.InterpolationVars) (transport.Transport, error) {
+func newTransport(cfg *config.EnhancedConfig, parser *bridge.Parser, vars mapping.InterpolationVars, corr *tracectx.Correlator) (transport.Transport, error) {
 	switch cfg.Transport.Type {
 	case "", "sse":
-		return newSSETransport(cfg, parser, vars)
+		return newSSETransport(cfg, parser, vars, corr)
 	case "grpc":
-		return newGRPCTransport(cfg, vars)
+		return newGRPCTransport(cfg, vars, corr)
 	case "replay":
 		tr, err := replay.New(cfg.Transport.BaseURL, 0)
 		if err != nil {
@@ -76,12 +77,18 @@ func newACPTransport(cfg *config.EnhancedConfig, vars mapping.InterpolationVars)
 // exposed by Client) use this shared factory so every product path executes
 // the same dialect send template and transport selection.
 func NewTransport(cfg *config.EnhancedConfig, parser *bridge.Parser, message string) (transport.Transport, error) {
-	vars := config.InterpolationVarsFromConfig(cfg)
-	vars.Message = message
-	return newTransport(cfg, parser, vars)
+	return NewTransportWithCorrelator(cfg, parser, message, nil)
 }
 
-func newSSETransport(cfg *config.EnhancedConfig, parser *bridge.Parser, vars mapping.InterpolationVars) (transport.Transport, error) {
+// NewTransportWithCorrelator is NewTransport plus optional W3C correlation
+// (outbound inject on SSE/gRPC).
+func NewTransportWithCorrelator(cfg *config.EnhancedConfig, parser *bridge.Parser, message string, corr *tracectx.Correlator) (transport.Transport, error) {
+	vars := config.InterpolationVarsFromConfig(cfg)
+	vars.Message = message
+	return newTransport(cfg, parser, vars, corr)
+}
+
+func newSSETransport(cfg *config.EnhancedConfig, parser *bridge.Parser, vars mapping.InterpolationVars, corr *tracectx.Correlator) (transport.Transport, error) {
 	method, renderedURL, body, err := parser.RenderSend(vars)
 	if err != nil {
 		return nil, fmt.Errorf("failed to render send request: %w", err)
@@ -97,6 +104,9 @@ func newSSETransport(cfg *config.EnhancedConfig, parser *bridge.Parser, vars map
 	if body != nil {
 		headers["Content-Type"] = "application/json"
 	}
+	if corr != nil {
+		corr.InjectHTTPHeaders(headers)
+	}
 	return sse.New(method, renderedURL, body, headers), nil
 }
 
@@ -111,17 +121,27 @@ func withDebugQuery(rawURL, level string) (string, error) {
 	return u.String(), nil
 }
 
-func newGRPCTransport(cfg *config.EnhancedConfig, vars mapping.InterpolationVars) (transport.Transport, error) {
+func newGRPCTransport(cfg *config.EnhancedConfig, vars mapping.InterpolationVars, corr *tracectx.Correlator) (transport.Transport, error) {
 	metadataKey, metadataValue, _ := cfg.Transport.Auth.Metadata()
 	request, err := interpolateGRPCRequest(cfg.Transport.Request, vars)
 	if err != nil {
 		return nil, fmt.Errorf("failed to render gRPC request: %w", err)
+	}
+	extra := map[string]string{}
+	if corr != nil {
+		if tp, ok := corr.OutboundTraceparent(); ok {
+			extra["traceparent"] = tp
+		}
+		if ts, ok := corr.OutboundTracestate(); ok {
+			extra["tracestate"] = ts
+		}
 	}
 	return grpctransport.New(grpctransport.Config{
 		Target:             cfg.Transport.Target,
 		Plaintext:          cfg.Transport.Plaintext,
 		MetadataKey:        metadataKey,
 		MetadataValue:      metadataValue,
+		ExtraMetadata:      extra,
 		Method:             cfg.Transport.GRPCMethod,
 		Request:            request,
 		Discriminator:      cfg.Transport.Discriminator,

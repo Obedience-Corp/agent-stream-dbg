@@ -9,7 +9,9 @@ import (
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/bridge"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/tracectx"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport/sse"
 )
 
 // Client streams parsed events from the configured transport, applying the
@@ -17,6 +19,7 @@ import (
 type Client struct {
 	config *config.EnhancedConfig
 	parser *bridge.Parser
+	corr   *tracectx.Correlator
 
 	eventCh chan *events.Event
 	errCh   chan error
@@ -38,12 +41,49 @@ type SSEClient = Client
 
 // NewClient creates a client for the configured transport type.
 func NewClient(cfg *config.EnhancedConfig) *Client {
+	return NewClientWithCorrelator(cfg, NewCorrelatorFromConfig(cfg))
+}
+
+// NewClientWithCorrelator creates a client with an explicit correlator
+// (may be nil to disable).
+func NewClientWithCorrelator(cfg *config.EnhancedConfig, corr *tracectx.Correlator) *Client {
 	return &Client{
 		config:  cfg,
 		parser:  bridge.NewParser(cfg.Dialect.File),
+		corr:    corr,
 		eventCh: make(chan *events.Event, 100),
 		errCh:   make(chan error, 10),
 	}
+}
+
+// Correlator returns the session correlator (may be nil).
+func (c *Client) Correlator() *tracectx.Correlator {
+	if c == nil {
+		return nil
+	}
+	return c.corr
+}
+
+// NewCorrelatorFromConfig builds a correlator from EnhancedConfig.Correlation.
+// Inbound observation is always enabled (design D1). --otel-propagate maps to
+// ModeGenerate so a root is minted when nothing inbound exists (D4).
+func NewCorrelatorFromConfig(cfg *config.EnhancedConfig) *tracectx.Correlator {
+	mode := tracectx.ModeObserve
+	var forced tracectx.Context
+	if cfg != nil {
+		cc := cfg.Correlation
+		if cc.Generate || cc.Propagate {
+			// Propagate implies generate-if-missing for outbound inject.
+			mode = tracectx.ModeGenerate
+		}
+		if cc.Traceparent != "" {
+			if parsed, err := tracectx.ParseTraceparent(cc.Traceparent); err == nil {
+				parsed.Source = "forced"
+				forced = parsed
+			}
+		}
+	}
+	return tracectx.New(tracectx.Options{Enabled: true, Mode: mode, Forced: forced})
 }
 
 // NewSSEClient retains the original constructor name for callers that have
@@ -57,13 +97,14 @@ func NewSSEClient(cfg *config.EnhancedConfig) *SSEClient { return NewClient(cfg)
 func (c *Client) Connect(ctx context.Context, message string) error {
 	vars := config.InterpolationVarsFromConfig(c.config)
 	vars.Message = message
-	tr, err := newTransport(c.config, c.parser, vars)
+	tr, err := newTransport(c.config, c.parser, vars, c.corr)
 	if err != nil {
 		return err
 	}
 	if err := tr.Connect(ctx); err != nil {
 		return fmt.Errorf("failed to connect %s transport: %w", tr.Name(), err)
 	}
+	observeTransportTrace(c.corr, tr)
 
 	c.mu.Lock()
 	previous := c.transport
@@ -76,6 +117,16 @@ func (c *Client) Connect(ctx context.Context, message string) error {
 	c.wg.Add(1)
 	go c.readLoop(tr)
 	return nil
+}
+
+// observeTransportTrace joins inbound W3C context from transport side channels.
+func observeTransportTrace(corr *tracectx.Correlator, tr transport.Transport) {
+	if corr == nil || tr == nil {
+		return
+	}
+	if st, ok := tr.(*sse.Transport); ok {
+		corr.ObserveHeaders(st.ResponseHeaders())
+	}
 }
 
 // readLoop forwards frames from one transport connection to Events()/
@@ -94,6 +145,9 @@ func (c *Client) readLoop(tr transport.Transport) {
 			continue
 		}
 		event, _ := c.parser.Parse(frame.Name, frame.Data)
+		if event != nil && c.corr != nil {
+			c.corr.StampEvent(event)
+		}
 		c.eventCh <- event
 	}
 }
