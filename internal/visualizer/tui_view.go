@@ -40,6 +40,13 @@ func (m *Model) View() string {
 	if m.FlowID != "" {
 		headerText = fmt.Sprintf("%s (flow: %s)", headerText, m.FlowID)
 	}
+	if m.client != nil {
+		if c := m.client.Correlator(); c != nil {
+			if tc := c.Current(); tc.Valid() {
+				headerText = fmt.Sprintf("%s | trace: %s", headerText, tc.ShortTraceID())
+			}
+		}
+	}
 	header := headerStyle.Render(headerText)
 	// Energy strip under the legacy header — token sample history, not a free oscillator.
 	duration := time.Since(m.startTime)

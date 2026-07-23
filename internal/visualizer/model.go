@@ -9,9 +9,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/bridge"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/client"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
 	dblogger "github.com/Obedience-Corp/agent-stream-dbg/internal/logger"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/tracectx"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport"
 )
 
@@ -119,6 +121,9 @@ type InteractiveModel struct {
 
 	// Structured logger
 	slog *dblogger.StructuredLogger
+
+	// Session W3C trace correlator (observe inbound; optional outbound inject).
+	corr *tracectx.Correlator
 
 	// Track if viewport content needs refresh
 	contentDirty bool
@@ -246,6 +251,10 @@ func NewInteractiveModelWithContextAndConfigPathAndOpenConfig(cfg *config.Enhanc
 	if l, err := dblogger.NewStructuredLogger(cfg); err == nil {
 		slog = l
 	}
+	corr, _ := client.NewCorrelatorFromConfig(cfg)
+	if slog != nil && corr != nil {
+		slog.SetSessionTrace(corr.Current())
+	}
 
 	m := InteractiveModel{
 		cfg:          cfg,
@@ -259,6 +268,7 @@ func NewInteractiveModelWithContextAndConfigPathAndOpenConfig(cfg *config.Enhanc
 		xOffset:      0,
 		insertMode:   false,
 		slog:         slog,
+		corr:         corr,
 		contentDirty: true,
 		// Pane defaults
 		activePane:        PaneFlow,

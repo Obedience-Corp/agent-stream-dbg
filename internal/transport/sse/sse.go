@@ -59,6 +59,16 @@ func New(method, url string, body []byte, headers map[string]string) *Transport 
 // Name identifies this transport kind.
 func (t *Transport) Name() string { return "sse" }
 
+// ResponseHeaders returns the HTTP response headers from a successful Connect.
+// Nil before Connect or after a failed dial. Used for W3C trace correlation
+// (e.g. Traceparent) without expanding transport.Frame.
+func (t *Transport) ResponseHeaders() http.Header {
+	if t == nil || t.resp == nil {
+		return nil
+	}
+	return t.resp.Header
+}
+
 // Connect issues the configured request and starts streaming its response
 // body as Frames in the background. It returns once the connection is
 // established and the read loop has started; Frames() delivers events as

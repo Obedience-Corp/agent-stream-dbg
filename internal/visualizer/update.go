@@ -1,6 +1,7 @@
 package visualizer
 
 import (
+	"encoding/json"
 	"sort"
 	"strings"
 	"time"
@@ -152,6 +153,19 @@ func (m InteractiveModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.messages[targetIdx].Streaming = false
 				m.contentDirty = true
 				break
+			}
+			// gRPC synthetic status frames carry trailers (often trace-id /
+			// traceparent) even when the dialect does not map them into Fields.
+			if m.corr != nil && msg.frame.Name == "grpc_status" && len(msg.frame.Data) > 0 {
+				var status struct {
+					Trailers map[string]string `json:"trailers"`
+				}
+				if json.Unmarshal(msg.frame.Data, &status) == nil && len(status.Trailers) > 0 {
+					m.corr.ObserveMap(status.Trailers)
+					if m.slog != nil {
+						m.slog.SetSessionTrace(m.corr.Current())
+					}
+				}
 			}
 			var evt *events.Event
 			if parsed, err := m.parser.Parse(msg.frame.Name, msg.frame.Data); err == nil && parsed != nil {
@@ -348,6 +362,13 @@ func parseSSEStreamWithParser(rawSSE string, parser *bridge.Parser) ([]*events.E
 // the prior per-lane-name-only handling already did) — regular agents
 // never got these, and still don't.
 func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
+	if evt != nil && m.corr != nil {
+		prev := m.corr.Current()
+		m.corr.StampEvent(evt)
+		if m.slog != nil && m.corr.Changed(prev) {
+			m.slog.SetSessionTrace(m.corr.Current())
+		}
+	}
 	m.dialectFlow.observe(evt)
 
 	idx := m.streamIndex

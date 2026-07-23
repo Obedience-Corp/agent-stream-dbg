@@ -57,6 +57,16 @@ func (m InteractiveModel) View() string {
 	b.WriteString(tabs.String())
 	b.WriteString("  ")
 	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(fmt.Sprintf("(session: %s)", m.cfg.Session.ID)))
+	if m.corr != nil {
+		if tc := m.corr.Current(); tc.Valid() {
+			traceLabel := fmt.Sprintf("  (trace: %s", tc.ShortTraceID())
+			if tc.Source != "" {
+				traceLabel += " src:" + tc.Source
+			}
+			traceLabel += ")"
+			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(traceLabel))
+		}
+	}
 	b.WriteString("\n")
 	// Mission-control energy strip — token-history waveform, not a free oscillator.
 	meterW := m.width - 4

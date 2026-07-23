@@ -47,6 +47,11 @@ type Config struct {
 	MetadataKey   string
 	MetadataValue string
 
+	// ExtraMetadata is optional additional outgoing metadata (e.g. W3C
+	// traceparent). Keys already present from auth are not overwritten
+	// by Append order alone — callers should avoid duplicates.
+	ExtraMetadata map[string]string
+
 	// Method is the fully-qualified RPC path, e.g.
 	// "/agent.v1.AgentService/StreamSession". If empty, Connect only
 	// dials — Frames() will never yield anything. If set, Connect also
@@ -307,10 +312,20 @@ func (t *Transport) Conn() *grpc.ClientConn { return t.conn }
 // outgoingContext attaches the configured metadata (if any) to ctx, for
 // every RPC this transport makes.
 func (t *Transport) outgoingContext(ctx context.Context) context.Context {
-	if t.cfg.MetadataKey == "" {
-		return ctx
+	if t.cfg.MetadataKey != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, t.cfg.MetadataKey, t.cfg.MetadataValue)
 	}
-	return metadata.AppendToOutgoingContext(ctx, t.cfg.MetadataKey, t.cfg.MetadataValue)
+	for k, v := range t.cfg.ExtraMetadata {
+		if k == "" || v == "" {
+			continue
+		}
+		// Skip if this key is the auth metadata key already set above.
+		if t.cfg.MetadataKey != "" && k == t.cfg.MetadataKey {
+			continue
+		}
+		ctx = metadata.AppendToOutgoingContext(ctx, k, v)
+	}
+	return ctx
 }
 
 // Close signals the read-loop goroutine to stop (unblocking it whether

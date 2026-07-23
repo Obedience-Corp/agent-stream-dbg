@@ -13,16 +13,25 @@ import (
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/client"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/logger"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/tracectx"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/visualizer"
 )
 
-func runInteractiveWithOptions(configPath, dialectOverride string, openConfigPanel bool) error {
+func runInteractiveWithOptions(configPath, dialectOverride string, openConfigPanel bool, corrFlags ...correlationFlags) error {
 	fmt.Printf("🚀 agent-stream-dbg - Interactive Mode\n\n")
 	cfg, err := config.LoadConfigFile(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 	applyDialectOverride(cfg, dialectOverride)
+	if len(corrFlags) > 0 {
+		applyCorrelationFlags(cfg, corrFlags[0])
+	}
+	// Fail fast on invalid forced traceparent before any network I/O.
+	corr, err := client.NewCorrelatorFromConfig(cfg)
+	if err != nil {
+		return err
+	}
 	parser, err := bridge.NewParserFor(cfg.Dialect.File)
 	if err != nil {
 		return fmt.Errorf("failed to load dialect: %w", err)
@@ -50,13 +59,19 @@ func runInteractiveWithOptions(configPath, dialectOverride string, openConfigPan
 	if cfg.Session.AutoSetup && !openConfigPanel {
 		fmt.Printf("🔄 Auto-setting up session...\n")
 		vars := config.InterpolationVarsFromConfig(cfg)
-		sessionID, err := parser.RunSetup(programCtx, vars, cfg.Transport.ResolvedHeaders(), nil)
+		headers := cfg.Transport.ResolvedHeaders()
+		if corr != nil {
+			corr.InjectHTTPHeaders(headers)
+		}
+		sessionID, err := parser.RunSetup(programCtx, vars, headers, nil)
 		if err != nil {
 			return fmt.Errorf("failed to setup session: %w", err)
 		}
 		cfg.Session.ID = sessionID
 		fmt.Printf("✅ Session ready: %s\n\n", sessionID)
 	}
+	// Share TraceID with the interactive model correlator (new instance).
+	seedCorrelationFromCorrelator(cfg, corr)
 
 	fmt.Printf("✅ Starting interactive TUI...\n\n")
 	model := visualizer.NewInteractiveModelWithContextAndConfigPathAndOpenConfig(cfg, programCtx, configPath, openConfigPanel)
@@ -69,12 +84,19 @@ func runInteractiveWithOptions(configPath, dialectOverride string, openConfigPan
 	return nil
 }
 
-func runStream(configPath string, message string, dialectOverride string) error {
+func runStream(configPath string, message string, dialectOverride string, corrFlags ...correlationFlags) error {
 	cfg, err := config.LoadConfigFile(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 	applyDialectOverride(cfg, dialectOverride)
+	if len(corrFlags) > 0 {
+		applyCorrelationFlags(cfg, corrFlags[0])
+	}
+	corr, err := client.NewCorrelatorFromConfig(cfg)
+	if err != nil {
+		return err
+	}
 	parser, err := bridge.NewParserFor(cfg.Dialect.File)
 	if err != nil {
 		return fmt.Errorf("failed to load dialect: %w", err)
@@ -97,7 +119,11 @@ func runStream(configPath string, message string, dialectOverride string) error 
 	if cfg.Session.AutoSetup {
 		fmt.Printf("🔄 Auto-setting up session...\n")
 		vars := config.InterpolationVarsFromConfig(cfg)
-		sessionID, err := parser.RunSetup(ctx, vars, cfg.Transport.ResolvedHeaders(), nil)
+		headers := cfg.Transport.ResolvedHeaders()
+		if corr != nil {
+			corr.InjectHTTPHeaders(headers)
+		}
+		sessionID, err := parser.RunSetup(ctx, vars, headers, nil)
 		if err != nil {
 			return fmt.Errorf("failed to setup session: %w", err)
 		}
@@ -109,13 +135,17 @@ func runStream(configPath string, message string, dialectOverride string) error 
 		return fmt.Errorf("failed to create logger: %w", err)
 	}
 	defer func() { _ = structuredLogger.Close() }()
+	if corr != nil {
+		structuredLogger.SetSessionTrace(corr.Current())
+	}
 	fmt.Printf("📝 Structured logging initialized\n")
 	fmt.Printf("   Event types: %s/by-event-type/\n", cfg.LogDir)
 	fmt.Printf("   Agents:      %s/by-agent/\n", cfg.LogDir)
 	fmt.Printf("   Session:     %s/by-session/\n", cfg.LogDir)
 	fmt.Printf("   API calls:   %s/api-calls/\n\n", cfg.LogDir)
 
-	streamClient := client.NewClient(cfg)
+	// Share the same correlator instance used for setup inject.
+	streamClient := client.NewClientWithCorrelator(cfg, corr)
 	defer streamClient.Close()
 	fmt.Printf("🌐 Connecting to backend...\n")
 	fmt.Printf("   Target: %s\n", streamTarget(cfg))
@@ -132,6 +162,48 @@ func runStream(configPath string, message string, dialectOverride string) error 
 	fmt.Printf("\n\n📊 Session Summary\n")
 	fmt.Printf("   Logs saved to: %s\n", cfg.LogDir)
 	return nil
+}
+
+func applyCorrelationFlags(cfg *config.EnhancedConfig, f correlationFlags) {
+	if cfg == nil {
+		return
+	}
+	cfg.Correlation.Observe = true
+	if f.propagate {
+		cfg.Correlation.Propagate = true
+		cfg.Correlation.Generate = true
+	}
+	if f.traceparent != "" {
+		cfg.Correlation.Traceparent = f.traceparent
+	}
+}
+
+// seedCorrelationFromCorrelator pins cfg.Correlation.Traceparent to the
+// session TraceID already chosen by corr (force or generate) so a second
+// correlator built from cfg joins the same trace.
+func seedCorrelationFromCorrelator(cfg *config.EnhancedConfig, corr *tracectx.Correlator) {
+	if cfg == nil || corr == nil {
+		return
+	}
+	cur := corr.Current()
+	if !cur.Valid() {
+		return
+	}
+	if strings.TrimSpace(cfg.Correlation.Traceparent) != "" {
+		return
+	}
+	span := cur.RemoteSpan
+	if span == "" {
+		span = cur.SpanID
+	}
+	if span == "" {
+		return
+	}
+	flags := cur.Flags
+	if flags == "" {
+		flags = "01"
+	}
+	cfg.Correlation.Traceparent = "00-" + cur.TraceID + "-" + span + "-" + flags
 }
 
 // streamTarget returns a human-readable connection target for logging.

@@ -176,6 +176,20 @@ Also: [`tui-obey-grpc.gif`](docs/assets/tui-obey-grpc.gif),
 
 Flags for `stream` must come **before** the message argument.
 
+### Trace correlation (W3C / OpenTelemetry join)
+
+The debugger **joins** agent streams to backend traces when W3C context is
+present — it does **not** require a collector or OTLP exporter.
+
+| Flag / env | Effect |
+|------------|--------|
+| *(default)* | Observe inbound `traceparent` (SSE headers, gRPC trailers, payload fields) and show `trace: …` in the TUI when known |
+| `--otel-propagate` / `OTEL_PROPAGATE=true` | Inject `traceparent` on outbound connect/send (generates a root if none exists) |
+| `--otel-traceparent` / `TRACEPARENT` | Force a specific session parent |
+
+Session and API-call JSONL logs include `trace_id` / `span_id` when known.
+Offline demos and replay work unchanged when no context is present.
+
 ### Interactive TUI keys
 
 | Key | Action |

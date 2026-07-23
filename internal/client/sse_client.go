@@ -2,14 +2,18 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/bridge"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/tracectx"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport/sse"
 )
 
 // Client streams parsed events from the configured transport, applying the
@@ -17,6 +21,7 @@ import (
 type Client struct {
 	config *config.EnhancedConfig
 	parser *bridge.Parser
+	corr   *tracectx.Correlator
 
 	eventCh chan *events.Event
 	errCh   chan error
@@ -38,12 +43,60 @@ type SSEClient = Client
 
 // NewClient creates a client for the configured transport type.
 func NewClient(cfg *config.EnhancedConfig) *Client {
+	corr, err := NewCorrelatorFromConfig(cfg)
+	if err != nil {
+		// Config was already validated at load/CLI; fall back to observe-only
+		// so tests constructing bare EnhancedConfig never panic. Callers that
+		// need hard failure use NewCorrelatorFromConfig directly.
+		corr = tracectx.New(tracectx.Options{Enabled: true, Mode: tracectx.ModeObserve})
+	}
+	return NewClientWithCorrelator(cfg, corr)
+}
+
+// NewClientWithCorrelator creates a client with an explicit correlator
+// (may be nil to disable).
+func NewClientWithCorrelator(cfg *config.EnhancedConfig, corr *tracectx.Correlator) *Client {
 	return &Client{
 		config:  cfg,
 		parser:  bridge.NewParser(cfg.Dialect.File),
+		corr:    corr,
 		eventCh: make(chan *events.Event, 100),
 		errCh:   make(chan error, 10),
 	}
+}
+
+// Correlator returns the session correlator (may be nil).
+func (c *Client) Correlator() *tracectx.Correlator {
+	if c == nil {
+		return nil
+	}
+	return c.corr
+}
+
+// NewCorrelatorFromConfig builds a correlator from EnhancedConfig.Correlation.
+// Inbound observation is always enabled (design D1). --otel-propagate maps to
+// ModeGenerate so a root is minted when nothing inbound exists (D4).
+// Returns an error when Correlation.Traceparent is non-empty but invalid —
+// silent force+generate is unsafe for join workflows.
+func NewCorrelatorFromConfig(cfg *config.EnhancedConfig) (*tracectx.Correlator, error) {
+	mode := tracectx.ModeObserve
+	var forced tracectx.Context
+	if cfg != nil {
+		cc := cfg.Correlation
+		if cc.Generate || cc.Propagate {
+			// Propagate implies generate-if-missing for outbound inject.
+			mode = tracectx.ModeGenerate
+		}
+		if tp := strings.TrimSpace(cc.Traceparent); tp != "" {
+			parsed, err := tracectx.ParseTraceparent(tp)
+			if err != nil {
+				return nil, fmt.Errorf("invalid --otel-traceparent / TRACEPARENT %q: %w", tp, err)
+			}
+			parsed.Source = "forced"
+			forced = parsed
+		}
+	}
+	return tracectx.New(tracectx.Options{Enabled: true, Mode: mode, Forced: forced}), nil
 }
 
 // NewSSEClient retains the original constructor name for callers that have
@@ -57,13 +110,14 @@ func NewSSEClient(cfg *config.EnhancedConfig) *SSEClient { return NewClient(cfg)
 func (c *Client) Connect(ctx context.Context, message string) error {
 	vars := config.InterpolationVarsFromConfig(c.config)
 	vars.Message = message
-	tr, err := newTransport(c.config, c.parser, vars)
+	tr, err := newTransport(c.config, c.parser, vars, c.corr)
 	if err != nil {
 		return err
 	}
 	if err := tr.Connect(ctx); err != nil {
 		return fmt.Errorf("failed to connect %s transport: %w", tr.Name(), err)
 	}
+	observeTransportTrace(c.corr, tr)
 
 	c.mu.Lock()
 	previous := c.transport
@@ -78,6 +132,16 @@ func (c *Client) Connect(ctx context.Context, message string) error {
 	return nil
 }
 
+// observeTransportTrace joins inbound W3C context from transport side channels.
+func observeTransportTrace(corr *tracectx.Correlator, tr transport.Transport) {
+	if corr == nil || tr == nil {
+		return
+	}
+	if st, ok := tr.(*sse.Transport); ok {
+		corr.ObserveHeaders(st.ResponseHeaders())
+	}
+}
+
 // readLoop forwards frames from one transport connection to Events()/
 // Errors() until that transport's stream ends. It never closes the
 // channels itself — Close does, once every readLoop has exited.
@@ -90,10 +154,23 @@ func (c *Client) readLoop(tr transport.Transport) {
 			c.errCh <- fmt.Errorf("malformed frame (name=%q, raw=%q): %w", frame.Name, frame.Raw, frame.Err)
 			continue
 		}
+		// Observe gRPC trailers before event-type allowlist so filtered
+		// grpc_status frames still join session correlation.
+		if c.corr != nil && frame.Name == "grpc_status" && len(frame.Data) > 0 {
+			var status struct {
+				Trailers map[string]string `json:"trailers"`
+			}
+			if json.Unmarshal(frame.Data, &status) == nil && len(status.Trailers) > 0 {
+				c.corr.ObserveMap(status.Trailers)
+			}
+		}
 		if len(allowed) > 0 && !slices.Contains(allowed, frame.Name) {
 			continue
 		}
 		event, _ := c.parser.Parse(frame.Name, frame.Data)
+		if event != nil && c.corr != nil {
+			c.corr.StampEvent(event)
+		}
 		c.eventCh <- event
 	}
 }

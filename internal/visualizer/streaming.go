@@ -10,6 +10,7 @@ import (
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport/sse"
 )
 
 // urlQueryEscape safely escapes a message for URL query use
@@ -40,7 +41,11 @@ func (m InteractiveModel) startStreamingCmd(message string, index int) tea.Cmd {
 		setupCompleted := false
 		if m.cfg.Session.AutoSetup && !m.sessionReady {
 			vars := config.InterpolationVarsFromConfig(m.cfg)
-			sessionID, err := m.parser.RunSetup(m.streamContext, vars, m.cfg.Transport.ResolvedHeaders(), nil)
+			headers := m.cfg.Transport.ResolvedHeaders()
+			if m.corr != nil {
+				m.corr.InjectHTTPHeaders(headers)
+			}
+			sessionID, err := m.parser.RunSetup(m.streamContext, vars, headers, nil)
 			if err != nil {
 				return streamErrorMsg{err: fmt.Errorf("failed to setup session: %w", err)}
 			}
@@ -49,13 +54,21 @@ func (m InteractiveModel) startStreamingCmd(message string, index int) tea.Cmd {
 			}
 			setupCompleted = true
 		}
-		tr, err := client.NewTransport(m.cfg, m.parser, message)
+		tr, err := client.NewTransportWithCorrelator(m.cfg, m.parser, message, m.corr)
 		if err != nil {
 			return streamErrorMsg{err: fmt.Errorf("failed to build stream transport: %w", err)}
 		}
 		if err := tr.Connect(m.streamContext); err != nil {
 			_ = tr.Close()
 			return streamErrorMsg{err: fmt.Errorf("failed to connect stream transport: %w", err)}
+		}
+		if m.corr != nil {
+			if st, ok := tr.(*sse.Transport); ok {
+				m.corr.ObserveHeaders(st.ResponseHeaders())
+			}
+			if m.slog != nil {
+				m.slog.SetSessionTrace(m.corr.Current())
+			}
 		}
 		return streamStartMsg{index: index, stream: tr, sessionReady: setupCompleted}
 	}
@@ -138,7 +151,11 @@ func (m InteractiveModel) newSessionCmd() tea.Cmd {
 
 		// Call session setup (auto create)
 		vars := config.InterpolationVarsFromConfig(m.cfg)
-		sessionID, err := m.parser.RunSetup(m.streamContext, vars, m.cfg.Transport.ResolvedHeaders(), nil)
+		headers := m.cfg.Transport.ResolvedHeaders()
+		if m.corr != nil {
+			m.corr.InjectHTTPHeaders(headers)
+		}
+		sessionID, err := m.parser.RunSetup(m.streamContext, vars, headers, nil)
 		if err != nil {
 			return sessionSetupMsg{
 				sessionID: newID,

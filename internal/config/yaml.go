@@ -280,6 +280,8 @@ func loadConfigFile(configPath string, opts loadOptions) (*EnhancedConfig, error
 		LogDir:           yamlCfg.Logging.Dir,
 		EnableColors:     yamlCfg.Display.Colors,
 		MaxAgentsVisible: yamlCfg.Display.MaxAgentsVisible,
+		// Inbound correlation is on by default; propagate/generate via CLI/env.
+		Correlation: CorrelationConfig{Observe: true},
 	}
 
 	// Normalize defaults for endpoints if missing
@@ -428,6 +430,9 @@ type EnhancedConfig struct {
 	Logging   LoggingConfig
 	APIKey    string
 	Debug     DebugConfig
+	// Correlation controls W3C trace context join (observe/propagate).
+	// Not loaded from YAML in v1 — set from CLI flags / env at process start.
+	Correlation CorrelationConfig
 
 	// Logging
 	LogDir string
@@ -435,6 +440,25 @@ type EnhancedConfig struct {
 	// Display (deprecated - use Display field instead)
 	EnableColors     bool
 	MaxAgentsVisible int
+}
+
+// CorrelationConfig holds runtime OpenTelemetry/W3C correlation options.
+// Inbound observation is always on at the correlator boundary (design D1);
+// Propagate/Generate are opt-in (D2/D4). Observe is retained for config
+// clarity / future disable switch but is not required to enable correlation.
+type CorrelationConfig struct {
+	// Observe joins inbound trace context (headers, trailers, payload). Default true.
+	// Currently always enabled by NewCorrelatorFromConfig; kept for API completeness.
+	Observe bool
+	// Propagate injects outbound traceparent when a context exists.
+	// Implies generate-if-missing (ModeGenerate) at the correlator boundary.
+	Propagate bool
+	// Generate mints a root context when propagating and nothing inbound exists.
+	// Redundant with Propagate today; accepted for explicit config.
+	Generate bool
+	// Traceparent forces a session parent (raw W3C header value). Invalid
+	// values fail at NewCorrelatorFromConfig — never silently ignored.
+	Traceparent string
 }
 
 // DisplayConfig holds display configuration

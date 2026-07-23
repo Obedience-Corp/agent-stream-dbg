@@ -186,6 +186,45 @@ func TestLogAPICall(t *testing.T) {
 	}
 }
 
+func TestLogEvent_IncludesTraceFields(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.EnhancedConfig{
+		LogDir:  tmpDir,
+		Session: config.SessionConfig{ID: "test"},
+		Logging: config.LoggingConfig{Dimensions: config.DimensionsConfig{BySession: true}},
+	}
+	logger, err := NewStructuredLogger(cfg)
+	if err != nil {
+		t.Fatalf("NewStructuredLogger: %v", err)
+	}
+	defer func() { _ = logger.Close() }()
+
+	event := &events.Event{
+		Name:     "session_start",
+		Kind:     events.KindSessionStart,
+		Fields:   map[string]any{"trace_id": "4bf92f3577b34da6a3ce929d0e0e4736", "span_id": "00f067aa0ba902b7"},
+		Raw:      []byte(`{"type":"session_start"}`),
+	}
+	if err := logger.LogEvent(event); err != nil {
+		t.Fatalf("LogEvent: %v", err)
+	}
+
+	matches, err := filepath.Glob(filepath.Join(tmpDir, "by-session", "*.jsonl"))
+	if err != nil || len(matches) == 0 {
+		t.Fatalf("session log missing: %v", err)
+	}
+	body, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `"trace_id":"4bf92f3577b34da6a3ce929d0e0e4736"`) {
+		t.Errorf("expected trace_id in session log, got %s", body)
+	}
+	if !strings.Contains(string(body), `"span_id":"00f067aa0ba902b7"`) {
+		t.Errorf("expected span_id in session log, got %s", body)
+	}
+}
+
 // TestLogAgentTurnMetrics_PerAgentFiles regression-tests this task's
 // generalization of the turn-metrics logger: turn metrics for two
 // different agent IDs must land in two different by-agent/<id>.jsonl
