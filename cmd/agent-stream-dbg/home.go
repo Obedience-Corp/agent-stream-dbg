@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/home"
@@ -11,13 +12,18 @@ import (
 
 // runHome is the default bare-launch experience: list/create configs, open
 // sessions, and return to the hub when a session ends.
-// Correlation flags come from process env only on this path (no CLI context).
-func runHome(dialectOverride string) error {
+// corrFlags come from global CLI flags and env (correlationFromCLI).
+func runHome(dialectOverride string, corrFlags ...correlationFlags) error {
 	corr := correlationFlags{}
-	if v := os.Getenv("OTEL_PROPAGATE"); v == "1" || v == "true" || v == "TRUE" {
-		corr.propagate = true
+	if len(corrFlags) > 0 {
+		corr = corrFlags[0]
+	} else {
+		// Env-only fallback when called without CLI context.
+		if v := strings.TrimSpace(os.Getenv("OTEL_PROPAGATE")); v == "1" || strings.EqualFold(v, "true") {
+			corr.propagate = true
+		}
+		corr.traceparent = strings.TrimSpace(os.Getenv("TRACEPARENT"))
 	}
-	corr.traceparent = os.Getenv("TRACEPARENT")
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("find current directory: %w", err)

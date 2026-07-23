@@ -363,8 +363,9 @@ func parseSSEStreamWithParser(rawSSE string, parser *bridge.Parser) ([]*events.E
 // never got these, and still don't.
 func (m *InteractiveModel) applyParsedEvent(evt *events.Event) {
 	if evt != nil && m.corr != nil {
+		prev := m.corr.Current()
 		m.corr.StampEvent(evt)
-		if m.slog != nil {
+		if m.slog != nil && m.corr.Changed(prev) {
 			m.slog.SetSessionTrace(m.corr.Current())
 		}
 	}

@@ -129,12 +129,8 @@ func newGRPCTransport(cfg *config.EnhancedConfig, vars mapping.InterpolationVars
 	}
 	extra := map[string]string{}
 	if corr != nil {
-		if tp, ok := corr.OutboundTraceparent(); ok {
-			extra["traceparent"] = tp
-		}
-		if ts, ok := corr.OutboundTracestate(); ok {
-			extra["tracestate"] = ts
-		}
+		// Same no-clobber inject policy as SSE headers.
+		corr.InjectMetadata(extra)
 	}
 	return grpctransport.New(grpctransport.Config{
 		Target:             cfg.Transport.Target,

@@ -15,10 +15,13 @@ func (m *Model) handleEvent(event *events.Event) (tea.Model, tea.Cmd) {
 	m.totalEvents++
 	m.dialectFlow.observe(event)
 	if m.client != nil {
-		if c := m.client.Correlator(); c != nil {
-			// Client already stamps in readLoop; refresh logger session IDs.
-			if m.logger != nil {
-				m.logger.SetSessionTrace(c.Current())
+		if c := m.client.Correlator(); c != nil && m.logger != nil {
+			// Client stamps in readLoop; only push session IDs when they change.
+			prev := m.loggerSessionTrace
+			cur := c.Current()
+			if cur.TraceID != prev.TraceID || cur.SpanID != prev.SpanID {
+				m.logger.SetSessionTrace(cur)
+				m.loggerSessionTrace = cur
 			}
 		}
 	}

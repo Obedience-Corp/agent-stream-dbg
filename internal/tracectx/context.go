@@ -21,9 +21,11 @@ const (
 // Context is a parsed W3C Trace Context (or a partial vendor-shaped ID set).
 type Context struct {
 	TraceID    string // 32 lowercase hex
-	SpanID     string // 16 lowercase hex (parent/span when known)
+	SpanID     string // 16 lowercase hex (local outbound span, or remote when observed)
+	RemoteSpan string // remote parent span when we mint a local SpanID for inject
+	Flags      string // 2 hex chars; default "01" when generating
 	TraceState string // raw tracestate if present
-	RawParent  string // original traceparent when known
+	RawParent  string // original inbound traceparent when known
 	Source     string // header | trailer | metadata | payload | generated | forced
 }
 
@@ -37,22 +39,18 @@ func (c Context) Empty() bool {
 	return c.TraceID == "" && c.SpanID == "" && c.RawParent == ""
 }
 
-// Traceparent rebuilds a W3C traceparent header value.
-// Returns "" if TraceID is invalid. Generates a random span id when SpanID
-// is missing so the header remains well-formed for outbound injection.
+// Traceparent rebuilds a W3C traceparent header value from the current fields.
+// Returns "" if TraceID is invalid or SpanID is missing (callers that need a
+// local span must mint via EnsureLocalSpan first — see Correlator.OutboundTraceparent).
 func (c Context) Traceparent() string {
-	if !isTraceID(c.TraceID) {
+	if !isTraceID(c.TraceID) || !isSpanID(c.SpanID) {
 		return ""
 	}
-	span := c.SpanID
-	if !isSpanID(span) {
-		var err error
-		span, err = randomHex(8)
-		if err != nil {
-			return ""
-		}
+	flags := c.Flags
+	if len(flags) != 2 || !isHex(flags) {
+		flags = "01"
 	}
-	return fmt.Sprintf("00-%s-%s-01", c.TraceID, span)
+	return fmt.Sprintf("00-%s-%s-%s", c.TraceID, c.SpanID, strings.ToLower(flags))
 }
 
 // ShortTraceID returns a truncated display form (prefix…suffix).
@@ -79,12 +77,9 @@ func ParseTraceparent(s string) (Context, error) {
 		return Context{}, fmt.Errorf("tracectx: traceparent must have 4 parts")
 	}
 	version, traceID, spanID, flags := parts[0], parts[1], parts[2], parts[3]
-	if version != "00" && version != "ff" {
-		// Accept only known versions; ff is forbidden by the spec for sending
-		// but we still refuse to treat it as a valid observed parent.
-		if version == "ff" {
-			return Context{}, fmt.Errorf("tracectx: forbidden traceparent version ff")
-		}
+	// version ff is forbidden by the W3C spec.
+	if version == "ff" {
+		return Context{}, fmt.Errorf("tracectx: forbidden traceparent version ff")
 	}
 	if version != "00" {
 		return Context{}, fmt.Errorf("tracectx: unsupported traceparent version %q", version)
@@ -105,6 +100,7 @@ func ParseTraceparent(s string) (Context, error) {
 	return Context{
 		TraceID:   strings.ToLower(traceID),
 		SpanID:    strings.ToLower(spanID),
+		Flags:     strings.ToLower(flags),
 		RawParent: s,
 	}, nil
 }
@@ -136,9 +132,13 @@ func FromHeaders(h http.Header) (Context, bool) {
 
 // FromMap extracts context from a flat string map (gRPC trailers/metadata,
 // or flattened header maps). Prefers traceparent; falls back to known keys.
-func FromMap(m map[string]string) (Context, bool) {
+// source labels the Context.Source (e.g. "trailer", "metadata").
+func FromMap(m map[string]string, source string) (Context, bool) {
 	if m == nil {
 		return Context{}, false
+	}
+	if source == "" {
+		source = "map"
 	}
 	// Case-insensitive lookup helpers.
 	get := func(keys ...string) string {
@@ -155,7 +155,7 @@ func FromMap(m map[string]string) (Context, bool) {
 	if tp := get("traceparent"); tp != "" {
 		ctx, err := ParseTraceparent(tp)
 		if err == nil {
-			ctx.Source = "trailer"
+			ctx.Source = source
 			if ts := get("tracestate"); ts != "" {
 				ctx.TraceState = ts
 			}
@@ -165,7 +165,7 @@ func FromMap(m map[string]string) (Context, bool) {
 	if tid := get("trace_id", "traceId", "trace-id"); tid != "" {
 		tid = strings.ToLower(strings.ReplaceAll(tid, "-", ""))
 		if isTraceID(tid) && tid != strings.Repeat("0", 32) {
-			ctx := Context{TraceID: tid, Source: "trailer"}
+			ctx := Context{TraceID: tid, Source: source, Flags: "01"}
 			if sid := get("span_id", "spanId", "span-id", "parent_span_id", "parentSpanId"); sid != "" {
 				sid = strings.ToLower(sid)
 				if isSpanID(sid) {
@@ -206,7 +206,7 @@ func FromFields(fields map[string]any) (Context, bool) {
 	if tid := str("trace_id", "traceId", "trace-id"); tid != "" {
 		tid = strings.ToLower(strings.ReplaceAll(tid, "-", ""))
 		if isTraceID(tid) && tid != strings.Repeat("0", 32) {
-			ctx := Context{TraceID: tid, Source: "payload"}
+			ctx := Context{TraceID: tid, Source: "payload", Flags: "01"}
 			if sid := str("span_id", "spanId", "span-id", "parent_span_id", "parentSpanId"); sid != "" {
 				sid = strings.ToLower(sid)
 				if isSpanID(sid) {
@@ -219,7 +219,7 @@ func FromFields(fields map[string]any) (Context, bool) {
 	return Context{}, false
 }
 
-// Generate creates a new root context (random trace + span ids).
+// Generate creates a new root context (random trace + span ids, flags 01).
 func Generate() (Context, error) {
 	tid, err := randomHex(16)
 	if err != nil {
@@ -232,8 +232,25 @@ func Generate() (Context, error) {
 	return Context{
 		TraceID: tid,
 		SpanID:  sid,
+		Flags:   "01",
 		Source:  "generated",
 	}, nil
+}
+
+// fieldsLikelyHaveTrace is a cheap pre-check before full StampEvent work.
+func fieldsLikelyHaveTrace(fields map[string]any) bool {
+	if fields == nil {
+		return false
+	}
+	for _, k := range []string{
+		"traceparent", "trace_id", "traceId", "trace-id",
+		"span_id", "spanId", "span-id", "trailers",
+	} {
+		if _, ok := fields[k]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func isTraceID(s string) bool {

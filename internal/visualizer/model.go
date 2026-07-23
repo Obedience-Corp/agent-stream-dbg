@@ -251,7 +251,7 @@ func NewInteractiveModelWithContextAndConfigPathAndOpenConfig(cfg *config.Enhanc
 	if l, err := dblogger.NewStructuredLogger(cfg); err == nil {
 		slog = l
 	}
-	corr := client.NewCorrelatorFromConfig(cfg)
+	corr, _ := client.NewCorrelatorFromConfig(cfg)
 	if slog != nil && corr != nil {
 		slog.SetSessionTrace(corr.Current())
 	}

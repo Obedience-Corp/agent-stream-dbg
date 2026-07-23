@@ -128,7 +128,8 @@ func defaultAction(c *cli.Context) error {
 		return runInteractiveWithOptions(configPath, c.String("dialect"), false, correlationFromCLI(c))
 	}
 	// Bare launch: home hub (list / create / offline demos / open session).
-	return runHome(c.String("dialect"))
+	// Global --otel-* flags apply to sessions opened from the hub.
+	return runHome(c.String("dialect"), correlationFromCLI(c))
 }
 
 func streamAction(c *cli.Context) error {

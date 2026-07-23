@@ -41,7 +41,11 @@ func (m InteractiveModel) startStreamingCmd(message string, index int) tea.Cmd {
 		setupCompleted := false
 		if m.cfg.Session.AutoSetup && !m.sessionReady {
 			vars := config.InterpolationVarsFromConfig(m.cfg)
-			sessionID, err := m.parser.RunSetup(m.streamContext, vars, m.cfg.Transport.ResolvedHeaders(), nil)
+			headers := m.cfg.Transport.ResolvedHeaders()
+			if m.corr != nil {
+				m.corr.InjectHTTPHeaders(headers)
+			}
+			sessionID, err := m.parser.RunSetup(m.streamContext, vars, headers, nil)
 			if err != nil {
 				return streamErrorMsg{err: fmt.Errorf("failed to setup session: %w", err)}
 			}
@@ -147,7 +151,11 @@ func (m InteractiveModel) newSessionCmd() tea.Cmd {
 
 		// Call session setup (auto create)
 		vars := config.InterpolationVarsFromConfig(m.cfg)
-		sessionID, err := m.parser.RunSetup(m.streamContext, vars, m.cfg.Transport.ResolvedHeaders(), nil)
+		headers := m.cfg.Transport.ResolvedHeaders()
+		if m.corr != nil {
+			m.corr.InjectHTTPHeaders(headers)
+		}
+		sessionID, err := m.parser.RunSetup(m.streamContext, vars, headers, nil)
 		if err != nil {
 			return sessionSetupMsg{
 				sessionID: newID,

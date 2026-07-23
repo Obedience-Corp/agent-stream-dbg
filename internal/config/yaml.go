@@ -443,15 +443,21 @@ type EnhancedConfig struct {
 }
 
 // CorrelationConfig holds runtime OpenTelemetry/W3C correlation options.
-// Observe defaults on; Propagate/Generate are opt-in (design D1/D2/D4).
+// Inbound observation is always on at the correlator boundary (design D1);
+// Propagate/Generate are opt-in (D2/D4). Observe is retained for config
+// clarity / future disable switch but is not required to enable correlation.
 type CorrelationConfig struct {
 	// Observe joins inbound trace context (headers, trailers, payload). Default true.
+	// Currently always enabled by NewCorrelatorFromConfig; kept for API completeness.
 	Observe bool
 	// Propagate injects outbound traceparent when a context exists.
+	// Implies generate-if-missing (ModeGenerate) at the correlator boundary.
 	Propagate bool
 	// Generate mints a root context when propagating and nothing inbound exists.
+	// Redundant with Propagate today; accepted for explicit config.
 	Generate bool
-	// Traceparent forces a session parent (raw W3C header value).
+	// Traceparent forces a session parent (raw W3C header value). Invalid
+	// values fail at NewCorrelatorFromConfig — never silently ignored.
 	Traceparent string
 }
 

@@ -2,8 +2,10 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/bridge"
@@ -41,7 +43,14 @@ type SSEClient = Client
 
 // NewClient creates a client for the configured transport type.
 func NewClient(cfg *config.EnhancedConfig) *Client {
-	return NewClientWithCorrelator(cfg, NewCorrelatorFromConfig(cfg))
+	corr, err := NewCorrelatorFromConfig(cfg)
+	if err != nil {
+		// Config was already validated at load/CLI; fall back to observe-only
+		// so tests constructing bare EnhancedConfig never panic. Callers that
+		// need hard failure use NewCorrelatorFromConfig directly.
+		corr = tracectx.New(tracectx.Options{Enabled: true, Mode: tracectx.ModeObserve})
+	}
+	return NewClientWithCorrelator(cfg, corr)
 }
 
 // NewClientWithCorrelator creates a client with an explicit correlator
@@ -67,7 +76,9 @@ func (c *Client) Correlator() *tracectx.Correlator {
 // NewCorrelatorFromConfig builds a correlator from EnhancedConfig.Correlation.
 // Inbound observation is always enabled (design D1). --otel-propagate maps to
 // ModeGenerate so a root is minted when nothing inbound exists (D4).
-func NewCorrelatorFromConfig(cfg *config.EnhancedConfig) *tracectx.Correlator {
+// Returns an error when Correlation.Traceparent is non-empty but invalid —
+// silent force+generate is unsafe for join workflows.
+func NewCorrelatorFromConfig(cfg *config.EnhancedConfig) (*tracectx.Correlator, error) {
 	mode := tracectx.ModeObserve
 	var forced tracectx.Context
 	if cfg != nil {
@@ -76,14 +87,16 @@ func NewCorrelatorFromConfig(cfg *config.EnhancedConfig) *tracectx.Correlator {
 			// Propagate implies generate-if-missing for outbound inject.
 			mode = tracectx.ModeGenerate
 		}
-		if cc.Traceparent != "" {
-			if parsed, err := tracectx.ParseTraceparent(cc.Traceparent); err == nil {
-				parsed.Source = "forced"
-				forced = parsed
+		if tp := strings.TrimSpace(cc.Traceparent); tp != "" {
+			parsed, err := tracectx.ParseTraceparent(tp)
+			if err != nil {
+				return nil, fmt.Errorf("invalid --otel-traceparent / TRACEPARENT %q: %w", tp, err)
 			}
+			parsed.Source = "forced"
+			forced = parsed
 		}
 	}
-	return tracectx.New(tracectx.Options{Enabled: true, Mode: mode, Forced: forced})
+	return tracectx.New(tracectx.Options{Enabled: true, Mode: mode, Forced: forced}), nil
 }
 
 // NewSSEClient retains the original constructor name for callers that have
@@ -140,6 +153,16 @@ func (c *Client) readLoop(tr transport.Transport) {
 		if frame.Err != nil {
 			c.errCh <- fmt.Errorf("malformed frame (name=%q, raw=%q): %w", frame.Name, frame.Raw, frame.Err)
 			continue
+		}
+		// Observe gRPC trailers before event-type allowlist so filtered
+		// grpc_status frames still join session correlation.
+		if c.corr != nil && frame.Name == "grpc_status" && len(frame.Data) > 0 {
+			var status struct {
+				Trailers map[string]string `json:"trailers"`
+			}
+			if json.Unmarshal(frame.Data, &status) == nil && len(status.Trailers) > 0 {
+				c.corr.ObserveMap(status.Trailers)
+			}
 		}
 		if len(allowed) > 0 && !slices.Contains(allowed, frame.Name) {
 			continue

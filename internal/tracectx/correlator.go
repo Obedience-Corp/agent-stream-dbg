@@ -25,6 +25,7 @@ type Options struct {
 	Enabled bool
 	Mode    Mode
 	// Forced, if Valid, seeds the session context (e.g. --otel-traceparent).
+	// Forced is applied only in New — not via Observe.
 	Forced Context
 }
 
@@ -34,6 +35,9 @@ type Correlator struct {
 	enabled bool
 	mode    Mode
 	current Context
+	// localSpanMinted is true once OutboundTraceparent has minted a local
+	// span under the session trace (so inject is stable across calls).
+	localSpanMinted bool
 }
 
 // New builds a correlator. When opts.Enabled is false, all methods no-op.
@@ -47,6 +51,11 @@ func New(opts Options) *Correlator {
 		if forced.Source == "" {
 			forced.Source = "forced"
 		}
+		if forced.Flags == "" {
+			forced.Flags = "01"
+		}
+		// Forced parent is remote identity; outbound will mint a local child span.
+		forced.RemoteSpan = forced.SpanID
 		c.current = forced
 	}
 	return c
@@ -79,8 +88,8 @@ func (c *Correlator) Current() Context {
 }
 
 // Observe merges an inbound context into the session.
-// First valid TraceID wins for the session chrome unless the new source is
-// forced; event-level stamps always use the latest observed per StampEvent.
+// First valid TraceID wins for session chrome. Forced is only set in New,
+// never via Observe.
 func (c *Correlator) Observe(in Context) {
 	if c == nil || !c.enabled || !in.Valid() {
 		return
@@ -88,14 +97,25 @@ func (c *Correlator) Observe(in Context) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if !c.current.Valid() {
+		// Observed remote identity; keep SpanID as remote parent until outbound mints.
+		if in.SpanID != "" {
+			in.RemoteSpan = in.SpanID
+		}
 		c.current = in
+		c.localSpanMinted = false
 		return
 	}
-	// Keep first session trace_id; refresh span/source metadata only when
-	// same trace or still empty span.
+	// Keep first session trace_id; refresh remote parent / metadata only when
+	// same trace. Do not overwrite a minted local span with remote.
 	if c.current.TraceID == in.TraceID {
 		if in.SpanID != "" {
-			c.current.SpanID = in.SpanID
+			c.current.RemoteSpan = in.SpanID
+			if !c.localSpanMinted {
+				c.current.SpanID = in.SpanID
+			}
+		}
+		if in.Flags != "" && !c.localSpanMinted {
+			c.current.Flags = in.Flags
 		}
 		if in.TraceState != "" {
 			c.current.TraceState = in.TraceState
@@ -103,7 +123,7 @@ func (c *Correlator) Observe(in Context) {
 		if in.RawParent != "" {
 			c.current.RawParent = in.RawParent
 		}
-		if in.Source != "" {
+		if in.Source != "" && c.current.Source != "forced" && c.current.Source != "generated" {
 			c.current.Source = in.Source
 		}
 	}
@@ -118,7 +138,7 @@ func (c *Correlator) ObserveHeaders(h http.Header) {
 
 // ObserveMap extracts and observes trailer/metadata maps.
 func (c *Correlator) ObserveMap(m map[string]string) {
-	if ctx, ok := FromMap(m); ok {
+	if ctx, ok := FromMap(m, "trailer"); ok {
 		c.Observe(ctx)
 	}
 }
@@ -130,8 +150,19 @@ func (c *Correlator) ObserveEventFields(fields map[string]any) {
 	}
 }
 
+// Changed reports whether session TraceID/SpanID differ from prev.
+func (c *Correlator) Changed(prev Context) bool {
+	if c == nil {
+		return false
+	}
+	cur := c.Current()
+	return cur.TraceID != prev.TraceID || cur.SpanID != prev.SpanID
+}
+
 // OutboundTraceparent returns a header value when propagation is enabled.
-// Does not overwrite caller policy: callers skip inject if already set.
+// Always mints and stores a stable local span under the session TraceID so
+// the debugger request is a child of the observed remote parent, not a
+// reuse of the remote span id.
 func (c *Correlator) OutboundTraceparent() (string, bool) {
 	if c == nil || !c.enabled {
 		return "", false
@@ -150,9 +181,23 @@ func (c *Correlator) OutboundTraceparent() (string, bool) {
 			return "", false
 		}
 		c.current = gen
+		c.localSpanMinted = true
+	} else if !c.localSpanMinted {
+		// Mint a local child span under the session (possibly remote) trace.
+		if c.current.SpanID != "" && c.current.RemoteSpan == "" {
+			c.current.RemoteSpan = c.current.SpanID
+		}
+		sid, err := randomHex(8)
+		if err != nil {
+			return "", false
+		}
+		c.current.SpanID = sid
+		if c.current.Flags == "" {
+			// Preserve inbound flags when known; default sampled only when absent.
+			c.current.Flags = "01"
+		}
+		c.localSpanMinted = true
 	}
-	// For outbound, use a fresh span id under the session trace when we only
-	// inherited a remote parent span — keep TraceID, mint span if needed via Traceparent().
 	tp := c.current.Traceparent()
 	if tp == "" {
 		return "", false
@@ -176,30 +221,38 @@ func (c *Correlator) OutboundTracestate() (string, bool) {
 	return c.current.TraceState, true
 }
 
-// StampEvent observes payload fields, then stamps Fields with correlation IDs.
+// StampEvent observes payload fields when present, then stamps Fields.
 // Inherits session trace_id when the event has none (design D3); span_id only
-// when event-specific or already on the event.
+// when event-specific. Cheap no-op when there is nothing new to join and the
+// event already carries (or does not need) a session trace_id.
 func (c *Correlator) StampEvent(ev *events.Event) {
 	if c == nil || !c.enabled || ev == nil {
 		return
 	}
-	c.ObserveEventFields(ev.Fields)
-	// Also observe nested trailers maps (gRPC grpc_status frames).
-	if trailers, ok := ev.Fields["trailers"].(map[string]any); ok {
-		flat := make(map[string]string, len(trailers))
-		for k, v := range trailers {
-			if s, ok := v.(string); ok {
-				flat[k] = s
+
+	// Observe only when payload likely carries correlation keys (hot path).
+	if fieldsLikelyHaveTrace(ev.Fields) {
+		c.ObserveEventFields(ev.Fields)
+		if trailers, ok := ev.Fields["trailers"].(map[string]any); ok {
+			flat := make(map[string]string, len(trailers))
+			for k, v := range trailers {
+				if s, ok := v.(string); ok {
+					flat[k] = s
+				}
 			}
+			c.ObserveMap(flat)
+		} else if trailers, ok := ev.Fields["trailers"].(map[string]string); ok {
+			c.ObserveMap(trailers)
 		}
-		c.ObserveMap(flat)
-	} else if trailers, ok := ev.Fields["trailers"].(map[string]string); ok {
-		c.ObserveMap(trailers)
 	}
 
 	c.mu.Lock()
 	cur := c.current
 	c.mu.Unlock()
+
+	if !cur.Valid() && !fieldsLikelyHaveTrace(ev.Fields) {
+		return
+	}
 
 	eventCtx, hasEvent := FromFields(ev.Fields)
 	if ev.Fields == nil {
@@ -229,7 +282,7 @@ func (c *Correlator) StampEvent(ev *events.Event) {
 }
 
 // InjectHTTPHeaders sets traceparent/tracestate on h when propagation is on
-// and the header is not already present.
+// and the header is not already present (case-insensitive).
 func (c *Correlator) InjectHTTPHeaders(h map[string]string) {
 	if h == nil {
 		return
@@ -247,6 +300,12 @@ func (c *Correlator) InjectHTTPHeaders(h map[string]string) {
 			h["tracestate"] = ts
 		}
 	}
+}
+
+// InjectMetadata sets traceparent/tracestate on a metadata map with the same
+// no-clobber rules as InjectHTTPHeaders (shared inject policy for SSE/gRPC).
+func (c *Correlator) InjectMetadata(m map[string]string) {
+	c.InjectHTTPHeaders(m)
 }
 
 func headerLookup(h map[string]string, name string) (string, bool) {

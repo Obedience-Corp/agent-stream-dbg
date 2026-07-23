@@ -11,6 +11,7 @@ import (
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/logger"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/tracectx"
 )
 
 // Model represents the TUI application state.
@@ -22,6 +23,10 @@ type Model struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	message string
+
+	// loggerSessionTrace caches last IDs pushed to the structured logger
+	// so high-rate content events do not re-lock on every token.
+	loggerSessionTrace tracectx.Context
 
 	// State
 	agents          map[string]*AgentState

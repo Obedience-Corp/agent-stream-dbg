@@ -18,8 +18,25 @@ func TestParseTraceparent_OK(t *testing.T) {
 	if ctx.SpanID != "00f067aa0ba902b7" {
 		t.Errorf("span_id=%q", ctx.SpanID)
 	}
-	if got := ctx.Traceparent(); !strings.HasPrefix(got, "00-4bf92f3577b34da6a3ce929d0e0e4736-") {
-		t.Errorf("Traceparent()=%q", got)
+	if ctx.Flags != "01" {
+		t.Errorf("flags=%q", ctx.Flags)
+	}
+	if got := ctx.Traceparent(); got != raw {
+		t.Errorf("Traceparent()=%q want %q", got, raw)
+	}
+}
+
+func TestParseTraceparent_PreservesUnsampledFlags(t *testing.T) {
+	const raw = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00"
+	ctx, err := ParseTraceparent(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ctx.Flags != "00" {
+		t.Errorf("flags=%q", ctx.Flags)
+	}
+	if got := ctx.Traceparent(); got != raw {
+		t.Errorf("Traceparent()=%q want %q", got, raw)
 	}
 }
 
@@ -56,12 +73,15 @@ func TestFromHeaders(t *testing.T) {
 }
 
 func TestFromMap_TraceIDFallback(t *testing.T) {
-	ctx, ok := FromMap(map[string]string{"trace-id": "4bf92f3577b34da6a3ce929d0e0e4736"})
+	ctx, ok := FromMap(map[string]string{"trace-id": "4bf92f3577b34da6a3ce929d0e0e4736"}, "trailer")
 	if !ok {
 		t.Fatal("expected ok")
 	}
 	if ctx.TraceID != "4bf92f3577b34da6a3ce929d0e0e4736" {
 		t.Errorf("trace_id=%q", ctx.TraceID)
+	}
+	if ctx.Source != "trailer" {
+		t.Errorf("source=%q", ctx.Source)
 	}
 }
 
@@ -88,6 +108,9 @@ func TestGenerate_Valid(t *testing.T) {
 	}
 	if ctx.Source != "generated" {
 		t.Errorf("source=%q", ctx.Source)
+	}
+	if ctx.Flags != "01" {
+		t.Errorf("flags=%q", ctx.Flags)
 	}
 }
 
