@@ -14,6 +14,9 @@ import (
 // finding a debugger must surface, not an error a client library should
 // swallow.
 type Frame struct {
+	Terminal  bool      // unrecoverable source error; inspection remains available
+	Offset    int64     // byte offset for indexed file inspection
+	Size      int64     // source bytes including newline
 	Name      string    // SSE event name; gRPC oneof case; "" if undiscriminated
 	Data      []byte    // JSON (SSE) or protojson-rendered (gRPC)
 	Raw       []byte    // wire-level bytes; gRPC dynamic fallback deterministically re-marshals the full envelope

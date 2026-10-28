@@ -13,6 +13,7 @@ import (
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/tracectx"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport"
 	acptransport "github.com/Obedience-Corp/agent-stream-dbg/internal/transport/acp"
+	filetransport "github.com/Obedience-Corp/agent-stream-dbg/internal/transport/file"
 	grpctransport "github.com/Obedience-Corp/agent-stream-dbg/internal/transport/grpc"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport/replay"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport/sse"
@@ -47,6 +48,8 @@ func newTransport(cfg *config.EnhancedConfig, parser *bridge.Parser, vars mappin
 		return newSSETransport(cfg, parser, vars, corr)
 	case "grpc":
 		return newGRPCTransport(cfg, vars, corr)
+	case "file":
+		return filetransport.New(cfg.Transport.BaseURL, false), nil
 	case "replay":
 		tr, err := replay.New(cfg.Transport.BaseURL, 0)
 		if err != nil {
@@ -56,7 +59,7 @@ func newTransport(cfg *config.EnhancedConfig, parser *bridge.Parser, vars mappin
 	case "acp":
 		return newACPTransport(cfg, vars), nil
 	default:
-		return nil, fmt.Errorf("unsupported transport.type %q (want sse, grpc, replay, or acp)", cfg.Transport.Type)
+		return nil, fmt.Errorf("unsupported transport.type %q (want sse, grpc, file, replay, or acp)", cfg.Transport.Type)
 	}
 }
 

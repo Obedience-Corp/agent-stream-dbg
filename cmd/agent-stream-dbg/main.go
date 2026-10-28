@@ -39,6 +39,7 @@ func main() {
 			&cli.StringFlag{Name: "otel-traceparent", Usage: "Force session W3C traceparent (00-traceid-spanid-flags)"},
 		},
 		Commands: []*cli.Command{
+			{Name: "observe", Usage: "Inspect a saved or growing file without prompting or controlling its producer", ArgsUsage: "PATH", Flags: []cli.Flag{&cli.StringFlag{Name: "dialect", Required: true, Usage: "Embedded dialect name or YAML path"}, &cli.BoolFlag{Name: "follow", Usage: "Follow complete appended records from byte zero"}}, Action: observeAction},
 			{
 				Name: "stream", Usage: "Send single message and exit (CI/CD mode)", ArgsUsage: "<message>",
 				Description: `Sends a single message to the configured backend and displays the streaming response.

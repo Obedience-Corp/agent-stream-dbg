@@ -190,14 +190,14 @@ func loadConfigFile(configPath string, opts loadOptions) (*EnhancedConfig, error
 			Request:            yamlCfg.Transport.Request,
 			Auth:               auth,
 		}
-	case "replay":
+	case "file", "replay":
 		auth, resolvedToken, err := resolveAuth(yamlCfg.Transport.Auth, "none", opts.requireSecrets)
 		if err != nil {
 			return nil, err
 		}
 		apiKey = resolvedToken
 		transport = TransportConfig{
-			Type:           "replay",
+			Type:           yamlCfg.Transport.Type,
 			BaseURL:        yamlCfg.Transport.BaseURL,
 			StreamEndpoint: yamlCfg.Transport.StreamEndpoint.URL,
 			Auth:           auth,
@@ -477,7 +477,7 @@ type DebugConfig struct {
 // TransportConfig holds transport-level connection configuration for
 // either transport type; which fields apply is determined by Type.
 type TransportConfig struct {
-	Type string // "sse" (default), "grpc", "replay", or "acp"
+	Type string // "sse" (default), "grpc", "file", "replay", or "acp"
 
 	// SSE fields.
 	BaseURL        string

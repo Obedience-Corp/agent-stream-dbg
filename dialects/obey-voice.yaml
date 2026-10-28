@@ -1,0 +1,203 @@
+# Additive transcript v1/v2 and source trace contract. Source-specific keys stay here.
+version: 1
+name: obey-voice
+description: Passive conversation capture, source clock and overlapping pipeline intervals.
+discriminator: {path: type}
+rules:
+  - match: {event: header}
+    kind: session_start
+    source: {const: conversation}
+    timestamp: ts
+    seq: seq
+    fields:
+      <<: &scope
+        capture_id: trace.capture_id
+        runtime_id: trace.runtime_id
+        session_id: trace.session_id
+        conversation_epoch: trace.conversation_epoch
+        turn_id: trace.turn_id
+        parent_turn_id: trace.parent_turn_id
+        response_id: trace.response_id
+        persona_id: trace.persona_id
+        mono_ms: trace.mono_ms
+        turn_start_ms: trace.turn_start_ms
+        job_id: {first: [job_id, trace.job_id, worker_usage.job_id, worker_limit.job_id, worker_charge.job_id]}
+      trace_schema: trace_schema
+      supported_trace_major: {const: 1}
+      supported_trace_family: {const: "obey-voice.trace"}
+      clock_origin: clock_origin
+      content_policy: content_policy
+      capture_cut: cut
+      environment: environment
+
+  - match: {event: trace_span, path: span.state, equals: start}
+    kind: step_start
+    source: span.lane
+    timestamp: ts
+    seq: seq
+    fields: &span_fields
+      <<: *scope
+      span_id: span.id
+      parent_span_id: span.parent_id
+      step: span.stage
+      lane: span.lane
+      start_ms: span.start_ms
+      end_ms: span.end_ms
+      span_state: span.state
+      status: span.status
+      segment_index: span.segment_index
+      attempt_id: span.attempt_id
+
+  - match: {event: trace_span, path: span.state, equals: end}
+    kind: step_end
+    source: span.lane
+    timestamp: ts
+    seq: seq
+    fields: *span_fields
+
+  - match: {event: trace_span}
+    kind: detail
+    source: span.lane
+    timestamp: ts
+    seq: seq
+    fields: *span_fields
+
+  - match: {event: "capture_end"}
+    kind: session_end
+    source: {const: conversation}
+    timestamp: ts
+    seq: seq
+    fields:
+      <<: *scope
+      capture_health: health
+
+  - match: {event: "capture_health"}
+    kind: detail
+    source: {const: conversation}
+    timestamp: ts
+    seq: seq
+    fields:
+      <<: *scope
+      capture_health: health
+
+  - match: {event: "record_omitted"}
+    kind: detail
+    source: {const: conversation}
+    timestamp: ts
+    seq: seq
+    content: message
+    fields:
+      <<: *scope
+
+  - match: {event: "user"}
+    kind: detail
+    source: {const: conversation}
+    timestamp: ts
+    seq: seq
+    content: text
+    fields:
+      <<: *scope
+      local_turn_boundary: {const: true}
+
+  - match: {event: "agent_delta"}
+    kind: content
+    source: {const: conversation}
+    timestamp: ts
+    seq: seq
+    content: text
+    fields:
+      <<: *scope
+
+  - match: {event: "agent"}
+    kind: detail
+    source: {const: conversation}
+    timestamp: ts
+    seq: seq
+    content: text
+    fields:
+      <<: *scope
+
+  - match: {event: "metrics"}
+    kind: detail
+    source: {const: conversation}
+    timestamp: ts
+    seq: seq
+    fields:
+      <<: *scope
+      turn_timing: timing
+      final_segments: segments
+
+  - match: {event: "tool_call"}
+    kind: tool_call
+    source: {const: tools}
+    timestamp: ts
+    seq: seq
+    content: summary
+    fields:
+      <<: *scope
+      tool_name: name
+      call_id: id
+
+  - match: {event: "tool_result"}
+    kind: tool_result
+    source: {const: tools}
+    timestamp: ts
+    seq: seq
+    content: preview
+    fields:
+      <<: *scope
+      tool_name: name
+      call_id: id
+
+  - match: {event: "job"}
+    kind: status_change
+    source: {const: workers}
+    timestamp: ts
+    seq: seq
+    content: text
+    fields:
+      <<: *scope
+      job_id: {first: [job_id, name]}
+
+  - match: {event: "speaking"}
+    kind: status_change
+    source: {const: playback}
+    timestamp: ts
+    seq: seq
+    content: text
+    fields:
+      <<: *scope
+
+  - match: {event: "error"}
+    kind: error
+    source: {const: conversation}
+    timestamp: ts
+    seq: seq
+    content: message
+    fields:
+      <<: *scope
+
+  - match: {event: "info"}
+    kind: detail
+    source: {const: conversation}
+    timestamp: ts
+    seq: seq
+    content: message
+    fields:
+      <<: *scope
+
+  - match: {event: "worker.*"}
+    kind: usage
+    source: {const: workers}
+    timestamp: ts
+    seq: seq
+    fields:
+      <<: *scope
+
+  - match: {event: "*"}
+    kind: unknown
+    source: {const: conversation}
+    timestamp: ts
+    seq: seq
+    fields:
+      <<: *scope
