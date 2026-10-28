@@ -1,0 +1,1 @@
+{"type":"future_event","ts":"2026-10-27T12:00:03.700000+00:00","seq":30,"trace":{"capture_id":"fixture-capture","runtime_id":"fixture-runtime","session_id":"fixture-session","conversation_epoch":"epoch-1","mono_ms":3700,"turn_start_ms":null,"turn_id":null,"response_id":null,"persona_id":null},"status":"sealed","dropped":0,"write_errors":0,"skipped":0,"future":{"value":7}}

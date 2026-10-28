@@ -9,7 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// valueFormKind identifies which of the DSL's five value forms a ValueForm holds.
+// valueFormKind identifies which of the DSL's six value forms a ValueForm holds.
 type valueFormKind int
 
 const (
@@ -19,10 +19,11 @@ const (
 	valueFormPathDefault
 	valueFormFirst
 	valueFormRaw
+	valueFormLookup
 )
 
 // ValueForm extracts a value from a matched frame's data for
-// source/content/seq/fields.*, per one of the DSL's five forms:
+// source/content/seq/fields.*, per one of the DSL's six forms:
 // a bare gjson path, {const: v}, {path: p, default: v}, {first: [p1, p2]},
 // or {raw: true} (the entire frame body as a string).
 type ValueForm struct {
@@ -31,6 +32,7 @@ type ValueForm struct {
 	def      any
 	first    []string
 	constVal any
+	lookup   map[string]any
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.
@@ -45,10 +47,14 @@ func (v *ValueForm) UnmarshalYAML(node *yaml.Node) error {
 		v.path = s
 		return nil
 	case yaml.MappingNode:
-		var constNode, pathNode, defaultNode, firstNode, rawNode *yaml.Node
+		var constNode, pathNode, defaultNode, firstNode, rawNode, lookupNode, valuesNode *yaml.Node
 		for i := 0; i+1 < len(node.Content); i += 2 {
 			key, valNode := node.Content[i].Value, node.Content[i+1]
 			switch key {
+			case "lookup":
+				lookupNode = valNode
+			case "values":
+				valuesNode = valNode
 			case "const":
 				constNode = valNode
 			case "path":
@@ -64,6 +70,28 @@ func (v *ValueForm) UnmarshalYAML(node *yaml.Node) error {
 			}
 		}
 		switch {
+		case lookupNode != nil:
+			if err := lookupNode.Decode(&v.path); err != nil {
+				return err
+			}
+			if valuesNode == nil {
+				return fmt.Errorf("lookup requires values")
+			}
+			if err := valuesNode.Decode(&v.lookup); err != nil {
+				return err
+			}
+			if len(v.lookup) > 64 {
+				return fmt.Errorf("lookup supports at most64 values")
+			}
+			for key, value := range v.lookup {
+				if len(key) > 256 {
+					return fmt.Errorf("lookup key exceeds256bytes")
+				}
+				if _, ok := projectionScalar(value); !ok {
+					return fmt.Errorf("lookup values must be bounded scalars")
+				}
+			}
+			v.kind = valueFormLookup
 		case constNode != nil:
 			var cv any
 			if err := constNode.Decode(&cv); err != nil {
@@ -122,6 +150,13 @@ func (v ValueForm) IsSet() bool {
 // never a reason to drop the event.
 func (v ValueForm) Extract(data []byte) (any, bool) {
 	switch v.kind {
+	case valueFormLookup:
+		r := gjson.GetBytes(data, v.path)
+		if r.Type != gjson.String || len(r.Str) > 256 {
+			return nil, false
+		}
+		value, ok := v.lookup[r.Str]
+		return value, ok
 	case valueFormPath:
 		r := gjson.GetBytes(data, v.path)
 		if !r.Exists() {
@@ -159,6 +194,8 @@ func (v ValueForm) Extract(data []byte) (any, bool) {
 // a value was derived, not just what it resolved to.
 func (v ValueForm) Describe() string {
 	switch v.kind {
+	case valueFormLookup:
+		return "lookup: " + v.path
 	case valueFormPath:
 		return v.path
 	case valueFormConst:

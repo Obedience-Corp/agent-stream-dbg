@@ -188,7 +188,7 @@ func ConfigReady(cfg *EnhancedConfig) bool {
 		return strings.TrimSpace(cfg.Transport.Target) != "" && strings.TrimSpace(cfg.Transport.GRPCMethod) != ""
 	case "acp":
 		return strings.TrimSpace(cfg.Transport.Command) != ""
-	case "replay":
+	case "file", "replay":
 		return strings.TrimSpace(cfg.Transport.BaseURL) != ""
 	default: // sse
 		return strings.TrimSpace(cfg.Transport.BaseURL) != "" && strings.TrimSpace(cfg.Transport.StreamEndpoint) != ""

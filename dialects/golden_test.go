@@ -28,6 +28,7 @@ type goldenCase struct {
 }
 
 var goldenCases = []goldenCase{
+	{"obey-voice.yaml", "../testdata/fixtures/pipeline-trace/overlap-interrupted.jsonl", "../testdata/goldens/obey-voice.explain.txt"},
 	{"brainyard.yaml", "../testdata/fixtures/brainyard-session.jsonl", "../testdata/goldens/brainyard.explain.txt"},
 	{"openai.yaml", "../testdata/fixtures/openai-chat.jsonl", "../testdata/goldens/openai.explain.txt"},
 	{"anthropic.yaml", "../testdata/fixtures/anthropic-messages.jsonl", "../testdata/goldens/anthropic.explain.txt"},

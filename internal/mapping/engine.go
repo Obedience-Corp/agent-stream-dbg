@@ -38,11 +38,12 @@ var knownKinds = map[string]events.Kind{
 
 // Rule is one compiled frame → Event mapping rule.
 type Rule struct {
-	Match   MatchSpec
-	Kind    events.Kind
-	Source  ValueForm
-	Content ValueForm
-	Seq     ValueForm
+	IntervalArrays []IntervalArraySpec
+	Match          MatchSpec
+	Kind           events.Kind
+	Source         ValueForm
+	Content        ValueForm
+	Seq            ValueForm
 	// Timestamp extracts a wire timestamp when it is nested inside an
 	// envelope (common for protobuf activity messages). When unset, Decode
 	// keeps the legacy top-level timestamp fallback.
@@ -52,13 +53,14 @@ type Rule struct {
 
 // ruleYAML is the raw YAML shape of a rule, strictly decoded.
 type ruleYAML struct {
-	Match     MatchSpec            `yaml:"match"`
-	Kind      string               `yaml:"kind"`
-	Source    ValueForm            `yaml:"source,omitempty"`
-	Content   ValueForm            `yaml:"content,omitempty"`
-	Seq       ValueForm            `yaml:"seq,omitempty"`
-	Timestamp ValueForm            `yaml:"timestamp,omitempty"`
-	Fields    map[string]ValueForm `yaml:"fields,omitempty"`
+	IntervalArrays []IntervalArraySpec  `yaml:"interval_arrays,omitempty"`
+	Match          MatchSpec            `yaml:"match"`
+	Kind           string               `yaml:"kind"`
+	Source         ValueForm            `yaml:"source,omitempty"`
+	Content        ValueForm            `yaml:"content,omitempty"`
+	Seq            ValueForm            `yaml:"seq,omitempty"`
+	Timestamp      ValueForm            `yaml:"timestamp,omitempty"`
+	Fields         map[string]ValueForm `yaml:"fields,omitempty"`
 }
 
 // dialectYAML is the top-level dialect document shape.
@@ -122,6 +124,9 @@ func Load(data []byte) (*Engine, error) {
 
 	rules := make([]Rule, 0, len(doc.Rules))
 	for i, r := range doc.Rules {
+		if err := validateIntervalArrays(r.IntervalArrays, 0); err != nil {
+			return nil, fmt.Errorf("rules[%d]: %w", i, err)
+		}
 		if err := r.Match.validate(); err != nil {
 			return nil, fmt.Errorf("rules[%d].match: %w", i, err)
 		}
@@ -133,13 +138,14 @@ func Load(data []byte) (*Engine, error) {
 			return nil, fmt.Errorf("rules[%d]: unknown kind %q", i, r.Kind)
 		}
 		rules = append(rules, Rule{
-			Match:     r.Match,
-			Kind:      kind,
-			Source:    r.Source,
-			Content:   r.Content,
-			Seq:       r.Seq,
-			Timestamp: r.Timestamp,
-			Fields:    r.Fields,
+			IntervalArrays: r.IntervalArrays,
+			Match:          r.Match,
+			Kind:           kind,
+			Source:         r.Source,
+			Content:        r.Content,
+			Seq:            r.Seq,
+			Timestamp:      r.Timestamp,
+			Fields:         r.Fields,
 		})
 	}
 
@@ -204,32 +210,39 @@ func (e *Engine) Decode(transportName string, data []byte) *events.Event {
 	var fields map[string]any
 	_ = json.Unmarshal(data, &fields)
 
+	sourceTime, sourceKnown := events.ParseSourceTimestamp(timestampField(fields))
 	idx := e.Match(name, data)
 	if idx < 0 {
 		return &events.Event{
-			Name:      name,
-			Kind:      events.KindUnknown,
-			Timestamp: events.ParseTimestamp(timestampField(fields)),
-			Fields:    fields,
-			Raw:       data,
+			Name:                 name,
+			Kind:                 events.KindUnknown,
+			Timestamp:            events.ParseTimestamp(timestampField(fields)),
+			SourceTimestampKnown: sourceKnown,
+			Fields:               fields,
+			Raw:                  data,
 		}
 	}
 
 	rule := e.Rules[idx]
 	timestamp := events.ParseTimestamp(timestampField(fields))
+	if sourceKnown {
+		timestamp = sourceTime
+	}
 	if rule.Timestamp.IsSet() {
 		if value, ok := rule.Timestamp.Extract(data); ok {
 			if raw, err := json.Marshal(value); err == nil {
 				timestamp = events.ParseTimestamp(raw)
+				_, sourceKnown = events.ParseSourceTimestamp(raw)
 			}
 		}
 	}
 	evt := &events.Event{
-		Name:      name,
-		Kind:      rule.Kind,
-		Timestamp: timestamp,
-		Fields:    fields,
-		Raw:       data,
+		Name:                 name,
+		SourceTimestampKnown: sourceKnown,
+		Kind:                 rule.Kind,
+		Timestamp:            timestamp,
+		Fields:               fields,
+		Raw:                  data,
 	}
 	if rule.Source.IsSet() {
 		evt.SourceID = rule.Source.String(data)
@@ -248,6 +261,16 @@ func (e *Engine) Decode(transportName string, data []byte) *events.Event {
 			if val, ok := form.Extract(data); ok {
 				evt.Fields[key] = val
 			}
+		}
+	}
+	if len(rule.IntervalArrays) > 0 {
+		if evt.Fields == nil {
+			evt.Fields = map[string]any{}
+		}
+		rows, limited := projectIntervalArrays(rule.IntervalArrays, data)
+		evt.Fields["interval_evidence"] = rows
+		if limited {
+			evt.Fields["projection_limited"] = true
 		}
 	}
 	return evt
