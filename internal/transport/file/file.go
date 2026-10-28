@@ -124,10 +124,15 @@ func (t *Transport) changed(offset int64) error {
 		if _, err := t.f.ReadAt(prefix, 0); err != nil {
 			return fmt.Errorf("%w: %v", ErrSourceChanged, err)
 		}
-		if len(prefix) < len(t.prefix) || !bytes.Equal(t.prefix, prefix[:len(t.prefix)]) {
+		t.mu.Lock()
+		previous := t.prefix
+		t.mu.Unlock()
+		if len(prefix) < len(previous) || !bytes.Equal(previous, prefix[:len(previous)]) {
 			return ErrSourceChanged
 		}
+		t.mu.Lock()
 		t.prefix = prefix
+		t.mu.Unlock()
 	}
 	return nil
 }
@@ -235,3 +240,11 @@ func (t *Transport) read() {
 
 // FinishFollow drains complete records already on disk, then reaches finite EOF.
 func (t *Transport) FinishFollow() { t.finishing.Store(true) }
+
+// Snapshot is an immutable inode/prefix anchor for later bounded disk inspection.
+func (t *Transport) Snapshot() (os.FileInfo, []byte) {
+	t.mu.Lock()
+	info, prefix := t.initial, t.prefix
+	t.mu.Unlock()
+	return info, bytes.Clone(prefix)
+}

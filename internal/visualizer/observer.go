@@ -7,6 +7,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -26,6 +27,19 @@ type observerFrame struct {
 // ObserverModel is the passive mode of the visualizer. It has no prompt,
 // session setup, logger, control client, or source write capability.
 type ObserverModel struct {
+	selectionAnchor                                               observerSelection
+	historyActive                                                 bool
+	historyPending                                                *historyRequest
+	historyCancel                                                 context.CancelFunc
+	historyGeneration                                             uint64
+	historyInFlight                                               atomic.Int64
+	historyPeak                                                   atomic.Int64
+	historyLoad                                                   func(context.Context, historyRequest) (*observerStore, observerSelection, error)
+	traceSchema, conversationEpoch                                string
+	detailRaw                                                     bool
+	detailInterval                                                string
+	detailRecordOffset                                            int64
+	detailRawOffset, detailScroll, detailEvidence                 int
 	source                                                        transport.Transport
 	parser                                                        *bridge.Parser
 	path                                                          string
@@ -74,6 +88,8 @@ func (m *ObserverModel) closeSource() tea.Cmd {
 func (m *ObserverModel) Close() error { m.cancel(); return m.source.Close() }
 func (m *ObserverModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := message.(type) {
+	case *observerHistoryResult:
+		return m, m.historyResult(msg)
 	case tea.WindowSizeMsg:
 		m.width = max(30, msg.Width)
 		m.height = max(12, msg.Height)
@@ -96,7 +112,7 @@ func (m *ObserverModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		frame := msg.frame
-		event, err := m.parser.Parse(frame.Name, frame.Data)
+		event, err := m.parser.ParseBounded(frame.Name, frame.Data, 4<<20)
 		if err != nil {
 			m.err = err
 			return m, m.closeSource()
@@ -109,6 +125,8 @@ func (m *ObserverModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.sessionID = boundedIdentity(event.StringField("session_id"))
 			m.runtimeID = boundedIdentity(event.StringField("runtime_id"))
 			schema := event.StringField("trace_schema")
+			m.traceSchema = schema
+			m.conversationEpoch = event.StringField("conversation_epoch")
 			m.schemaNotice = ""
 			m.intervalsEnabled = true
 			if schema == "" {
@@ -146,7 +164,7 @@ func (m *ObserverModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		groups := m.store.groups()
 		if m.followLatest && len(groups) > 0 {
-			m.selected = latestObservedGroup(groups, m.runtimeID)
+			m.selectScope(latestObservedGroup(groups, m.runtimeID), m.store)
 			m.scroll = 0
 			m.eventRow = 0
 		}
@@ -166,36 +184,74 @@ func (m *ObserverModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.waitFrame()
 	case tea.KeyMsg:
+		if m.details {
+			switch msg.String() {
+			case "r":
+				m.detailRaw = true
+				m.detailScroll = 0
+				m.detailRawOffset = 0
+				return m, nil
+			case "p":
+				m.detailRaw = false
+				m.detailScroll = 0
+				return m, nil
+			case "esc":
+				m.details = false
+				return m, nil
+			case "up", "k":
+				m.detailScroll = max(0, m.detailScroll-1)
+				return m, nil
+			case "down", "j":
+				m.detailScroll++
+				return m, nil
+			case "left", "h":
+				m.detailEvidence = max(0, m.detailEvidence-1)
+				m.detailScroll = 0
+				m.detailRawOffset = 0
+				return m, nil
+			case "right", "l":
+				m.detailEvidence = min(7, m.detailEvidence+1)
+				m.detailScroll = 0
+				m.detailRawOffset = 0
+				return m, nil
+			case "pgup":
+				if m.detailRaw {
+					m.detailRawOffset = max(0, m.detailRawOffset-detailChunkBytes)
+					m.detailScroll = 0
+				} else {
+					m.detailScroll = max(0, m.detailScroll-m.height/2)
+				}
+				return m, nil
+			case "pgdown":
+				if m.detailRaw {
+					m.detailRawOffset += detailChunkBytes
+					m.detailScroll = 0
+				} else {
+					m.detailScroll += m.height / 2
+				}
+				return m, nil
+			}
+		}
 		switch msg.String() {
 		case "q", "ctrl+c":
 			m.cancel()
 			return m, tea.Sequence(m.closeSource(), tea.Quit)
+		case "ctrl+r":
+			return m, m.requestHistory(0)
 		case "ctrl+f":
-			m.followLatest = true
-			m.page = nil
-			groups := m.store.groups()
-			if len(groups) > 0 {
-				m.selected = latestObservedGroup(groups, m.runtimeID)
-			}
-			m.scroll = 0
+			m.followLatestSelection()
 		case "[", "]":
-			m.followLatest = false
-			groups := m.store.groups()
-			for i, g := range groups {
-				if g.Key == m.selected {
-					if msg.String() == "[" && i > 0 {
-						m.selected = groups[i-1].Key
-					}
-					if msg.String() == "]" && i+1 < len(groups) {
-						m.selected = groups[i+1].Key
-					}
-					break
-				}
+			direction := -1
+			if msg.String() == "]" {
+				direction = 1
 			}
-			m.scroll = 0
-			m.eventRow = 0
+			return m, m.navigateTurn(direction)
 		case " ":
-			m.followLatest = !m.followLatest
+			if m.followLatest {
+				m.followLatest = false
+			} else {
+				m.followLatestSelection()
+			}
 		case "tab":
 			m.pane = (m.pane + 1) % 5
 			m.scroll = 0
@@ -230,7 +286,20 @@ func (m *ObserverModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.followLatest = false
 			m.scroll += max(1, m.height-10)
 		case "enter":
+			if m.pane == PaneApp || m.pane == PaneFlow {
+				groups := m.store.groups()
+				if len(groups) > 0 {
+					m.cancelHistorySelection()
+					m.selectScope(groups[min(m.eventRow, len(groups)-1)].Key, m.store)
+					m.followLatest = false
+					m.scroll = 0
+				}
+				break
+			}
 			m.details = !m.details
+			if m.details {
+				m.openObserverDetails()
+			}
 		}
 	}
 	return m, nil
@@ -261,22 +330,27 @@ func observerClip(text string, width int) string {
 	}
 	var out strings.Builder
 	out.Grow(min(len(text), width*4))
-	count := 0
-	for _, r := range text {
+	truncated := false
+	// Bound traversal too: zero-width/control runs must not scan an entire
+	// retained message just to render a single terminal row.
+	for index, r := range text {
+		if index >= width*16 {
+			truncated = true
+			break
+		}
 		if r == '\n' || r == '\t' {
 			r = ' '
 		}
 		if !unicode.IsPrint(r) {
 			continue
 		}
-		if count >= width-1 {
-			out.WriteRune('…')
-			break
-		}
 		out.WriteRune(r)
-		count++
 	}
-	return out.String()
+	clean := out.String()
+	if truncated || lipgloss.Width(clean) > width {
+		return lipgloss.NewStyle().MaxWidth(width-1).Render(clean) + "…"
+	}
+	return clean
 }
 
 func (m *ObserverModel) selectedRecords() []*observedRecord {
@@ -290,7 +364,7 @@ func (m *ObserverModel) View() string {
 	height := min(100, max(12, m.height))
 	cyan := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
 	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	lines := []string{cyan.Render(observerClip("agent-stream-dbg · observe · "+m.status, width)), observerClip(m.path, width), observerClip(fmt.Sprintf("capture %s · runtime %s · session %s", m.captureID, m.runtimeID, m.sessionID), width)}
+	lines := []string{cyan.Render(observerClip("agent-stream-dbg · observe · "+m.sourceLifecycle()+" · "+m.status, width)), observerClip(m.path, width), observerClip(fmt.Sprintf("capture %s · runtime %s · session %s", m.captureID, m.runtimeID, m.sessionID), width)}
 	if m.schemaNotice != "" {
 		lines = append(lines, observerClip(m.schemaNotice, width))
 	}
@@ -304,8 +378,12 @@ func (m *ObserverModel) View() string {
 		lines = append(lines, observerClip("! "+m.store.issues[len(m.store.issues)-1], width))
 	}
 	groups := m.store.groups()
+	labelGroups := groups
+	if m.page != nil {
+		labelGroups = append(labelGroups, m.page.groups()...)
+	}
 	label := m.selected
-	for _, g := range groups {
+	for _, g := range labelGroups {
 		if g.Key == m.selected {
 			label = fmt.Sprintf("%s · response:%s · persona:%s", g.Label, g.Response, g.Persona)
 		}
@@ -327,19 +405,10 @@ func (m *ObserverModel) View() string {
 	availableRows := max(1, height-len(lines)-3)
 	body := make([]string, 0)
 	switch {
-	case m.details && len(records) > 0:
-		record := records[min(m.eventRow, len(records)-1)]
-		raw := record.Event.Raw
-		if len(raw) > 16<<10 {
-			raw = raw[:16<<10]
-		}
-		var pretty strings.Builder
-		pretty.Write(raw)
-		body = strings.Split(observerClean(pretty.String()), "\n")
-		body = append([]string{fmt.Sprintf("source offset %d · %s · %s", record.Offset, record.Event.Timestamp.Format(time.RFC3339Nano), record.Event.Name)}, body...)
-		if len(record.Event.Raw) > 16<<10 {
-			body = append(body, "Display limited to16KiB; complete raw record remains on disk")
-		}
+	case m.details:
+		windowed = true
+		body = m.renderDetails(width, availableRows)
+
 	case m.pane == PaneFlow || m.pane == PaneApp:
 		for _, g := range groups {
 			mark := " "
@@ -349,16 +418,13 @@ func (m *ObserverModel) View() string {
 			body = append(body, fmt.Sprintf("%s %s · %d events · response %s", mark, g.Label, g.Count, g.Response))
 		}
 	case m.pane == PaneTimeline:
-		body = append(body, "Recorded source boundaries — Events opens raw evidence")
+		windowed = true
 		if !m.intervalsEnabled {
 			body = []string{"Interval interpretation disabled; Events and raw details remain available"}
 			break
 		}
-		for _, r := range records {
-			if id := r.Event.StringField("span_id"); id != "" {
-				body = append(body, fmt.Sprintf("%s  %s  %v → %v  %s", observerClip(r.Event.StringField("step"), 40), observerClip(id, 64), observerNumber(r.Event.Fields["start_ms"]), observerNumber(r.Event.Fields["end_ms"]), observerClip(r.Event.StringField("status"), 32)))
-			}
-		}
+		body = renderObserverIntervals(m.IntervalReport(), width, m.scroll, availableRows)
+
 	case m.pane == PaneMessages:
 		windowed = true
 		filtered := make([]*observedRecord, 0, len(records))
@@ -380,7 +446,7 @@ func (m *ObserverModel) View() string {
 			if i == m.eventRow {
 				mark = ">"
 			}
-			body = append(body, fmt.Sprintf("%s #%d %s · %s %s", mark, r.Event.Seq, r.Event.Timestamp.Format("15:04:05.000"), observerClip(r.Event.Name, 64), observerClip(r.Event.Content, width)))
+			body = append(body, fmt.Sprintf("%s #%d %s · %s %s", mark, r.Event.Seq, observerSourceTime(r.Event, false), observerClip(r.Event.Name, 64), observerClip(r.Event.Content, width)))
 			if r.Issue != "" {
 				body = append(body, "  ! "+r.Issue)
 			}
@@ -406,7 +472,12 @@ func (m *ObserverModel) View() string {
 	for len(lines) < height-2 {
 		lines = append(lines, "")
 	}
-	lines = append(lines, dim.Render(observerClip(fmt.Sprintf("%d retained events · %d decoded/raw bytes · source is read-only", len(m.store.records), m.store.bytes), width)), dim.Render(observerClip("[ ] turn  Ctrl+F latest  Space pause selection  1–5/Tab panes  ↑↓ scroll  Enter raw  q quit viewer", width)))
+	pageCount, pageBytes := 0, 0
+	if m.page != nil {
+		pageCount = len(m.page.records)
+		pageBytes = m.page.bytes
+	}
+	lines = append(lines, dim.Render(observerClip(fmt.Sprintf("%d live + %d page events · %d retained bytes · read-only", len(m.store.records), pageCount, m.store.bytes+pageBytes), width)), dim.Render(observerClip("[ ] turn  Ctrl+R reload  Ctrl+F latest  Space pause/follow  Tab panes  Enter details  q quit", width)))
 	return strings.Join(lines, "\n")
 }
 
@@ -445,4 +516,34 @@ func traceFamily(schema string) string {
 		return ""
 	}
 	return schema[:at]
+}
+
+func observerSourceTime(event *events.Event, full bool) string {
+	if !event.SourceTimestampKnown {
+		return "source time unavailable"
+	}
+	if full {
+		return event.Timestamp.Format(time.RFC3339Nano)
+	}
+	return event.Timestamp.Format("15:04:05.000")
+}
+
+// Source lifecycle is independent of transient navigation/loading notices.
+func (m *ObserverModel) sourceLifecycle() string {
+	if m.sealed {
+		return "sealed"
+	}
+	if m.sourceEnded {
+		return "unsealed / stopped"
+	}
+	if !m.attached {
+		return "attaching"
+	}
+	if !m.ingesting {
+		return "EOF / unsealed"
+	}
+	if m.following {
+		return "following source"
+	}
+	return "reading saved source"
 }

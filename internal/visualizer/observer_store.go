@@ -5,15 +5,16 @@ import (
 	"fmt"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport"
+	"net/url"
 	"sort"
 	"strings"
 )
 
-// Retained event trees/raw buffers share a 24 MiB budget; 8 MiB is reserved for
+// Retained event trees/raw buffers share a 20 MiB budget; 12 MiB is reserved for
 // bounded summaries, dedup/index metadata, current frame, and visible panes.
 // Live and on-demand pages each use half; together at most 10,000 events.
 const observerPageEvents = 5000
-const observerPageBytes = 12 << 20
+const observerPageBytes = 10 << 20
 const observerMaxGroups = 100
 const observerMaxIndex = 4096
 
@@ -30,7 +31,6 @@ type sourceIndexEntry struct {
 	Offset  int64
 	Ordinal int64
 	Seq     int
-	Scope   string
 }
 type observedGroup struct {
 	StartMS                                           *float64
@@ -39,17 +39,19 @@ type observedGroup struct {
 	Count                                             int
 }
 type observerStore struct {
-	records    []*observedRecord
-	bytes      int
-	seen       map[string][32]byte
-	index      []sourceIndexEntry
-	spacing    int64
-	ordinal    int64
-	evicted    bool
-	lastSeq    int
-	legacyTurn int
-	legacy     bool
-	issues     []string
+	maxSourceEnd int64
+	records      []*observedRecord
+	bytes        int
+	seen         map[string][32]byte
+	index        []sourceIndexEntry
+	spacing      int64
+	ordinal      int64
+	evicted      bool
+	lastSeq      int
+	legacyTurn   int
+	legacyOpen   bool
+	legacy       bool
+	issues       []string
 }
 
 func newObserverStore() *observerStore {
@@ -65,15 +67,15 @@ func eventScope(e *events.Event) string {
 	runtime := boundedIdentity(e.StringField("runtime_id"))
 	session := boundedIdentity(e.StringField("session_id"))
 	if turn := boundedIdentity(e.StringField("turn_id")); turn != "" {
-		return runtime + "/turn/" + turn
+		return url.PathEscape(runtime) + "/turn/" + url.PathEscape(turn)
 	}
 	if job := boundedIdentity(e.StringField("job_id")); job != "" {
-		return runtime + "/job/" + job
+		return url.PathEscape(runtime) + "/job/" + url.PathEscape(job)
 	}
 	if response := boundedIdentity(e.StringField("response_id")); response != "" {
-		return runtime + "/response/" + response
+		return url.PathEscape(runtime) + "/response/" + url.PathEscape(response)
 	}
-	return runtime + "/session/" + session
+	return url.PathEscape(runtime) + "/session/" + url.PathEscape(session)
 }
 func (s *observerStore) issue(message string) {
 	if len(message) > 512 {
@@ -118,19 +120,16 @@ func retainedValueBytes(value any, depth int) int {
 func recordBytes(e *events.Event) int {
 	return 1024 + cap(e.Raw) + len(e.Name) + len(e.SourceID) + len(e.Content) + retainedValueBytes(e.Fields, 0)
 }
-func (s *observerStore) add(e *events.Event, frame transport.Frame, index bool) bool {
-	scope := eventScope(e)
-	if s.legacy && e.StringField("turn_id") == "" && e.StringField("job_id") == "" && e.Kind != events.KindSessionStart && e.Kind != events.KindSessionEnd {
-		if e.BoolField("local_turn_boundary") {
-			s.legacyTurn++
-		}
-		if s.legacyTurn > 0 {
-			scope = fmt.Sprintf("legacy-local/%d", s.legacyTurn)
-		}
+func (s *observerStore) add(e *events.Event, frame transport.Frame, index bool, scopeOverride ...string) bool {
+	scope := s.scopeFor(e)
+	if len(scopeOverride) > 0 {
+		scope = scopeOverride[0]
 	}
+	s.maxSourceEnd = max(s.maxSourceEnd, frame.Offset+frame.Size)
+
 	s.ordinal++
 	if index && (s.ordinal == 1 || (s.ordinal-1)%s.spacing == 0) {
-		s.index = append(s.index, sourceIndexEntry{frame.Offset, s.ordinal, e.Seq, scope})
+		s.index = append(s.index, sourceIndexEntry{frame.Offset, s.ordinal, e.Seq})
 		if len(s.index) > observerMaxIndex {
 			kept := s.index[:0]
 			for i, entry := range s.index {
@@ -150,7 +149,10 @@ func (s *observerStore) add(e *events.Event, frame transport.Frame, index bool) 
 	hash := sha256.Sum256(frame.Data)
 	capture := boundedIdentity(e.StringField("capture_id"))
 	key := ""
-	issue := ""
+	issue := e.StringField("projection_unavailable")
+	if issue != "" {
+		s.issue(issue)
+	}
 	if capture != "" && e.Seq > 0 {
 		key = fmt.Sprintf("%s/%d", capture, e.Seq)
 		if prior, ok := s.seen[key]; ok {
@@ -163,17 +165,17 @@ func (s *observerStore) add(e *events.Event, frame transport.Frame, index bool) 
 			issue = "Earlier duplicate requires on-disk verification"
 			s.issue(issue)
 		}
-		if e.Seq > s.lastSeq+1 && s.lastSeq > 0 {
+		if index && e.Seq > s.lastSeq+1 && s.lastSeq > 0 {
 			s.issue(fmt.Sprintf("Missing source sequences %d–%d", s.lastSeq+1, e.Seq-1))
 		}
 		s.lastSeq = max(s.lastSeq, e.Seq)
 	}
-	size := recordBytes(e)
+	size := recordBytes(e) + len(scope) + len(key) + len(issue)
 	if size > observerPageBytes {
 		s.issue("Record too large for retained decoded budget; raw evidence remains on disk")
 		e = &events.Event{Name: e.Name, Kind: events.KindDetail, Timestamp: e.Timestamp, Seq: e.Seq, Raw: raw, Fields: map[string]any{"projection_unavailable": "decoded budget exceeded"}}
-		size = recordBytes(e)
 		key = ""
+		size = recordBytes(e) + len(scope) + len(issue)
 	}
 	r := &observedRecord{Event: e, Scope: scope, Offset: frame.Offset, Bytes: size, Issue: issue, hash: hash, dedup: key}
 	for len(s.records) >= observerPageEvents || s.bytes+size > observerPageBytes {
@@ -297,4 +299,31 @@ func latestObservedGroup(groups []observedGroup, runtime string) string {
 		return groups[len(groups)-1].Key
 	}
 	return ""
+}
+
+func intervalIdentity(runtime, id string) string {
+	return url.PathEscape(runtime) + "/" + url.PathEscape(id)
+}
+
+func (s *observerStore) scopeFor(e *events.Event) string {
+	scope := eventScope(e)
+	if s.legacy && e.StringField("turn_id") == "" && e.StringField("job_id") == "" && e.Kind != events.KindSessionStart && e.Kind != events.KindSessionEnd {
+		if e.BoolField("local_turn_boundary") {
+			s.legacyTurn++
+			s.legacyOpen = true
+		}
+		terminal := e.BoolField("local_terminal_boundary")
+		if terminal && !s.legacyOpen {
+			s.legacyTurn++
+			s.legacyOpen = true
+		}
+		if s.legacyOpen {
+			scope = fmt.Sprintf("legacy-local/%d", s.legacyTurn)
+		}
+		if terminal {
+			s.legacyOpen = false
+		}
+	}
+
+	return scope
 }

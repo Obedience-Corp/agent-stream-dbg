@@ -182,3 +182,12 @@ func rawEventType(data []byte) string {
 	_ = json.Unmarshal(data, &probe)
 	return probe.Type
 }
+
+// ParseBounded is the passive inspector path; interactive decoding is unchanged.
+func (p *Parser) ParseBounded(name string, data []byte, budget int) (*events.Event, error) {
+	engine, err := p.getEngine()
+	if err != nil {
+		return nil, err
+	}
+	return engine.DecodeBounded(name, data, budget), nil
+}

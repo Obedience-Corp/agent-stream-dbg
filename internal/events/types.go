@@ -52,14 +52,15 @@ const (
 // renderer has never seen. Kind is the small closed set the renderer
 // switches on.
 type Event struct {
-	Name      string // wire name, whatever it was
-	Kind      Kind   // normalized — what the visualizer renders against
-	Timestamp time.Time
-	SourceID  string // agent/lane identity; "" if none
-	Content   string // incremental text, if any
-	Seq       int
-	Fields    map[string]any // everything else — structured, queryable
-	Raw       []byte         // always retained
+	SourceTimestampKnown bool   `json:"-"`
+	Name                 string // wire name, whatever it was
+	Kind                 Kind   // normalized — what the visualizer renders against
+	Timestamp            time.Time
+	SourceID             string // agent/lane identity; "" if none
+	Content              string // incremental text, if any
+	Seq                  int
+	Fields               map[string]any // everything else — structured, queryable
+	Raw                  []byte         // always retained
 }
 
 // StringField returns Fields[key] as a string, or "" if absent or the wrong type.

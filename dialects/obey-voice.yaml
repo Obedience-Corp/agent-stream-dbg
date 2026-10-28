@@ -41,6 +41,8 @@ rules:
       parent_span_id: span.parent_id
       step: span.stage
       lane: span.lane
+      span_role: {lookup: span.stage, values: {turn: turn, stt: input, model: model, segment_queue: queue, synthesis: compute, playback: output}}
+      boundary_reference: {lookup: span.stage, values: {stt: input_end}}
       start_ms: span.start_ms
       end_ms: span.end_ms
       span_state: span.state
@@ -125,7 +127,30 @@ rules:
     fields:
       <<: *scope
       turn_timing: timing
-      final_segments: segments
+      first_output_measurement_ms: timing.normalized.playback_start_ms
+      first_output_origin: timing.origin
+      first_output_reference: {lookup: timing.origin, values: {finalized_input: input_end, turn_start: turn_start}}
+      output_sink: audible_sink
+      local_terminal_boundary: {const: true}
+    interval_arrays:
+      - path: segments
+        anchor: trace.turn_start_ms
+        fields:
+          segment_index: i
+          ambiguous_attempts: fallback
+          provider: provider
+        spans:
+          - {stage: segment_queue, start: synth_queued_s, end: synth_started_s, scale: 1000}
+          - {stage: synthesis, start: synth_started_s, end: synth_ended_s, scale: 1000}
+          - {stage: playback, start: playback_started_s, end: playback_ended_s, scale: 1000}
+        children:
+          - path: gaps
+            anchor: trace.turn_start_ms
+            fields:
+              cause: cause
+              is_gap: {const: true}
+            spans:
+              - {stage: gap, start: start_s, end: end_s, scale: 1000}
 
   - match: {event: "tool_call"}
     kind: tool_call
