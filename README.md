@@ -15,6 +15,8 @@ terminal UI, and decode them through a **dialect** (what the bytes mean).
 [![Go Version](https://img.shields.io/badge/go-1.25+-blue.svg)](https://golang.org/dl/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![CI](https://github.com/Obedience-Corp/agent-stream-dbg/actions/workflows/ci.yml/badge.svg)](https://github.com/Obedience-Corp/agent-stream-dbg/actions/workflows/ci.yml)
+  <a href="https://github.com/Obedience-Corp/festival"><img src="https://img.shields.io/badge/built%20with-Festival-7c3aed.svg" alt="Built with Festival"></a>
+
 
 ## Install
 
