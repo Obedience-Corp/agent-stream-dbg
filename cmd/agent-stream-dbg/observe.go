@@ -31,7 +31,7 @@ func observeAction(c *cli.Context) error {
 	}
 	manifestID := ""
 	manifest := filepath.Join(filepath.Dir(path), "manifest.json")
-	f, err := os.Open(manifest)
+	f, err := filetransport.OpenRegular(manifest)
 	if err == nil {
 		data, readErr := io.ReadAll(io.LimitReader(f, (64<<10)+1))
 		closeErr := f.Close()

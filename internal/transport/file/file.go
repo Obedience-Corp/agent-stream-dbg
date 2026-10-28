@@ -61,7 +61,7 @@ func (t *Transport) Connect(ctx context.Context) error {
 	if t.connected {
 		return errors.New("file source already connected")
 	}
-	f, err := os.Open(t.path)
+	f, err := OpenRegular(t.path)
 	if err != nil {
 		return fmt.Errorf("open file source: %w", err)
 	}

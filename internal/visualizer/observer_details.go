@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
 	"sort"
 	"strings"
 )
@@ -145,6 +146,7 @@ func (m *ObserverModel) detailSource() (map[string]any, *observedRecord) {
 			data := map[string]any{"span_id": interval.ID, "parent_span_id": interval.Parent, "scope": m.selected, "runtime_id": interval.Runtime, "response_id": interval.Response, "stage": interval.Stage, "lane": interval.Lane, "segment_index": interval.Segment, "attempt_id": interval.Attempt, "start_ms": interval.Start, "end_ms": interval.End, "duration_ms": duration, "status": interval.Status, "relative_clock": interval.Relative, "start_from_final": interval.StartFinal, "end_from_final": interval.EndFinal, "uncorrelated": interval.Uncorrelated, "invalid_timing": interval.Invalid, "issues": interval.Issues, "source_offsets": interval.SourceOffsets, "gap_cause": interval.Cause}
 			for _, record := range records {
 				if record.Offset == offset {
+					data["source_context"] = observerNormalizedContext(record.Event)
 					return data, record
 				}
 			}
@@ -207,4 +209,14 @@ func appendIntervalOffset(interval *inspectedInterval, offset int64) {
 	}
 	copy(interval.SourceOffsets[1:], interval.SourceOffsets[2:])
 	interval.SourceOffsets[len(interval.SourceOffsets)-1] = offset
+}
+
+func observerNormalizedContext(event *events.Event) map[string]any {
+	out := make(map[string]any)
+	for _, key := range []string{"capture_id", "runtime_id", "session_id", "conversation_epoch", "turn_id", "parent_turn_id", "response_id", "persona_id", "job_id", "mono_ms", "turn_start_ms"} {
+		if value, ok := event.Fields[key]; ok {
+			out[key] = boundedDetail(value, &detailBudget{nodes: 32, bytes: 2 << 10}, 0)
+		}
+	}
+	return out
 }

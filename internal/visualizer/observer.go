@@ -153,7 +153,7 @@ func (m *ObserverModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if health := event.MapField("capture_health"); health != nil {
-			m.health = fmt.Sprintf("lost:%v omitted:%v errors:%v written:%v synced:%v", observerNumber(health["dropped"]), observerNumber(health["skipped"]), observerNumber(health["write_errors"]), observerNumber(health["last_written_seq"]), observerNumber(health["last_synced_seq"]))
+			m.health = fmt.Sprintf("lost:%v omitted:%v scope-excluded:%v errors:%v written:%v synced:%v", observerNumber(health["dropped"]), observerNumber(health["skipped"]), observerNumber(health["scope_excluded"]), observerNumber(health["write_errors"]), observerNumber(health["last_written_seq"]), observerNumber(health["last_synced_seq"]))
 		}
 		m.store.add(event, frame, true)
 		if frame.Terminal && frame.Err != nil {

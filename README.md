@@ -341,3 +341,39 @@ Security issues: [SECURITY.md](SECURITY.md) (please report privately).
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE).
+
+## Passive file observation and saved capture inspection
+
+`observe` reads an explicit local JSONL file without creating a logger, session,
+prompt client or producer control connection. For an Obey Voice TUI conversation,
+start `/record talk` in that TUI and use the path shown by `/record`:
+
+```sh
+agent-stream-dbg observe --dialect obey-voice --follow /absolute/capture/events.jsonl
+# Finite saved capture replay/inspection through the same interval model:
+agent-stream-dbg observe --dialect obey-voice /absolute/capture/events.jsonl
+```
+
+`--follow` starts at byte zero and consumes complete appended lines. Finite
+observation reads the saved file and leaves inspection open at EOF; a missing
+footer remains visibly unsealed. This is separate from the existing `replay` and
+`timeline` commands for their established recording formats. The producer keeps
+all conversation/persona/work controls; quitting the viewer only closes its reader.
+
+Timeline rows show measured source intervals and stage status, zero-duration
+points, overlap unions and known gap causes. `[` / `]` selects adjacent turns,
+Space pauses/resumes selection while ingestion continues, `Ctrl+F` follows latest,
+and `Ctrl+R` reloads the selected evicted turn from disk. Flow/App also select job
+and session scopes. Enter opens normalized details; `r` shows original source
+bytes, `p` returns to parsed details, and Left/Right chooses retained source
+observations. `q` exits. Memory and history pages are bounded; raw disk evidence
+remains the authority when retained records are evicted.
+
+Legacy metrics are explicitly relative. Missing/null timing is not zero;
+conflicting identities/times are visible and excluded from trusted summaries.
+Unsupported schema families/major versions remain inspectable as raw records.
+Malformed/oversized lines resynchronize, partial tails remain incomplete, and
+replacement/truncation stops following with an explicit reopen notice. Inputs
+and adjacent manifests must be regular files. Canonical source fixtures and exact
+upstream revision/checksums are in
+[testdata/fixtures/pipeline-trace](testdata/fixtures/pipeline-trace/PROVENANCE.md).

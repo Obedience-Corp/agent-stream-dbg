@@ -231,3 +231,18 @@ func TestObserverOpaqueIdentityCannotCollideOnSlash(t *testing.T) {
 		t.Fatal("opaque source IDs collided on separators")
 	}
 }
+
+func TestIntervalNonGridMeasuredPointDoesNotBecomeDuration(t *testing.T) {
+	at := 74266.336084
+	point := &inspectedInterval{Start: &at, End: &at, Status: "completed"}
+	bar := intervalBar(point, 92.407167, 80344.566, 70)
+	if strings.Count(bar, "◆") != 1 || strings.Contains(bar, "━") {
+		t.Fatal("non-grid zero gained a duration", bar)
+	}
+	end := at + .000001
+	point.End = &end
+	bar = intervalBar(point, 92.407167, 80344.566, 70)
+	if strings.Contains(bar, "◆") || !strings.Contains(bar, "━") {
+		t.Fatal("nonzero subpixel duration became measured point", bar)
+	}
+}

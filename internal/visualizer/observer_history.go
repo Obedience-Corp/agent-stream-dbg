@@ -288,9 +288,9 @@ func (m *ObserverModel) historyResult(message *observerHistoryResult) tea.Cmd {
 	return nil
 }
 func historyOpen(ctx context.Context, request historyRequest) (*os.File, error) {
-	f, err := os.Open(request.Path)
+	f, err := filetransport.OpenRegular(request.Path)
 	if err != nil {
-		return nil, fmt.Errorf("open source history: %w", err)
+		return nil, fmt.Errorf("open source history: %w", errors.Join(filetransport.ErrSourceChanged, err))
 	}
 	fail := func(err error) (*os.File, error) { _ = f.Close(); return nil, err }
 	info, err := f.Stat()

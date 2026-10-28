@@ -3,6 +3,7 @@ package dialects_test
 import (
 	"context"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/bridge"
@@ -46,5 +47,57 @@ func TestVoiceCanonicalMeasuredIntervalReport(t *testing.T) {
 	assert("synthesis", report.GapByCause["synthesis"], 350)
 	if report.Limited || report.Partial {
 		t.Fatal("small canonical fixture unexpectedly limited")
+	}
+}
+
+func TestVoiceBackgroundJobSelectionKeepsTypedIdentity(t *testing.T) {
+	parser, err := bridge.NewParserFor("obey-voice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "../testdata/fixtures/pipeline-trace/background-job.jsonl"
+	source := filetransport.New(path, false)
+	model := visualizer.NewObserverModel(context.Background(), source, parser, path, false, "")
+	defer model.Close()
+	model.Update(tea.WindowSizeMsg{Width: 120, Height: 100})
+	_, command := model.Update(model.Init()())
+	for command != nil {
+		message := command()
+		if message == nil {
+			break
+		}
+		_, command = model.Update(message)
+	}
+	key := func(value string) { model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(value)}) }
+	key("1")
+	model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	key("3")
+	model.Update(tea.KeyMsg{Type: tea.KeyUp}) // choose interval0 rather than retained Flow row1
+	report := model.IntervalReport()
+	if !strings.Contains(report.Scope, "/job/typed-job-1") || report.TurnDurationMS != nil || report.FirstOutputDelayMS != nil {
+		t.Fatal("job adopted causal foreground turn", report.Scope, report.TurnDurationMS)
+	}
+	if len(report.Intervals) != 2 {
+		t.Fatalf("queue/worker evidence split/lost: %+v", report.Intervals)
+	}
+	found := false
+	for _, interval := range report.Intervals {
+		if interval.Stage == "worker" && interval.Start != nil && interval.End != nil && *interval.End-*interval.Start == 500 {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("typed job worker timing unavailable")
+	}
+	model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	view := model.View()
+	if !strings.Contains(view, `"job_id": "typed-job-1"`) || !strings.Contains(view, `"parent_turn_id": "causal-turn"`) || !strings.Contains(view, `"turn_id": null`) {
+		t.Fatal("parsed job source context unavailable", view)
+	}
+	key("r")
+	view = model.View()
+	if !strings.Contains(view, report.Intervals[0].ID) || !strings.Contains(view, "typed-job-1") {
+		t.Fatal("raw evidence lost typed/opaque identity", view)
 	}
 }

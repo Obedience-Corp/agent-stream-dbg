@@ -336,7 +336,7 @@ func intervalBar(interval *inspectedInterval, origin, end float64, columns int) 
 	if interval.Status == "cancelled" || interval.Status == "interrupted" {
 		glyph = '╍'
 	}
-	if start == stop {
+	if *interval.Start == *interval.End {
 		bar[start] = '◆'
 	} else {
 		for i := start; i <= stop; i++ {
