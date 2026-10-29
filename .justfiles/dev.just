@@ -162,3 +162,7 @@ init:
     @echo "✅ Created .env file"
     @echo "📝 Please edit .env with your API key and backend URL"
     @echo "🚀 Ready to run: just build (dependencies will be downloaded automatically)"
+
+# Record the Obey Voice home → capture picker → timeline flow with isolated fixtures.
+record-voice-launcher:
+    bash demos/record-voice-launcher.sh

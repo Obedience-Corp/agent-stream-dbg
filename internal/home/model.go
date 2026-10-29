@@ -1,10 +1,10 @@
 package home
 
 import (
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/Obedience-Corp/agent-stream-dbg/dialects"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 const (
@@ -15,6 +15,8 @@ const (
 	screenWizardSave
 	screenOffline
 	screenConfirmDelete
+	screenCaptures
+	screenCaptureFolder
 )
 
 type model struct {
@@ -27,6 +29,8 @@ type model struct {
 	opts          Options
 	result        Result
 	quitting      bool
+
+	captures captureBrowser
 
 	// wizard
 	wizardTemplate int
@@ -61,8 +65,13 @@ func newModel(opts Options) model {
 		m.dialectNames = []string{"brainyard", "acp", "openai"}
 	}
 	m.reload()
-	if len(m.entries) == 0 && m.notice == "" {
-		m.notice = "Welcome — create a configuration or try an offline demo."
+	m.captures = newCaptureBrowser(opts)
+	if opts.StartCaptures {
+		m.screen = screenCaptures
+		m.captures.loading = true
+	}
+	if m.screen == screenHome && len(m.entries) == 0 && m.notice == "" {
+		m.notice = "Choose a recording, connect to a backend, or try a demo."
 	}
 	return m
 }
@@ -75,7 +84,8 @@ func (m *model) reload() {
 }
 
 func (m model) homeItems() []string {
-	items := make([]string, 0, len(m.entries)+2)
+	items := make([]string, 0, len(m.entries)+3)
+	items = append(items, "action:voice")
 	for range m.entries {
 		items = append(items, "cfg")
 	}
@@ -84,6 +94,9 @@ func (m model) homeItems() []string {
 }
 
 func (m model) Init() tea.Cmd {
+	if m.screen == screenCaptures {
+		return readCaptures(m.captures.root, m.captures.generation)
+	}
 	return textinput.Blink
 }
 

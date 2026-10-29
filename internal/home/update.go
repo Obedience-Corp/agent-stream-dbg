@@ -6,13 +6,21 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
 )
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case capturesLoaded:
+		return m.acceptCaptures(msg)
+	case captureRefresh:
+		if m.screen == screenCaptures && msg.generation == m.captures.generation {
+			cmd := m.loadCaptures()
+			return m, cmd
+		}
+		return m, nil
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -22,6 +30,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		switch m.screen {
+		case screenCaptures:
+			return m.updateCaptures(msg)
+		case screenCaptureFolder:
+			return m.updateCaptureFolder(msg)
 		case screenHome:
 			return m.updateHome(msg)
 		case screenWizardTemplate:
@@ -54,15 +66,17 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.cursor < len(items)-1 {
 			m.cursor++
 		}
+	case "v":
+		return m.startCaptures()
 	case "n":
 		return m.startWizard()
 	case "e":
-		if m.cursor < len(m.entries) {
-			return m.exitOpen(m.entries[m.cursor].Path, true, "")
+		if m.cursor > 0 && m.cursor <= len(m.entries) {
+			return m.exitOpen(m.entries[m.cursor-1].Path, true, "")
 		}
 	case "d":
-		if m.cursor < len(m.entries) {
-			m.deleteIndex = m.cursor
+		if m.cursor > 0 && m.cursor <= len(m.entries) {
+			m.deleteIndex = m.cursor - 1
 			m.screen = screenConfirmDelete
 		}
 	case "o", "enter":
@@ -71,6 +85,8 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		item := items[m.cursor]
 		switch item {
+		case "action:voice":
+			return m.startCaptures()
 		case "action:new":
 			return m.startWizard()
 		case "action:offline":
@@ -78,10 +94,10 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cursor = 0
 			return m, nil
 		default:
-			if m.cursor >= len(m.entries) {
+			if m.cursor < 1 || m.cursor > len(m.entries) {
 				return m, nil
 			}
-			entry := m.entries[m.cursor]
+			entry := m.entries[m.cursor-1]
 			if entry.Status == config.EntryError {
 				m.status = entry.Err
 				return m, nil
@@ -281,7 +297,7 @@ func (m model) finishWizard() (tea.Model, tea.Cmd) {
 	m.reload()
 	for i, e := range m.entries {
 		if e.Path == path {
-			m.cursor = i
+			m.cursor = i + 1
 			break
 		}
 	}
@@ -314,7 +330,7 @@ func (m model) updateOffline(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "q":
 		m.screen = screenHome
-		m.cursor = len(m.entries) + 1 // offline action
+		m.cursor = len(m.entries) + 2 // offline action
 		if m.cursor >= len(m.homeItems()) {
 			m.cursor = 0
 		}

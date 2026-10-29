@@ -64,10 +64,9 @@ agent-stream-dbg
 
 Bare launch opens the **home hub**:
 
-1. Create or pick a run configuration  
-2. Or try an **offline demo** (bundled fixtures, no network)  
-3. Open an interactive session  
-4. Quit the session → return to the home hub  
+1. Choose **Obey Voice recordings** to inspect a conversation — no config or flags.
+2. Or create/pick a backend configuration or try an **offline demo**.
+3. Close a viewer to return to the recording picker; `Esc` returns home.
 
 <p align="center">
   <img src="docs/assets/home-ux-first-run.gif" alt="Home hub first launch" width="900">
@@ -77,6 +76,7 @@ Bare launch opens the **home hub**:
 |-----|----------|
 | `↑` `↓` / `j` `k` | Move |
 | `Enter` | Open session (or edit if incomplete) |
+| `v` | Obey Voice recordings |
 | `n` | New configuration wizard |
 | `e` | Edit selected config |
 | `d` | Delete |
@@ -102,6 +102,30 @@ From a clone, CLI offline recipes without the TUI:
 just demo       # multi-agent timeline (bundled fixture)
 just demo-acp   # ACP explain + timeline + replay
 ```
+
+## Obey Voice: open and choose a conversation
+
+Run `agent-stream-dbg`, press `Enter` on **Obey Voice recordings**, then select a
+recording and press `Enter` again. The debugger finds the default Obey Voice
+captures folder, chooses its dialect, and opens the pipeline Timeline. Open or
+sealing recordings follow new events; saved recordings open for inspection.
+
+If the list is empty, type `/record talk` in your Obey Voice conversation. This
+records events, transcript, and conversation audio. The picker refreshes every two
+seconds, so the new recording appears automatically. Stop recording with
+`/record off` in Obey Voice. An **open** label describes the capture's manifest;
+it does not guarantee its producer is still running.
+
+For a custom Obey Voice config directory, press `c` in the picker and paste its
+`captures` folder path. The debugger remembers that folder for future launches.
+It does not change your Obey Voice settings. Press `q` in the viewer to return to
+the picker, then `Esc` for home. Recording stays under Obey Voice's control.
+
+![Home → automatically discovered recordings → pipeline timeline](docs/assets/voice-launcher.gif)
+
+This recording runs the product home/observer loop with disposable fixture
+captures. Reproduce it with `just record-voice-launcher` (VHS required); it uses no
+microphone, playback, live backend, or personal config.
 
 ## Demos
 
@@ -345,8 +369,9 @@ Apache License 2.0 — see [LICENSE](LICENSE).
 ## Passive file observation and saved capture inspection
 
 `observe` reads an explicit local JSONL file without creating a logger, session,
-prompt client or producer control connection. For an Obey Voice TUI conversation,
-start `/record talk` in that TUI and use the path shown by `/record`:
+prompt client or producer control connection. The home screen handles Obey Voice
+recordings automatically. For scripts or a specific file, start `/record talk` in
+the Obey Voice TUI and use `/record open` to locate the capture folder:
 
 ```sh
 agent-stream-dbg observe --dialect obey-voice --follow /absolute/capture/events.jsonl
