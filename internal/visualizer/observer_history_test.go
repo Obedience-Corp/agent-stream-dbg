@@ -246,6 +246,7 @@ func TestHistoryImmediateSelectionSupersedesStalePage(t *testing.T) {
 			m.page = newObserverStore()
 			if selectJob {
 				m.pane = PaneFlow
+				m.selectingScope = true
 				groups := m.store.groups()
 				for i, group := range groups {
 					if group.Turn == "" {
@@ -295,6 +296,7 @@ func TestHistoryJobScopeSelectableWhileOldLoadCompletes(t *testing.T) {
 	m.historyGeneration = 10
 	m.historyActive = true
 	m.pane = PaneFlow
+	m.selectingScope = true
 	groups := m.store.groups()
 	found := false
 	for i, group := range groups {

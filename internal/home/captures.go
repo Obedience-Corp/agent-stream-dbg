@@ -2,6 +2,7 @@ package home
 
 import (
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/captures"
@@ -10,6 +11,7 @@ import (
 )
 
 type captureBrowser struct {
+	live          bool
 	root          string
 	listing       captures.Listing
 	cursor        int
@@ -57,6 +59,9 @@ func (m *model) loadCaptures() tea.Cmd {
 		return nil
 	}
 	m.captures.loading = true
+	if m.captures.live {
+		return readLive(m.captures.root, m.captures.generation)
+	}
 	return readCaptures(m.captures.root, m.captures.generation)
 }
 
@@ -125,7 +130,11 @@ func (m model) updateCaptures(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.screen = screenCaptureFolder
 		b.generation++
 		b.loading = false
-		b.folder.SetValue(b.root)
+		if b.live {
+			b.folder.SetValue(filepath.Dir(b.root))
+		} else {
+			b.folder.SetValue(b.root)
+		}
 		b.folder.Width = max(20, min(100, m.width-12))
 		b.folder.Focus()
 		m.status = ""
@@ -136,6 +145,9 @@ func (m model) updateCaptures(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		entry := b.listing.Entries[b.cursor]
 		m.result = Result{Action: ActionObserve, Path: entry.Path, Follow: entry.Follow()}
+		if b.live {
+			m.result.Action = ActionLive
+		}
 		m.quitting = true
 		return m, tea.Quit
 	}
@@ -150,6 +162,9 @@ func (m model) updateCaptureFolder(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.startCaptures()
 	case "enter":
 		root, err := captures.ResolveRoot(m.captures.folder.Value(), m.opts.Cwd)
+		if err == nil && m.captures.live {
+			root = filepath.Join(root, "captures")
+		}
 		if err == nil {
 			err = captures.SaveRoot(m.opts.UserConfigDir, root)
 		}

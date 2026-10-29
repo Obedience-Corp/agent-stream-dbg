@@ -3,6 +3,9 @@ version: 1
 name: obey-voice
 description: Passive conversation capture, source clock and overlapping pipeline intervals.
 discriminator: {path: type}
+flow:
+  stages: [stt, admission, model, segment_queue, synthesis, playback]
+  default_role: worker
 rules:
   - match: {event: header}
     kind: session_start
@@ -100,6 +103,7 @@ rules:
     fields:
       <<: *scope
       local_turn_boundary: {const: true}
+      message_role: {const: user}
 
   - match: {event: "agent_delta"}
     kind: content
@@ -109,6 +113,7 @@ rules:
     content: text
     fields:
       <<: *scope
+      message_role: {const: assistant}
 
   - match: {event: "agent"}
     kind: detail
@@ -118,6 +123,7 @@ rules:
     content: text
     fields:
       <<: *scope
+      message_role: {const: assistant}
 
   - match: {event: "metrics"}
     kind: detail
@@ -183,6 +189,22 @@ rules:
     fields:
       <<: *scope
       job_id: {first: [job_id, name]}
+      status: state
+
+  - match: {event: "route.decided"}
+    kind: handoff
+    source: {const: routing}
+    timestamp: ts
+    seq: seq
+    content: text
+    fields:
+      <<: *scope
+      from: {const: routing}
+      to: kind
+      mode: {const: conversation}
+      route_taken: kind
+      reason: reason_code
+      status: state
 
   - match: {event: "speaking"}
     kind: status_change

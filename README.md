@@ -64,9 +64,9 @@ agent-stream-dbg
 
 Bare launch opens the **home hub**:
 
-1. Choose **Obey Voice recordings** to inspect a conversation — no config or flags.
+1. Choose **Live Obey Voice conversations** to attach to your running TUI conversation.
 2. Or create/pick a backend configuration or try an **offline demo**.
-3. Close a viewer to return to the recording picker; `Esc` returns home.
+3. Saved recordings are a separate home action. Close a viewer to return to its picker.
 
 <p align="center">
   <img src="docs/assets/home-ux-first-run.gif" alt="Home hub first launch" width="900">
@@ -76,7 +76,7 @@ Bare launch opens the **home hub**:
 |-----|----------|
 | `↑` `↓` / `j` `k` | Move |
 | `Enter` | Open session (or edit if incomplete) |
-| `v` | Obey Voice recordings |
+| `v` | Live Obey Voice conversations |
 | `n` | New configuration wizard |
 | `e` | Edit selected config |
 | `d` | Delete |
@@ -105,27 +105,56 @@ just demo-acp   # ACP explain + timeline + replay
 
 ## Obey Voice: open and choose a conversation
 
-Run `agent-stream-dbg`, press `Enter` on **Obey Voice recordings**, then select a
-recording and press `Enter` again. The debugger finds the default Obey Voice
-captures folder, chooses its dialect, and opens the pipeline Timeline. Open or
-sealing recordings follow new events; saved recordings open for inspection.
+Start a conversation in the Obey Voice TUI, then run:
 
-If the list is empty, type `/record talk` in your Obey Voice conversation. This
-records events, transcript, and conversation audio. The picker refreshes every two
-seconds, so the new recording appears automatically. Stop recording with
-`/record off` in Obey Voice. An **open** label describes the capture's manifest;
-it does not guarantee its producer is still running.
+```sh
+agent-stream-dbg
+```
 
-For a custom Obey Voice config directory, press `c` in the picker and paste its
-`captures` folder path. The debugger remembers that folder for future launches.
-It does not change your Obey Voice settings. Press `q` in the viewer to return to
-the picker, then `Esc` for home. Recording stays under Obey Voice's control.
+Press `Enter` on **Live Obey Voice conversations**, choose your conversation,
+and press `Enter`. No recording, configuration file, or remembered flags are
+needed. The picker discovers reachable local runtimes and refreshes automatically.
+Both tools need builds with live debugging support. Press `c` to choose a custom
+Obey Voice **config directory**; that choice is remembered.
 
-![Home → automatically discovered recordings → pipeline timeline](docs/assets/voice-launcher.gif)
+The viewer uses the shared debugger panes:
 
-This recording runs the product home/observer loop with disposable fixture
-captures. Reproduce it with `just record-voice-launcher` (VHS required); it uses no
-microphone, playback, live backend, or personal config.
+| Pane | What to inspect |
+|------|-----------------|
+| Flow | Pipeline stages, status, measured stage time, expandable evidence |
+| App | Persona replies and tool/worker activity |
+| Timeline | Source-time intervals aligned to reveal concurrency and playback gaps |
+| Events | Normalized event summaries with original source details |
+| Messages | Input and replies from the selected turn |
+
+Use `1`–`5` to switch panes, `[` / `]` for turns, and `s` to choose a worker or
+session scope. `Enter` expands a stage/card or opens event/interval details.
+Within details, `r` shows raw bytes and `p` shows parsed evidence. Space pauses
+selection while events continue arriving; `Ctrl+F` returns to the latest turn.
+Press `q` to return to the picker. A cleared/replaced conversation gets a new
+runtime entry; reopen it from the picker.
+
+Live diagnostics use a private, authenticated loopback feed with bounded recent
+history in memory (up to 1,024 records / 4 MiB at the producer). They do not save
+transcripts or audio. Eviction/loss is visible, and disconnecting the viewer does
+not stop the conversation. Earlier live history cannot be recovered with
+`Ctrl+R`; use **Obey Voice recordings** for saved captures and disk history.
+Optional `/record talk` in Obey Voice saves events **and conversation audio** for
+later review; `/record off` stops that recording.
+
+Stage durations are unions within one clock domain, not a sum of concurrent
+work. Timeline bars share their source axis; the within-segment overlap summary
+is distinct from cross-segment pipelining visible in the bars. Missing timing or
+token usage stays unavailable. Playback measures software output, not acoustic
+latency at the listener.
+
+![Live discovery → shared Flow, App, Timeline and source inspection](docs/assets/live-voice.gif)
+
+Reproduce this real terminal walkthrough with
+`just record-live-voice /path/to/obey-voice` (VHS required). It runs the production
+TUI runtime owner, exporter, discovery and viewer with synthetic events/timings
+and disposable config. It exercises no microphones, playback, models or paid
+providers. Saved-file walkthrough: `just record-voice-launcher`.
 
 ## Demos
 
@@ -388,8 +417,8 @@ all conversation/persona/work controls; quitting the viewer only closes its read
 Timeline rows show measured source intervals and stage status, zero-duration
 points, overlap unions and known gap causes. `[` / `]` selects adjacent turns,
 Space pauses/resumes selection while ingestion continues, `Ctrl+F` follows latest,
-and `Ctrl+R` reloads the selected evicted turn from disk. Flow/App also select job
-and session scopes. Enter opens normalized details; `r` shows original source
+and `Ctrl+R` reloads the selected evicted turn from disk. `s` selects job
+and session scopes. Enter expands Flow/App rows or opens normalized details; `r` shows original source
 bytes, `p` returns to parsed details, and Left/Right chooses retained source
 observations. `q` exits. Memory and history pages are bounded; raw disk evidence
 remains the authority when retained records are evicted.

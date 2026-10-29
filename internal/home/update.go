@@ -67,16 +67,16 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cursor++
 		}
 	case "v":
-		return m.startCaptures()
+		return m.startLive()
 	case "n":
 		return m.startWizard()
 	case "e":
-		if m.cursor > 0 && m.cursor <= len(m.entries) {
-			return m.exitOpen(m.entries[m.cursor-1].Path, true, "")
+		if m.cursor > 1 && m.cursor <= len(m.entries)+1 {
+			return m.exitOpen(m.entries[m.cursor-2].Path, true, "")
 		}
 	case "d":
-		if m.cursor > 0 && m.cursor <= len(m.entries) {
-			m.deleteIndex = m.cursor - 1
+		if m.cursor > 1 && m.cursor <= len(m.entries)+1 {
+			m.deleteIndex = m.cursor - 2
 			m.screen = screenConfirmDelete
 		}
 	case "o", "enter":
@@ -85,7 +85,10 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		item := items[m.cursor]
 		switch item {
+		case "action:live":
+			return m.startLive()
 		case "action:voice":
+			m.setCaptureMode(false)
 			return m.startCaptures()
 		case "action:new":
 			return m.startWizard()
@@ -94,10 +97,10 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cursor = 0
 			return m, nil
 		default:
-			if m.cursor < 1 || m.cursor > len(m.entries) {
+			if m.cursor < 2 || m.cursor > len(m.entries)+1 {
 				return m, nil
 			}
-			entry := m.entries[m.cursor-1]
+			entry := m.entries[m.cursor-2]
 			if entry.Status == config.EntryError {
 				m.status = entry.Err
 				return m, nil
@@ -297,7 +300,7 @@ func (m model) finishWizard() (tea.Model, tea.Cmd) {
 	m.reload()
 	for i, e := range m.entries {
 		if e.Path == path {
-			m.cursor = i + 1
+			m.cursor = i + 2
 			break
 		}
 	}
@@ -330,7 +333,7 @@ func (m model) updateOffline(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "q":
 		m.screen = screenHome
-		m.cursor = len(m.entries) + 2 // offline action
+		m.cursor = len(m.entries) + 3 // offline action
 		if m.cursor >= len(m.homeItems()) {
 			m.cursor = 0
 		}

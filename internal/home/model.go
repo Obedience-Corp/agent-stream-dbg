@@ -66,12 +66,13 @@ func newModel(opts Options) model {
 	}
 	m.reload()
 	m.captures = newCaptureBrowser(opts)
-	if opts.StartCaptures {
+	m.captures.live = opts.StartLive
+	if opts.StartCaptures || opts.StartLive {
 		m.screen = screenCaptures
 		m.captures.loading = true
 	}
 	if m.screen == screenHome && len(m.entries) == 0 && m.notice == "" {
-		m.notice = "Choose a recording, connect to a backend, or try a demo."
+		m.notice = "Attach to a live conversation, inspect recordings, or try a demo."
 	}
 	return m
 }
@@ -85,7 +86,7 @@ func (m *model) reload() {
 
 func (m model) homeItems() []string {
 	items := make([]string, 0, len(m.entries)+3)
-	items = append(items, "action:voice")
+	items = append(items, "action:live", "action:voice")
 	for range m.entries {
 		items = append(items, "cfg")
 	}
@@ -95,6 +96,9 @@ func (m model) homeItems() []string {
 
 func (m model) Init() tea.Cmd {
 	if m.screen == screenCaptures {
+		if m.captures.live {
+			return readLive(m.captures.root, m.captures.generation)
+		}
 		return readCaptures(m.captures.root, m.captures.generation)
 	}
 	return textinput.Blink

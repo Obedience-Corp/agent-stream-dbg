@@ -14,6 +14,7 @@ const (
 	ActionQuit Action = iota
 	ActionOpen
 	ActionObserve
+	ActionLive
 )
 
 // Result is returned when the home hub TUI exits.
@@ -30,6 +31,7 @@ type Options struct {
 	Cwd           string
 	UserConfigDir string
 	Notice        string
+	StartLive     bool
 	StartCaptures bool
 	CapturePath   string
 }

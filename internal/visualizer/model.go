@@ -4,10 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/bridge"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/client"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
@@ -15,6 +11,10 @@ import (
 	dblogger "github.com/Obedience-Corp/agent-stream-dbg/internal/logger"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/tracectx"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport"
+	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // ViewMode represents the display mode for responses
@@ -78,18 +78,23 @@ type FlowNode struct {
 	RouteAgents   []string
 	PromptRef     map[string]interface{}
 	InProgress    bool
+	Status        string
+	Evidence      []string
+	DurationKnown bool
 }
 
 // AgentResponse tracks a single agent's response
 type AgentResponse struct {
-	AgentID       string
-	Role          events.Role
-	ContentChunks []string
-	FullContent   string
-	TokenCount    int
-	StartTime     time.Time
-	EndTime       time.Time
-	Completed     bool
+	Observed        bool
+	TokenCountKnown bool
+	AgentID         string
+	Role            events.Role
+	ContentChunks   []string
+	FullContent     string
+	TokenCount      int
+	StartTime       time.Time
+	EndTime         time.Time
+	Completed       bool
 	// Aggregator-role-only metrics (only populated for the lane whose
 	// role resolves to aggregator, per the dialect's flow: config)
 	FirstTokenMs int64 // Time from stream_start to first content event (ms)
@@ -98,10 +103,12 @@ type AgentResponse struct {
 
 // InteractiveModel represents the interactive TUI state
 type InteractiveModel struct {
-	cfg      *config.EnhancedConfig
-	textarea textarea.Model
-	viewport viewport.Model
-	viewMode ViewMode
+	passive           *ObserverModel
+	flowNodesOverride map[string]*FlowNode
+	cfg               *config.EnhancedConfig
+	textarea          textarea.Model
+	viewport          viewport.Model
+	viewMode          ViewMode
 
 	// Message history
 	messages  []Message

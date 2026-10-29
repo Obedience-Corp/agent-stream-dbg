@@ -49,14 +49,21 @@ func runHomeWithOptions(opts home.Options, dialectOverride string, corr correlat
 		switch result.Action {
 		case home.ActionQuit:
 			return nil
+		case home.ActionLive:
+			opts.StartLive, opts.StartCaptures, opts.CapturePath = true, false, result.Path
+			opts.Notice = ""
+			if err := runLiveVoice(result.Path); err != nil {
+				opts.Notice = "Could not attach: " + err.Error()
+			}
 		case home.ActionObserve:
+			opts.StartLive = false
 			opts.StartCaptures, opts.CapturePath = true, result.Path
 			opts.Notice = ""
 			if err := runObserve(result.Path, "obey-voice", result.Follow); err != nil {
 				opts.Notice = "Could not open recording: " + err.Error()
 			}
 		case home.ActionOpen:
-			opts.StartCaptures = false
+			opts.StartCaptures, opts.StartLive = false, false
 			if err := runInteractiveWithOptions(result.Path, dialectOverride, result.OpenConfigPanel, corr); err != nil {
 				// Return to home with the error so a bad setup is recoverable.
 				opts.Notice = "Session error: " + err.Error()

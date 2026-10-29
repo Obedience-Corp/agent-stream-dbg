@@ -166,3 +166,7 @@ init:
 # Record the Obey Voice home → capture picker → timeline flow with isolated fixtures.
 record-voice-launcher:
     bash demos/record-voice-launcher.sh
+
+# Cross-repo live diagnostics walkthrough with isolated source events, no audio.
+record-live-voice voice_repo:
+    bash demos/record-live-voice.sh "{{voice_repo}}"

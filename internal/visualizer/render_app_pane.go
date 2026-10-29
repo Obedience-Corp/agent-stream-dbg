@@ -5,9 +5,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/visualizer/anim"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // renderAppPane renders the App pane (F2) showing aggregator output and agent summaries
@@ -179,7 +179,7 @@ func (m InteractiveModel) renderAgentSummaries(msg Message) string {
 	b.WriteString(headerStyle.Render(fmt.Sprintf("Agents (%d)", len(agentIDs))))
 	b.WriteString("\n")
 
-	for _, agentID := range agentIDs {
+	for index, agentID := range agentIDs {
 		resp := msg.AgentResponses[agentID]
 		if resp == nil || resp.FullContent == "" {
 			continue
@@ -201,16 +201,27 @@ func (m InteractiveModel) renderAgentSummaries(msg Message) string {
 		reduced := anim.ReducedMotion()
 		active := !resp.Completed && (m.streaming || resp.TokenCount > 0)
 		glyph := anim.AgentGlyph(active, resp.Completed, m.animFrame, s, reduced)
-		header := fmt.Sprintf("%s %s %s (%d tokens)", caret, glyph, agentID, resp.TokenCount)
-		if active {
+		tokens := fmt.Sprintf("%d tokens", resp.TokenCount)
+		if resp.Observed && !resp.TokenCountKnown {
+			tokens = "token count unavailable"
+		}
+		header := fmt.Sprintf("%s %s %s (%s)", caret, glyph, agentID, tokens)
+		if active && !resp.Observed {
 			header += " " + anim.MiniBar(agentEnergyLevel(resp, m.streaming), true, 8, s, reduced)
+		}
+		if m.passive != nil && index == m.selectedStepIndex {
+			header = "> " + header
 		}
 		b.WriteString(agentStyle.Render(header))
 		b.WriteString("\n")
 
 		// Show content only if not collapsed
 		if !collapsed {
-			b.WriteString(lipgloss.NewStyle().Foreground(agentColor).Render(resp.FullContent))
+			contentStyle := lipgloss.NewStyle().Foreground(agentColor)
+			if m.passive != nil {
+				contentStyle = contentStyle.Width(max(20, m.width-6))
+			}
+			b.WriteString(contentStyle.Render(resp.FullContent))
 			b.WriteString("\n\n")
 		}
 	}

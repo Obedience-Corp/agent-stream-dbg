@@ -110,13 +110,12 @@ func (m *ObserverModel) openObserverDetails() {
 	m.detailScroll = 0
 	m.detailEvidence = 0
 	m.detailInterval = ""
-	if m.pane == PaneTimeline {
-		report := m.IntervalReport()
-		if len(report.Intervals) == 0 {
+	if m.pane == PaneTimeline || m.pane == PaneFlow {
+		interval := m.selectedPaneInterval()
+		if interval == nil {
 			m.details = false
 			return
 		}
-		interval := report.Intervals[min(m.eventRow, len(report.Intervals)-1)]
 		m.detailInterval = intervalIdentity(interval.Runtime, interval.ID)
 		return
 	}

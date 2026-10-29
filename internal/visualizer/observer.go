@@ -24,6 +24,11 @@ type observerFrame struct {
 // ObserverModel is the passive mode of the visualizer. It has no prompt,
 // session setup, logger, control client, or source write capability.
 type ObserverModel struct {
+	animationStarted                                              bool
+	flowExpanded                                                  map[string]bool
+	agentCollapsed                                                map[string]bool
+	selectingScope                                                bool
+	animFrame                                                     int
 	selectionAnchor                                               observerSelection
 	historyActive                                                 bool
 	historyPending                                                *historyRequest
@@ -60,7 +65,7 @@ type ObserverModel struct {
 
 func NewObserverModel(ctx context.Context, tr transport.Transport, parser *bridge.Parser, path string, follow bool, manifestCaptureID string) *ObserverModel {
 	ctx, cancel := context.WithCancel(ctx)
-	return &ObserverModel{source: tr, parser: parser, path: path, following: follow, ctx: ctx, cancel: cancel, store: newObserverStore(), followLatest: true, pane: PaneTimeline, width: 100, height: 30, status: "attaching", manifestCaptureID: manifestCaptureID, intervalsEnabled: false}
+	return &ObserverModel{source: tr, parser: parser, path: path, following: follow, ctx: ctx, cancel: cancel, store: newObserverStore(), followLatest: true, pane: PaneFlow, width: 100, height: 30, status: "attaching", manifestCaptureID: manifestCaptureID, intervalsEnabled: false, flowExpanded: make(map[string]bool), agentCollapsed: make(map[string]bool)}
 }
 func (m *ObserverModel) Init() tea.Cmd {
 	return func() tea.Msg {
@@ -85,11 +90,18 @@ func (m *ObserverModel) closeSource() tea.Cmd {
 func (m *ObserverModel) Close() error { m.cancel(); return m.source.Close() }
 func (m *ObserverModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := message.(type) {
+	case animTickMsg:
+		m.animFrame++
+		return m, animTickCmd()
 	case *observerHistoryResult:
 		return m, m.historyResult(msg)
 	case tea.WindowSizeMsg:
 		m.width = max(30, msg.Width)
 		m.height = max(12, msg.Height)
+		if !m.animationStarted {
+			m.animationStarted = true
+			return m, animTickCmd()
+		}
 	case observerConnected:
 		if msg.err != nil {
 			m.err = msg.err
@@ -105,10 +117,17 @@ func (m *ObserverModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.ingesting = false
 			if !m.sourceEnded {
 				m.status = "EOF — unsealed capture"
+				if m.source.Name() == "sse" {
+					m.status = "Disconnected · conversation ended or runtime changed"
+				}
 			}
 			return m, nil
 		}
 		frame := msg.frame
+		if m.source.Name() == "sse" {
+			frame.Offset = m.store.maxSourceEnd
+			frame.Size = int64(max(1, len(frame.Raw)))
+		}
 		event, err := m.parser.ParseBounded(frame.Name, frame.Data, 4<<20)
 		if err != nil {
 			m.err = err
@@ -252,43 +271,57 @@ func (m *ObserverModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "tab":
 			m.pane = (m.pane + 1) % 5
 			m.scroll = 0
+			m.eventRow = 0
 			m.details = false
 		case "1":
 			m.pane = PaneFlow
 			m.scroll = 0
+			m.eventRow = 0
 		case "2":
 			m.pane = PaneApp
 			m.scroll = 0
+			m.eventRow = 0
 		case "3":
 			m.pane = PaneTimeline
 			m.scroll = 0
+			m.eventRow = 0
 		case "4":
 			m.pane = PaneEvents
 			m.scroll = 0
+			m.eventRow = 0
 		case "5":
 			m.pane = PaneMessages
 			m.scroll = 0
+			m.eventRow = 0
 		case "up", "k":
-			m.followLatest = false
-			m.scroll = max(0, m.scroll-1)
-			m.eventRow = max(0, m.eventRow-1)
+			m.movePassiveSelection(-1)
 		case "down", "j":
-			m.followLatest = false
-			m.scroll++
-			m.eventRow++
+			m.movePassiveSelection(1)
 		case "pgup":
-			m.followLatest = false
-			m.scroll = max(0, m.scroll-max(1, m.height-10))
+			m.movePassiveSelection(-max(1, m.height-10))
 		case "pgdown":
+			m.movePassiveSelection(max(1, m.height-10))
+		case "s":
+			m.selectingScope = !m.selectingScope
+			m.eventRow = 0
+			m.scroll = 0
+		case "d":
 			m.followLatest = false
-			m.scroll += max(1, m.height-10)
+			m.details = true
+			m.openObserverDetails()
 		case "enter":
-			if m.pane == PaneApp || m.pane == PaneFlow {
+			m.followLatest = false
+			if !m.selectingScope && (m.pane == PaneApp || m.pane == PaneFlow) {
+				m.togglePassiveRow()
+				break
+			}
+			if m.selectingScope {
 				groups := m.store.groups()
 				if len(groups) > 0 {
 					m.cancelHistorySelection()
 					m.selectScope(groups[min(m.eventRow, len(groups)-1)].Key, m.store)
 					m.followLatest = false
+					m.selectingScope = false
 					m.scroll = 0
 				}
 				break

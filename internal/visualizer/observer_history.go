@@ -197,6 +197,10 @@ func (m *ObserverModel) navigateTurn(direction int) tea.Cmd {
 	return m.requestHistory(direction)
 }
 func (m *ObserverModel) requestHistory(direction int) tea.Cmd {
+	if m.source.Name() == "sse" {
+		m.status = "Live history is limited to retained events; reconnect for recent source history"
+		return nil
+	}
 	m.followLatest = false
 	m.details = false
 	m.page = nil

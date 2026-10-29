@@ -23,6 +23,9 @@ func captureLabel(s string, width int) string {
 func (m model) viewCaptures() string {
 	var out strings.Builder
 	b := m.captures
+	if b.live {
+		return m.viewLive()
+	}
 	width := max(25, m.width-12)
 	line := func(s string) { out.WriteString(s); out.WriteByte('\n') }
 	line(titleStyle.Render("Obey Voice recordings"))
@@ -104,6 +107,9 @@ func (m model) viewCaptures() string {
 }
 
 func (m model) viewCaptureFolder() string {
+	if m.captures.live {
+		return titleStyle.Render("Choose Obey Voice config folder") + "\n\nPaste the config directory used by your running Obey Voice.\nIts debug/runtimes folder is discovered automatically.\n\n" + m.captures.folder.View() + "\n\n" + dimStyle.Render("enter remember folder  esc cancel") + "\n" + statusStyle.Render(captureLabel(m.status, max(25, m.width-12)))
+	}
 	var out strings.Builder
 	out.WriteString(titleStyle.Render("Choose Obey Voice captures folder") + "\n\n")
 	out.WriteString("Paste the folder containing your recording bundles.\n")

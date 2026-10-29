@@ -110,6 +110,7 @@ frame 5  event=user
       conversation_epoch  ← trace.conversation_epoch                                                                    = "epoch-1"
       job_id              ← first: [job_id trace.job_id worker_usage.job_id worker_limit.job_id worker_charge.job_id]   (not found)
       local_turn_boundary ← const: true                                                                                 = "true"
+      message_role        ← const: user                                                                                 = "user"
       mono_ms             ← trace.mono_ms                                                                               = "20"
       parent_turn_id      ← trace.parent_turn_id                                                                        (not found)
       persona_id          ← trace.persona_id                                                                            = "<nil>"
@@ -526,6 +527,7 @@ frame 21  event=user
       conversation_epoch  ← trace.conversation_epoch                                                                    = "epoch-1"
       job_id              ← first: [job_id trace.job_id worker_usage.job_id worker_limit.job_id worker_charge.job_id]   (not found)
       local_turn_boundary ← const: true                                                                                 = "true"
+      message_role        ← const: user                                                                                 = "user"
       mono_ms             ← trace.mono_ms                                                                               = "3010"
       parent_turn_id      ← trace.parent_turn_id                                                                        (not found)
       persona_id          ← trace.persona_id                                                                            = "<nil>"
@@ -724,7 +726,7 @@ frame 28  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-2"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "3000"
 frame 29  event=turn_interrupted
-  ✓ rules[18] matched {event: *}
+  ✓ rules[19] matched {event: *}
       source             ← const: conversation                                                                         = "conversation"
       seq                ← seq                                                                                         = "29"
       capture_id         ← trace.capture_id                                                                            = "fixture-capture"

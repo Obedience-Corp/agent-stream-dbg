@@ -70,6 +70,7 @@ func newTestObserver(t *testing.T, manifest string) (*ObserverModel, *observerTe
 	}
 	source := &observerTestSource{frames: make(chan transport.Frame, 16)}
 	model := NewObserverModel(context.Background(), source, parser, "explicit.jsonl", true, manifest)
+	model.pane = PaneTimeline
 	t.Cleanup(func() { _ = model.Close() })
 	return model, source
 }
