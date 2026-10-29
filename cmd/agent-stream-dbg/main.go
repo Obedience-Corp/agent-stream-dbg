@@ -25,7 +25,9 @@ func main() {
    Transports: SSE, gRPC, ACP (stdio), and replay (JSONL fixtures).
 
    Running without --config opens the home hub: select, create, or edit run
-   configs, try offline demos, then open an interactive session.
+   configs, browse Obey Voice recordings, or try offline demos.
+   Choose Obey Voice recordings to discover captures and follow new events
+   without a file path, dialect flag, or connection config.
 
    Pass --config / -c to jump straight into interactive mode.
 

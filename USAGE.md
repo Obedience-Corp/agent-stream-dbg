@@ -1,8 +1,18 @@
 # agent-stream-dbg Usage Guide
 
-## Two Modes of Operation
+## Start here
 
-agent-stream-dbg has **two distinct modes** for different use cases:
+Run `agent-stream-dbg` without arguments to open the home screen. Select
+**Obey Voice recordings**, then select a conversation to open its Timeline.
+No dialect, file path, or follow flag is needed. The recording list refreshes
+automatically; `c` chooses and remembers a custom captures folder.
+
+No recordings yet? In Obey Voice, type `/record talk` to record events, transcript,
+and conversation audio. Use `/record off` to stop. Close the debugger's viewer
+with `q` to return to the picker; `Esc` returns home.
+
+The other home options connect to a backend or run offline demos. The explicit
+commands below are also available for interactive chat and single-message runs:
 
 ---
 

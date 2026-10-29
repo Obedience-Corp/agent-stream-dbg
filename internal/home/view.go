@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
+	"github.com/charmbracelet/lipgloss"
 )
 
 var (
@@ -34,6 +34,10 @@ func (m model) View() string {
 
 	var body string
 	switch m.screen {
+	case screenCaptures:
+		body = m.viewCaptures()
+	case screenCaptureFolder:
+		body = m.viewCaptureFolder()
 	case screenHome:
 		body = m.viewHome()
 	case screenWizardTemplate:
@@ -69,7 +73,7 @@ func (m model) viewHome() string {
 		b.WriteString("\n\n")
 	}
 	if len(m.entries) == 0 {
-		b.WriteString(dimStyle.Render("No configurations yet. Create one to connect to an"))
+		b.WriteString(dimStyle.Render("Obey Voice recordings need no configuration. Connect to an"))
 		b.WriteString("\n")
 		b.WriteString(dimStyle.Render("SSE, gRPC, or ACP stream — or try an offline demo."))
 		b.WriteString("\n\n")
@@ -84,7 +88,7 @@ func (m model) viewHome() string {
 			style = cursorStyle
 		}
 		if item == "cfg" {
-			entry := m.entries[i]
+			entry := m.entries[i-1]
 			chip := chipReady.Render(string(entry.Status))
 			switch entry.Status {
 			case config.EntryNeedsSetup, config.EntryAuthNeeded:
@@ -117,12 +121,14 @@ func (m model) viewHome() string {
 			}
 			continue
 		}
-		if i == len(m.entries) && len(m.entries) > 0 {
+		if i == len(m.entries)+1 && len(m.entries) > 0 {
 			b.WriteString(dimStyle.Render("────────────────────────────────────────"))
 			b.WriteString("\n")
 		}
 		label := item
 		switch item {
+		case "action:voice":
+			label = "Obey Voice recordings · live & saved"
 		case "action:new":
 			label = "+ New configuration"
 		case "action:offline":
@@ -133,7 +139,7 @@ func (m model) viewHome() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("↑↓ navigate  enter open  e edit  n new  d delete  q quit"))
+	b.WriteString(dimStyle.Render("↑↓ navigate  enter open  v voice  e edit  n new  d delete  q quit"))
 	if m.status != "" {
 		b.WriteString("\n\n")
 		// Multi-line auth/.env guidance from status.

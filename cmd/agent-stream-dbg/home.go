@@ -36,29 +36,35 @@ func runHome(dialectOverride string, corrFlags ...correlationFlags) error {
 		return fmt.Errorf("create user config directory: %w", err)
 	}
 
-	notice := ""
+	return runHomeWithOptions(home.Options{Cwd: cwd, UserConfigDir: userConfigDir}, dialectOverride, corr)
+}
+
+func runHomeWithOptions(opts home.Options, dialectOverride string, corr correlationFlags) error {
 	for {
-		result, err := home.Run(home.Options{
-			Cwd:           cwd,
-			UserConfigDir: userConfigDir,
-			Notice:        notice,
-		})
+		result, err := home.Run(opts)
 		if err != nil {
 			return err
 		}
-		notice = result.Notice
+		opts.Notice = result.Notice
 		switch result.Action {
 		case home.ActionQuit:
 			return nil
+		case home.ActionObserve:
+			opts.StartCaptures, opts.CapturePath = true, result.Path
+			opts.Notice = ""
+			if err := runObserve(result.Path, "obey-voice", result.Follow); err != nil {
+				opts.Notice = "Could not open recording: " + err.Error()
+			}
 		case home.ActionOpen:
+			opts.StartCaptures = false
 			if err := runInteractiveWithOptions(result.Path, dialectOverride, result.OpenConfigPanel, corr); err != nil {
 				// Return to home with the error so a bad setup is recoverable.
-				notice = "Session error: " + err.Error()
-				fmt.Fprintf(os.Stderr, "⚠️  %s\n", notice)
+				opts.Notice = "Session error: " + err.Error()
+				fmt.Fprintf(os.Stderr, "⚠️  %s\n", opts.Notice)
 				continue
 			}
-			if notice == "" {
-				notice = "Returned from session · " + filepath.Base(result.Path)
+			if opts.Notice == "" {
+				opts.Notice = "Returned from session · " + filepath.Base(result.Path)
 			}
 		default:
 			return nil

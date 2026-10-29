@@ -21,11 +21,15 @@ func observeAction(c *cli.Context) error {
 	if c.NArg() != 1 {
 		return fmt.Errorf("observe requires one explicit capture file path")
 	}
-	path, err := filepath.Abs(c.Args().First())
+	return runObserve(c.Args().First(), c.String("dialect"), c.Bool("follow"))
+}
+
+func runObserve(sourcePath, dialect string, follow bool) error {
+	path, err := filepath.Abs(sourcePath)
 	if err != nil {
 		return err
 	}
-	parser, err := bridge.NewParserFor(c.String("dialect"))
+	parser, err := bridge.NewParserFor(dialect)
 	if err != nil {
 		return err
 	}
@@ -51,8 +55,8 @@ func observeAction(c *cli.Context) error {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	source := filetransport.New(path, c.Bool("follow"))
-	model := visualizer.NewObserverModel(ctx, source, parser, path, c.Bool("follow"), manifestID)
+	source := filetransport.New(path, follow)
+	model := visualizer.NewObserverModel(ctx, source, parser, path, follow, manifestID)
 	defer model.Close()
 	_, err = tea.NewProgram(model, tea.WithAltScreen(), tea.WithContext(ctx)).Run()
 	return err

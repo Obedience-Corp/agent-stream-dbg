@@ -3,8 +3,8 @@ package home
 import (
 	"fmt"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/config"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // Action is what the CLI should do after the home hub exits.
@@ -13,14 +13,16 @@ type Action int
 const (
 	ActionQuit Action = iota
 	ActionOpen
+	ActionObserve
 )
 
 // Result is returned when the home hub TUI exits.
 type Result struct {
-	Action         Action
-	Path           string
+	Action          Action
+	Path            string
 	OpenConfigPanel bool
-	Notice         string
+	Notice          string
+	Follow          bool
 }
 
 // Options configure the home hub.
@@ -28,6 +30,8 @@ type Options struct {
 	Cwd           string
 	UserConfigDir string
 	Notice        string
+	StartCaptures bool
+	CapturePath   string
 }
 
 // Run launches the home hub TUI and blocks until the user quits or opens a session.
