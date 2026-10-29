@@ -44,6 +44,7 @@ func TestVoiceLaunchAndFollowModes(t *testing.T) {
 	for _, status := range []string{"open", "sealed", "incomplete"} {
 		t.Run(status, func(t *testing.T) {
 			m := captureModel(t)
+			m, _ = key(m, "down")
 			m, cmd := key(m, "enter")
 			if m.screen != screenCaptures || cmd == nil || !m.captures.loading {
 				t.Fatal("bare home did not open capture discovery")
@@ -85,7 +86,8 @@ func TestCaptureRefreshPreservesSelectionAndRejectsStaleResults(t *testing.T) {
 }
 func TestEmptyStateAndFolderPersistence(t *testing.T) {
 	m := captureModel(t)
-	m, cmd := key(m, "v")
+	m, _ = key(m, "down")
+	m, cmd := key(m, "enter")
 	next, _ := m.Update(cmd())
 	m = next.(model)
 	if view := m.View(); !strings.Contains(view, "/record talk") || !strings.Contains(view, "conversation audio") {
@@ -120,6 +122,7 @@ func TestConfigsAndDemosRemainReachable(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.reload()
+	m, _ = key(m, "down")
 	configModel, _ := key(m, "down")
 	for _, action := range []string{"enter", "e", "d"} {
 		next, _ := key(configModel, action)

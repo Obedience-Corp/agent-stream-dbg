@@ -5,12 +5,15 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // renderTimelinePane renders the Timeline pane (F3) showing agent execution timeline
 func (m InteractiveModel) renderTimelinePane() string {
+	if m.passive != nil {
+		return m.renderSourceTimeline()
+	}
 	var b strings.Builder
 
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))

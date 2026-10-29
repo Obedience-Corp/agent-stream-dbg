@@ -88,7 +88,7 @@ func (m model) viewHome() string {
 			style = cursorStyle
 		}
 		if item == "cfg" {
-			entry := m.entries[i-1]
+			entry := m.entries[i-2]
 			chip := chipReady.Render(string(entry.Status))
 			switch entry.Status {
 			case config.EntryNeedsSetup, config.EntryAuthNeeded:
@@ -121,14 +121,16 @@ func (m model) viewHome() string {
 			}
 			continue
 		}
-		if i == len(m.entries)+1 && len(m.entries) > 0 {
+		if i == len(m.entries)+2 && len(m.entries) > 0 {
 			b.WriteString(dimStyle.Render("────────────────────────────────────────"))
 			b.WriteString("\n")
 		}
 		label := item
 		switch item {
+		case "action:live":
+			label = "Obey Voice · live conversations"
 		case "action:voice":
-			label = "Obey Voice recordings · live & saved"
+			label = "Saved Obey Voice recordings"
 		case "action:new":
 			label = "+ New configuration"
 		case "action:offline":

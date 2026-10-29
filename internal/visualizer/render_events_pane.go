@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // renderEventsPane renders the Events pane (F4) showing normalized events
@@ -34,7 +34,7 @@ func (m InteractiveModel) renderEventsPane() string {
 
 	b.WriteString(headerStyle.Render("Events"))
 	_, _ = fmt.Fprintf(&b, " (View: %s)", viewLabel)
-	if m.viewMode == ViewModeParsed {
+	if m.viewMode == ViewModeParsed && m.passive == nil {
 		_, _ = fmt.Fprintf(&b, " (Tokens: %s)", tokensLabel)
 		_, _ = fmt.Fprintf(&b, " (Aggregator: %s)", aggregatorOnlyLabel)
 	}
@@ -42,7 +42,9 @@ func (m InteractiveModel) renderEventsPane() string {
 	b.WriteString(dimStyle.Render("─────────────────────────────────────────"))
 	b.WriteString("\n")
 	// Hints
-	if m.viewMode == ViewModeParsed {
+	if m.passive != nil {
+		b.WriteString(dimStyle.Render("Enter: source details · r: raw evidence within details"))
+	} else if m.viewMode == ViewModeParsed {
 		b.WriteString(dimStyle.Render("Ctrl+T: RAW view, t: tokens, W: aggregator-only"))
 	} else {
 		b.WriteString(dimStyle.Render("Ctrl+T: PARSED view"))

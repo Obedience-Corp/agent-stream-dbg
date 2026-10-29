@@ -69,7 +69,7 @@ func TestVoiceBackgroundJobSelectionKeepsTypedIdentity(t *testing.T) {
 		_, command = model.Update(message)
 	}
 	key := func(value string) { model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(value)}) }
-	key("1")
+	key("s")
 	model.Update(tea.KeyMsg{Type: tea.KeyDown})
 	model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	key("3")

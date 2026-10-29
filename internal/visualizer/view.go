@@ -14,6 +14,9 @@ import (
 )
 
 func (m InteractiveModel) View() string {
+	if m.passive != nil {
+		return m.renderPassiveView()
+	}
 	if m.configPanel.open {
 		return m.renderConfigPanel()
 	}
@@ -24,39 +27,11 @@ func (m InteractiveModel) View() string {
 	rate := m.energy.Rate()
 	samples := m.energy.Samples()
 
-	// Header with live energy strip + pane indicator
-	headerStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("6")).
-		Padding(0, 1)
-
-	paneStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("14")).
-		Background(lipgloss.Color("8")).
-		Padding(0, 1)
-
-	// Pane tabs
-	paneNames := []string{"Flow", "App", "Timeline", "Events", "Messages"}
-	var tabs strings.Builder
-	for i, name := range paneNames {
-		if Pane(i) == m.activePane {
-			tabs.WriteString(paneStyle.Render(fmt.Sprintf("[%d]%s", i+1, name)))
-		} else {
-			tabs.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(fmt.Sprintf(" %d:%s ", i+1, name)))
-		}
-	}
-
 	dbg := m.cfg.Debug.Level
 	if dbg == "" {
 		dbg = "off"
 	}
-	title := headerStyle.Render(fmt.Sprintf("agent-stream-dbg (debug=%s)", dbg))
-	b.WriteString(title)
-	b.WriteString(" ")
-	b.WriteString(tabs.String())
-	b.WriteString("  ")
-	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(fmt.Sprintf("(session: %s)", m.cfg.Session.ID)))
+	b.WriteString(sessionHeader(fmt.Sprintf("agent-stream-dbg (debug=%s)", dbg), m.cfg.Session.ID, m.activePane))
 	if m.corr != nil {
 		if tc := m.corr.Current(); tc.Valid() {
 			traceLabel := fmt.Sprintf("  (trace: %s", tc.ShortTraceID())
@@ -346,6 +321,9 @@ func (m InteractiveModel) renderParsedView(msg Message) string {
 
 		// Display agent header
 		header := fmt.Sprintf("%s (%d tokens)", agentID, agentResp.TokenCount)
+		if agentResp.Observed && !agentResp.TokenCountKnown {
+			header = agentID + " (token count unavailable)"
+		}
 		if agentResp.Completed {
 			header += " ✓"
 		} else {
@@ -359,6 +337,9 @@ func (m InteractiveModel) renderParsedView(msg Message) string {
 		contentStyle := lipgloss.NewStyle().
 			Foreground(agentColor)
 
+		if m.passive != nil {
+			contentStyle = contentStyle.Width(max(20, m.width-6))
+		}
 		b.WriteString(contentStyle.Render(agentResp.FullContent))
 		b.WriteString("\n\n")
 	}

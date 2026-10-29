@@ -56,6 +56,9 @@ func New(method, url string, body []byte, headers map[string]string) *Transport 
 	}
 }
 
+// WithClient supplies transport policy (for example, loopback-only discovery).
+func (t *Transport) WithClient(client *http.Client) *Transport { t.httpClient = client; return t }
+
 // Name identifies this transport kind.
 func (t *Transport) Name() string { return "sse" }
 

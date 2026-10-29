@@ -13,6 +13,7 @@ Enter
 Sleep 1s
 Show
 Sleep 1s
+Down
 Enter
 Sleep 1s
 Screenshot docs/assets/voice-launcher-empty.png
@@ -21,7 +22,7 @@ Screenshot docs/assets/voice-launcher-picker.png
 Sleep 1s
 Enter
 Sleep 2s
-Type "["
+Type "3["
 Sleep 2s
 Screenshot docs/assets/voice-launcher-timeline.png
 Sleep 2s

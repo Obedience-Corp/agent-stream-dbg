@@ -5,9 +5,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/visualizer/anim"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // =============================================================================
@@ -16,9 +16,12 @@ import (
 
 // buildFlowNodes extracts FlowNode state from parsed events
 func (m InteractiveModel) buildFlowNodes(evts []*events.Event) map[string]*FlowNode {
+	if m.flowNodesOverride != nil {
+		return m.flowNodesOverride
+	}
 	nodes := map[string]*FlowNode{}
 	for _, e := range evts {
-		if e.Name == "flow_step_start" {
+		if e.Kind == events.KindStepStart {
 			step := e.StringField("step")
 			n := nodes[step]
 			if n == nil {
@@ -31,7 +34,7 @@ func (m InteractiveModel) buildFlowNodes(evts []*events.Event) map[string]*FlowN
 			}
 			nodes[step] = n
 		}
-		if e.Name == "flow_step_end" {
+		if e.Kind == events.KindStepEnd {
 			step := e.StringField("step")
 			n := nodes[step]
 			if n == nil {
@@ -64,13 +67,19 @@ func statusIcon(n *FlowNode) string {
 	if n == nil {
 		return " "
 	}
+	if n.Status == "failed" || n.Status == "error" {
+		return "✗"
+	}
+	if n.Status == "cancelled" || n.Status == "interrupted" {
+		return "■"
+	}
 	if !n.Enabled {
 		return "–"
 	}
 	if n.InProgress {
 		return "…"
 	}
-	if n.DurationMs > 0 {
+	if n.DurationMs > 0 || n.DurationKnown {
 		return "✓"
 	}
 	return "·"
@@ -81,8 +90,14 @@ func statusIconFrame(n *FlowNode, frame int, reduced bool) string {
 	if n == nil {
 		return " "
 	}
+	if n.Status == "failed" || n.Status == "error" {
+		return "✗"
+	}
+	if n.Status == "cancelled" || n.Status == "interrupted" {
+		return "■"
+	}
 	s := anim.DefaultStyles()
-	done := n.DurationMs > 0 && !n.InProgress
+	done := (n.DurationMs > 0 || n.Status == "completed") && !n.InProgress
 	return anim.FlowGlyph(n.Enabled, n.InProgress, done, frame, s, reduced)
 }
 
@@ -118,7 +133,11 @@ func (m InteractiveModel) renderFlowPane() string {
 	steps := m.dialectFlow.stages()
 
 	// Header detail: show turn index for context
-	b.WriteString(dimStyle.Render(fmt.Sprintf("Turn %d of %d  ([ ] to navigate)", turn+1, len(m.messages))))
+	if m.passive != nil {
+		b.WriteString(dimStyle.Render("Measured stage time · [ ] turns · s workers/session · Enter expand"))
+	} else {
+		b.WriteString(dimStyle.Render(fmt.Sprintf("Turn %d of %d  ([ ] to navigate)", turn+1, len(m.messages))))
+	}
 	b.WriteString("\n\n")
 
 	reduced := anim.ReducedMotion()
@@ -143,10 +162,14 @@ func (m InteractiveModel) renderFlowPane() string {
 			_, _ = fmt.Fprintf(&line, "%-12s", step)
 		}
 
+		if n != nil && n.Status != "" {
+			line.WriteString(" · " + n.Status)
+		}
+
 		// Metrics (if available)
 		if n != nil {
 			// Duration
-			if n.DurationMs > 0 {
+			if n.DurationMs > 0 || n.DurationKnown {
 				_, _ = fmt.Fprintf(&line, " [%dms]", n.DurationMs)
 			}
 
@@ -296,7 +319,7 @@ func (m InteractiveModel) renderFlowAllPane() string {
 			} else {
 				_, _ = fmt.Fprintf(&line, "%-12s", step)
 			}
-			if n.DurationMs > 0 {
+			if n.DurationMs > 0 || n.DurationKnown {
 				_, _ = fmt.Fprintf(&line, " [%dms]", n.DurationMs)
 			}
 			if step == "agent_exec" && n.AgentCount > 0 {
@@ -381,11 +404,15 @@ func (m InteractiveModel) renderFlowNodeDetails(n *FlowNode, aggResp *AgentRespo
 	aggregatorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("13")).PaddingLeft(4)
 	wrote := false
 
+	for _, evidence := range n.Evidence {
+		b.WriteString(detailStyle.Render(evidence) + "\n")
+	}
+
 	// Basic fields always useful
 	b.WriteString(detailStyle.Render(fmt.Sprintf("enabled: %v", n.Enabled)))
 	b.WriteString("\n")
 	wrote = true
-	if n.DurationMs > 0 {
+	if n.DurationMs > 0 || n.DurationKnown {
 		b.WriteString(detailStyle.Render(fmt.Sprintf("duration_ms: %d", n.DurationMs)))
 		b.WriteString("\n")
 	}
