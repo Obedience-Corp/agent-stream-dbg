@@ -1,6 +1,8 @@
 #!/usr/bin/env just --justfile
 # agent-stream-dbg - Development Commands
 
+BUILDTOOL := "go run ./internal/buildutil"
+
 # Testing and code quality checks.
 [doc('Testing and code quality checks')]
 mod test '.justfiles/test.just'

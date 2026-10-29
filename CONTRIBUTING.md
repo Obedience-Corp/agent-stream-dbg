@@ -13,11 +13,19 @@ Requirements:
 git clone https://github.com/Obedience-Corp/agent-stream-dbg.git
 cd agent-stream-dbg
 just deps    # or: go mod download
-just build
-just test    # or: go test ./...
+just build       # build-util vet + build dashboard
+just test        # build-util short-mode test dashboard
+just test unit   # full suite; same coverage as go test ./...
 ```
 
 `just --list` shows available recipes (demos, VHS recordings, release helpers).
+Build/test/vet dashboards use [build-util](https://github.com/Obedience-Corp/build-util)
+through `internal/buildutil/main.go`. `just test vet` invokes its Go vet dashboard;
+`just test lint` retains the repository's additional lint checks. The default
+test dashboard runs with `-short`; the recipe also runs the dialect tests that
+build-util v0.1.0 does not discover (they use an external test package).
+`just test unit` and `just test all` run the full suite. CI and release validation keep using the full suite. For detailed
+subprocess output, run `go run ./internal/buildutil -v build` (or `test`/`lint`).
 
 ## Project shape
 

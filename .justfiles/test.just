@@ -1,15 +1,22 @@
 # Testing and code quality checks.
+BUILDTOOL := "go run ./internal/buildutil"
 
 [private]
 [no-cd]
-default: all
+default: dashboard
 
-# Run all Go tests. `just test` keeps the original top-level command working;
-# `just test all` is also available for consistency with other modules.
+# Run the complete suite, including tests skipped in short mode.
 [no-cd]
 all: unit
 
-# Run the test suite.
+# Run the shared short-mode test dashboard.
+[no-cd]
+dashboard:
+    @{{BUILDTOOL}} test
+    # build-util v0.1.0 omits external-test-only packages; keep dialect goldens in this gate.
+    go test -short ./dialects/...
+
+# Run the full test suite with raw output (also used by release checks).
 [no-cd]
 unit:
     go test -v ./...
@@ -27,7 +34,7 @@ fmt:
 # Check for suspicious code (built-in Go tool)
 [no-cd]
 vet:
-    go vet ./...
+    @{{BUILDTOOL}} lint
 
 # Lint code (requires golangci-lint)
 [no-cd]

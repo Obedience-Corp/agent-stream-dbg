@@ -35,10 +35,9 @@ testdata-descriptorset:
         --include_imports \
         testdata/proto/agentstream.proto
 
-# Build the binary
+# Vet packages and build the binary with the shared dashboard.
 build:
-    mkdir -p bin
-    go build -o bin/agent-stream-dbg ./cmd/agent-stream-dbg
+    @{{BUILDTOOL}} build
 
 # Build outside the source tree and replay a fixture using embedded dialects.
 smoke-binary:
