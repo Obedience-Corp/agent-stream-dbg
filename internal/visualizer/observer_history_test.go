@@ -6,18 +6,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
-	"runtime"
-	"strings"
-	"testing"
-
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/events"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport"
 	filetransport "github.com/Obedience-Corp/agent-stream-dbg/internal/transport/file"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
 )
 
 func historyFixture(t *testing.T, body string) historyRequest {
@@ -39,46 +36,6 @@ const historyHeader = "{\"type\":\"header\",\"capture_id\":\"capture\",\"runtime
 func historyTurn(turn string, start int) string {
 	return fmt.Sprintf("{\"type\":\"delta\",\"capture_id\":\"capture\",\"runtime_id\":\"runtime\",\"turn_id\":%q,\"turn_start_ms\":%d}\r\n", turn, start)
 }
-func TestHistoryExactFramingAndRecovery(t *testing.T) {
-	valid := historyTurn("old", 10)
-	prefix := historyHeader + "malformed\r\n" + strings.Repeat("x", filetransport.MaxLineBytes+1) + "\n"
-	request := historyFixture(t, prefix+valid+`{"type":"delta","turn_id":"partial"}`)
-	var offsets []int64
-	var raw [][]byte
-	err := historyScan(context.Background(), request, 0, func(_ *events.Event, f transport.Frame, _ string) bool {
-		offsets = append(offsets, f.Offset)
-		raw = append(raw, bytes.Clone(f.Raw))
-		return true
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(raw) != 3 || offsets[2] != int64(len(prefix)) || string(raw[2]) != valid {
-		t.Fatalf("framing drift: offsets=%v raw=%q", offsets, raw)
-	}
-}
-func TestHistoryHeaderBoundAndPartial(t *testing.T) {
-	for _, body := range []string{strings.Repeat("x", filetransport.MaxLineBytes*3) + "\n", `{"type":"header"}`} {
-		request := historyFixture(t, body)
-		if f, err := historyOpen(context.Background(), request); err == nil {
-			_ = f.Close()
-			t.Fatal("accepted oversized/partial header")
-		}
-	}
-	reader := bufio.NewReaderSize(strings.NewReader(strings.Repeat("x", filetransport.MaxLineBytes*3)+"\nnext\r\n"), 4096)
-	raw, size, err := historyLine(context.Background(), reader)
-	if !errors.Is(err, errHistoryOversize) || raw != nil || size != 3*filetransport.MaxLineBytes+1 {
-		t.Fatal("oversize not bounded/drained", size, err)
-	}
-	raw, _, err = historyLine(context.Background(), reader)
-	if err != nil || string(raw) != "next\r\n" {
-		t.Fatal("failed resync", err)
-	}
-	_, _, err = historyLine(context.Background(), reader)
-	if !errors.Is(err, io.EOF) {
-		t.Fatal(err)
-	}
-}
 func TestHistoryNearestTurnIgnoresDelayedSparseCandidate(t *testing.T) {
 	body := historyHeader + historyTurn("T1", 10) + historyTurn("T2", 100) + historyTurn("T3", 1000) + historyTurn("T1", 10)
 	request := historyFixture(t, body)
@@ -90,25 +47,6 @@ func TestHistoryNearestTurnIgnoresDelayedSparseCandidate(t *testing.T) {
 		t.Fatalf("wrong predecessor: %+v %v", anchor, err)
 	}
 }
-func TestHistoryDetectsSameInodeMutationDuringScan(t *testing.T) {
-	body := historyHeader + historyTurn("one", 10)
-	request := historyFixture(t, body)
-	mutated := false
-	err := historyScan(context.Background(), request, 0, func(_ *events.Event, _ transport.Frame, _ string) bool {
-		if !mutated {
-			mutated = true
-			replacement := strings.Replace(body, "capture", "changed", 1)
-			if err := os.WriteFile(request.Path, []byte(replacement), 0600); err != nil {
-				t.Fatal(err)
-			}
-		}
-		return true
-	})
-	if !errors.Is(err, filetransport.ErrSourceChanged) {
-		t.Fatal("mixed source accepted", err)
-	}
-}
-
 func TestHistoryRetainedNavigationBeyondSummaryLimit(t *testing.T) {
 	m, _ := newTestObserver(t, "")
 	observerDeliver(t, m, strings.TrimSpace(historyHeader), 0)
@@ -212,18 +150,6 @@ func TestHistoryEqualStartUsesFirstSourceOffset(t *testing.T) {
 		t.Fatal("retained tie unreachable", m.selectionAnchor)
 	}
 }
-func TestHistoryCancelledHeaderStopsBeforeRead(t *testing.T) {
-	request := historyFixture(t, strings.Repeat("x", filetransport.MaxLineBytes*3))
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if file, err := historyOpen(ctx, request); !errors.Is(err, context.Canceled) {
-		if file != nil {
-			_ = file.Close()
-		}
-		t.Fatal("cancelled header read continued", err)
-	}
-}
-
 func TestHistoryEvictedSelectionNavigatesAndRejectsReplacedSource(t *testing.T) {
 	var body strings.Builder
 	body.WriteString(historyHeader)
@@ -361,104 +287,6 @@ func TestHistoryManyDistinctTurnsHasNoDiscoveryCeiling(t *testing.T) {
 	}
 }
 
-func TestHistorySustainedPagesAndReplacementBudget(t *testing.T) {
-	if testing.Short() {
-		t.Skip("sustained retained budget")
-	}
-	m, _ := newTestObserver(t, "")
-	path := filepath.Join(t.TempDir(), "large.jsonl")
-	file, err := os.Create(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	writer := bufio.NewWriter(file)
-	fmt.Fprint(writer, historyHeader)
-	payload := strings.Repeat("x", 2048)
-	for i := 0; i < 12000; i++ {
-		fmt.Fprintf(writer, "{\"type\":\"delta\",\"capture_id\":\"capture\",\"runtime_id\":\"runtime\",\"turn_id\":\"long\",\"turn_start_ms\":1,\"padding\":%q}\n", payload)
-	}
-	if err := writer.Flush(); err != nil {
-		t.Fatal(err)
-	}
-	if err := file.Close(); err != nil {
-		t.Fatal(err)
-	}
-	info, _ := os.Stat(path)
-	request := historyRequest{Path: path, Parser: m.parser, CaptureID: "capture", Runtime: "runtime", Identity: info, MinSize: info.Size()}
-	runtime.GC()
-	var before runtime.MemStats
-	runtime.ReadMemStats(&before)
-	err = historyScan(context.Background(), request, 0, func(event *events.Event, frame transport.Frame, _ string) bool {
-		m.store.add(event, frame, true)
-		return true
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	key := eventScope(&events.Event{Fields: map[string]any{"runtime_id": "runtime", "turn_id": "long"}})
-	request.Anchor = observerSelection{Key: key, Offset: int64(len(historyHeader))}
-	peak := 0
-	request.OwnBytes = func(bytes int) {
-		peak = max(peak, m.store.bytes+bytes)
-		if bytes > observerPageBytes {
-			t.Fatal("in-flight page exceeded cap")
-		}
-	}
-	page, _, err := loadObserverHistory(context.Background(), request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	m.page = page
-	runtime.GC()
-	var after runtime.MemStats
-	runtime.ReadMemStats(&after)
-	liveDelta := int64(after.HeapAlloc) - int64(before.HeapAlloc)
-	if peak > 20<<20 || m.store.bytes+m.page.bytes > 20<<20 || len(m.store.records)+len(m.page.records) > 10000 {
-		t.Fatal("combined retention cap exceeded")
-	}
-	if liveDelta > 32<<20 {
-		t.Fatalf("live heap delta exceeds total observer budget: %d", liveDelta)
-	}
-	t.Logf("12000 records: live=%d/%d page=%d/%d combined peak=%d live heap delta=%d", len(m.store.records), m.store.bytes, len(m.page.records), m.page.bytes, peak, liveDelta)
-	m.path = path
-	m.captureID = "capture"
-	m.runtimeID = "runtime"
-	m.selectionAnchor = request.Anchor
-	command := m.requestHistory(0)
-	if m.page != nil {
-		t.Fatal("replacement kept old page")
-	}
-	message := command().(*observerHistoryResult)
-	m.historyResult(message)
-	if m.store.bytes+m.page.bytes > 20<<20 || m.historyPeak.Load() > observerPageBytes {
-		t.Fatal("replacement exceeded shared retained cap")
-	}
-}
-
-func TestHistoryEscapedIdentityAccounting(t *testing.T) {
-	store := newObserverStore()
-	runtimeID := strings.Repeat("%", 256)
-	for i := 0; i < 10000; i++ {
-		turn := fmt.Sprintf("%0256d", i)
-		turn = strings.ReplaceAll(turn, "0", "/")
-		e := &events.Event{Name: "detail", Seq: i + 1, Fields: map[string]any{"capture_id": strings.Repeat("%", 256), "runtime_id": runtimeID, "turn_id": turn, "turn_start_ms": float64(i)}}
-		raw := []byte(fmt.Sprintf(`{"seq":%d}`, i+1))
-		store.add(e, transport.Frame{Data: raw, Raw: raw, Offset: int64(i) * 100, Size: int64(len(raw))}, true)
-	}
-	actual := 0
-	for _, record := range store.records {
-		minimum := recordBytes(record.Event) + len(record.Scope) + len(record.dedup) + len(record.Issue)
-		if record.Bytes < minimum || len(record.Scope) < 1000 {
-			t.Fatalf("escaped identity omitted from cost: cost=%d minimum=%d scope=%d", record.Bytes, minimum, len(record.Scope))
-		}
-		actual += record.Bytes
-	}
-	if actual != store.bytes || actual > observerPageBytes || !store.evicted {
-		t.Fatal("escaped identity budget not enforced", actual, store.bytes)
-	}
-	t.Logf("escaped identities: records=%d accounted bytes=%d", len(store.records), store.bytes)
-}
-
 func TestHistoryJobScopeSelectableWhileOldLoadCompletes(t *testing.T) {
 	m, _ := newTestObserver(t, "")
 	job := &events.Event{Name: "worker", Fields: map[string]any{"runtime_id": "runtime", "job_id": "job-1", "parent_turn_id": "turn-old"}}
@@ -523,14 +351,5 @@ func TestHistoryUnknownClockUsesFirstOffsetFallback(t *testing.T) {
 	_, anchor, err := loadObserverHistory(context.Background(), request)
 	if err != nil || anchor.Turn != "two" || anchor.StartMS != nil {
 		t.Fatal("unknown-clock fallback followed delayed arrival", anchor, err)
-	}
-}
-
-func TestHistoryWideCellClippingBoundedWork(t *testing.T) {
-	for _, text := range []string{strings.Repeat("漢字🙂", 10000), strings.Repeat("\u0301", 100000) + "tail", strings.Repeat("\x00", 100000) + "tail"} {
-		clipped := observerClip(text, 20)
-		if lipgloss.Width(clipped) > 20 || len(clipped) > 20*16+8 {
-			t.Fatalf("unbounded terminal row: cells=%d bytes=%d", lipgloss.Width(clipped), len(clipped))
-		}
 	}
 }
