@@ -64,5 +64,5 @@ Keep source decoding in the mapping/dialect layer. In `internal/visualizer`,
 `observer_history.go` owns selection and the single-worker request lifecycle;
 `observer_history_file.go` owns bounded framing, source validation and disk
 lookup. History tests separate navigation, file recovery and memory budgets.
-Keep new maintained code files below500lines by separating responsibilities,
+Keep new maintained code files below 500 lines by separating responsibilities,
 without splitting generated fixture/golden output or refactoring unrelated code.
