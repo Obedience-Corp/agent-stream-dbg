@@ -355,6 +355,10 @@ just build
 just test
 ```
 
+Build, test and vet dashboards use [build-util](https://github.com/Obedience-Corp/build-util):
+`just build`, `just test`, and `just test vet`. The test dashboard uses short mode;
+`just test unit` (or `just test all`) runs the full suite used for release checks.
+
 `just --list` shows the top-level recipes. Use `just test`, `just release`, and
 `just vhs` to list the recipes in those focused modules.
 

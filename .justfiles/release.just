@@ -17,7 +17,7 @@ check:
     #!/usr/bin/env bash
     set -euo pipefail
     [ -z "$(git status --porcelain)" ] || { echo "working tree is dirty — commit or stash first" >&2; exit 1; }
-    just test
+    just test unit
     just test vet
 
 # Create and push an annotated release tag after validation.
