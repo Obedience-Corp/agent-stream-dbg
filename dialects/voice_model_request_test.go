@@ -12,6 +12,7 @@ import (
 	filetransport "github.com/Obedience-Corp/agent-stream-dbg/internal/transport/file"
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/visualizer"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -19,13 +20,18 @@ const modelRequestFixture = "../testdata/fixtures/pipeline-trace/model-requests.
 
 func openVoiceObserver(t *testing.T, path string) (*visualizer.ObserverModel, func(string)) {
 	t.Helper()
+	return openVoiceObserverAt(t, path, 140)
+}
+
+func openVoiceObserverAt(t *testing.T, path string, width int) (*visualizer.ObserverModel, func(string)) {
+	t.Helper()
 	parser, err := bridge.NewParserFor("obey-voice")
 	if err != nil {
 		t.Fatal(err)
 	}
 	model := visualizer.NewObserverModel(context.Background(), filetransport.New(path, false), parser, path, false, "")
 	t.Cleanup(func() { model.Close() })
-	model.Update(tea.WindowSizeMsg{Width: 140, Height: 60})
+	model.Update(tea.WindowSizeMsg{Width: width, Height: 60})
 	_, command := model.Update(model.Init()())
 	for command != nil {
 		message := command()
@@ -249,5 +255,92 @@ func TestVoiceModelRequestEndWithoutStartAndUnknownPurpose(t *testing.T) {
 		if interval.Label == "warmup" && (interval.Start == nil || interval.End == nil || *interval.Start != 5 || *interval.End != 1500) {
 			t.Fatal("end-only warmup lost its bounds", interval.Start, interval.End)
 		}
+	}
+}
+
+// purposeVariant renames request purposes in turn 1 of the canonical fixture.
+func purposeVariant(t *testing.T, purposes map[string]string) string {
+	t.Helper()
+	raw, err := os.ReadFile(modelRequestFixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := []string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		var record map[string]any
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
+			t.Fatal(err)
+		}
+		if span, ok := record["span"].(map[string]any); ok {
+			if request, ok := span["request"].(map[string]any); ok && span["parent_id"] == "model-turn-1" {
+				if purpose, ok := purposes[request["purpose"].(string)]; ok {
+					request["purpose"] = purpose
+				}
+			}
+		}
+		encoded, err := json.Marshal(record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, string(encoded))
+	}
+	path := filepath.Join(t.TempDir(), "events.jsonl")
+	if err := os.WriteFile(path, []byte(strings.Join(out, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func requireFitsWidth(t *testing.T, view string, width int) {
+	t.Helper()
+	for _, line := range strings.Split(view, "\n") {
+		if got := lipgloss.Width(line); got > width {
+			t.Fatalf("line is %d cells, pane is %d: %q", got, width, line)
+		}
+	}
+}
+
+func TestVoiceLongRequestPurposesKeepStatusAndTimeVisible(t *testing.T) {
+	long := strings.Repeat("p", 200)
+	wide := strings.Repeat("経路確認", 6)
+	path := purposeVariant(t, map[string]string{"route": long, "reply": wide})
+	for _, width := range []int{60, 100} {
+		model, key := openVoiceObserverAt(t, path, width)
+		key("[")
+		key("1")
+		flow := viewText(model)
+		requireFitsWidth(t, flow, width)
+		requireInOrder(t, flow, "↳ ✓ skill_check", "· completed [390ms]", "↳ ✓ ppp", "…", "· completed [1690ms]", "↳ ✓ route_recovery", "· completed [490ms]", "↳ ✓ 経路", "…", "· completed [1590ms]")
+		columns := map[int]bool{}
+		for _, line := range strings.Split(flow, "\n") {
+			if before, _, found := strings.Cut(line, " · completed ["); found && strings.Contains(line, "↳") {
+				columns[lipgloss.Width(before)] = true
+			}
+		}
+		if len(columns) != 1 {
+			t.Fatalf("nested rows not aligned at width %d: %v\n%s", width, columns, flow)
+		}
+		key("3")
+		timeline := viewText(model)
+		requireFitsWidth(t, timeline, width)
+		requireInOrder(t, timeline, "model · ppp", "…", "completed", "model · 経路", "…", "completed")
+	}
+}
+
+func TestVoiceAddedRequestPurposesRenderAsSent(t *testing.T) {
+	path := purposeVariant(t, map[string]string{"skill_check": "delegation_summary", "route": "discussion", "reply": "announcement"})
+	for _, width := range []int{80, 100} {
+		model, key := openVoiceObserverAt(t, path, width)
+		key("[")
+		key("1")
+		flow := viewText(model)
+		requireFitsWidth(t, flow, width)
+		requireInOrder(t, flow,
+			"↳ ✓ delegation_summary · completed [390ms]",
+			"↳ ✓ discussion         · completed [1690ms]",
+			"↳ ✓ route_recovery     · completed [490ms]",
+			"↳ ✓ announcement       · completed [1590ms]")
+		key("3")
+		requireInOrder(t, viewText(model), "model · delegation_sum…", "model · discussion", "model · announcement")
 	}
 }

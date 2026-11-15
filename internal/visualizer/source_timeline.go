@@ -116,7 +116,7 @@ func (p InteractiveModel) renderSourceTimeline() string {
 			if row == m.eventRow {
 				prefix = "▸"
 			}
-			line := fmt.Sprintf("%s %s %-23s %-11s %10s %s", prefix, glyph, observerClip(name, 23), i.Status, duration, bar)
+			line := fmt.Sprintf("%s %s %s %-11s %10s %s", prefix, glyph, padCells(observerClip(name, 23), 23), i.Status, duration, bar)
 			lines = append(lines, lipgloss.NewStyle().Foreground(color).Render(line))
 		}
 	}

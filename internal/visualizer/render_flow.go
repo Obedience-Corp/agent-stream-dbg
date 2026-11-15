@@ -141,6 +141,7 @@ func (m InteractiveModel) renderFlowPane() string {
 	b.WriteString("\n\n")
 
 	reduced := anim.ReducedMotion()
+	childColumn := m.flowChildColumn()
 	row := 0
 	for _, step := range steps {
 		n := nodes[step]
@@ -243,7 +244,7 @@ func (m InteractiveModel) renderFlowPane() string {
 			b.WriteString(m.renderFlowNodeDetails(n, aggResp))
 		}
 		for _, child := range m.flowChildren[step] {
-			b.WriteString(renderFlowChild(child, row == m.selectedStepIndex, m.runningLabel(child)))
+			b.WriteString(renderFlowChild(child, row == m.selectedStepIndex, m.runningLabel(child), childColumn))
 			row++
 		}
 	}

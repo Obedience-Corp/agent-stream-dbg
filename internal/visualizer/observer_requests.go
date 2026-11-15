@@ -3,6 +3,7 @@ package visualizer
 import (
 	"cmp"
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -112,7 +113,11 @@ func requestDetails(interval *inspectedInterval) map[string]any {
 		"generation":                 formatMeasured(request.Generation),
 	}
 	if unaccounted := requestUnaccountedMS(interval); unaccounted != nil {
-		details["unaccounted_time"] = formatMeasured(unaccounted)
+		value := formatMeasured(unaccounted)
+		if *unaccounted < 0 {
+			value += " (provider reported more than wall time)"
+		}
+		details["unaccounted_time"] = value
 	}
 	return details
 }
@@ -157,13 +162,46 @@ func (m InteractiveModel) flowRows() []flowRow {
 	return rows
 }
 
-func renderFlowChild(interval *inspectedInterval, selected bool, running string) string {
-	line := fmt.Sprintf("  ↳ %s %-14s · %s", intervalStatusGlyph(interval.Status), cmp.Or(interval.Label, interval.Stage), interval.Status)
+// flowChildIndent is the selection marker, nesting arrow and status glyph
+// that precede a nested Flow label.
+const flowChildIndent = 8
+
+func flowChildLabel(interval *inspectedInterval) string {
+	return cmp.Or(interval.Label, interval.Stage)
+}
+
+func flowChildSuffix(interval *inspectedInterval, running string) string {
+	suffix := " · " + interval.Status
 	if wall, ok := intervalDuration(interval); ok {
-		line += fmt.Sprintf(" [%dms]", int(wall))
+		suffix += fmt.Sprintf(" [%dms]", int(wall))
 	} else if running != "" {
-		line += " " + running
+		suffix += " " + running
 	}
+	return suffix
+}
+
+// flowChildColumn is the label width shared by nested Flow rows: the widest
+// label, between 14 and 24 cells, and never so wide that a row's status and
+// time would fall outside the pane. Longer labels are truncated.
+func (m InteractiveModel) flowChildColumn() int {
+	widest, suffix := 14, 0
+	for _, children := range m.flowChildren {
+		for _, child := range children {
+			widest = max(widest, lipgloss.Width(observerClip(flowChildLabel(child), 256)))
+			suffix = max(suffix, lipgloss.Width(flowChildSuffix(child, m.runningLabel(child))))
+		}
+	}
+	return max(4, min(widest, 24, passivePanelWidth(m.width)-4-flowChildIndent-suffix))
+}
+
+// padCells pads text with spaces to a display width.
+func padCells(text string, width int) string {
+	return text + strings.Repeat(" ", max(0, width-lipgloss.Width(text)))
+}
+
+func renderFlowChild(interval *inspectedInterval, selected bool, running string, column int) string {
+	label := padCells(observerClip(flowChildLabel(interval), column), column)
+	line := "  ↳ " + intervalStatusGlyph(interval.Status) + " " + label + flowChildSuffix(interval, running)
 	if selected {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true).Render("> "+line) + "\n"
 	}

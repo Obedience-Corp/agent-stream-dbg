@@ -41,3 +41,15 @@ func TestRequestEvidenceMergeKeepsLatestMeasurement(t *testing.T) {
 		t.Fatal("ordinary span given request evidence")
 	}
 }
+
+func TestRequestDetailsMarkNegativeUnaccountedTime(t *testing.T) {
+	ms := func(value float64) *float64 { return &value }
+	over := requestDetails(&inspectedInterval{Start: ms(0), End: ms(100), Request: &requestEvidence{Prefill: ms(60), Generation: ms(70)}})
+	if got := over["unaccounted_time"]; got != "-30.000ms (provider reported more than wall time)" {
+		t.Fatalf("negative unaccounted time %q", got)
+	}
+	under := requestDetails(&inspectedInterval{Start: ms(0), End: ms(100), Request: &requestEvidence{Prefill: ms(60)}})
+	if got := under["unaccounted_time"]; got != "40.000ms" {
+		t.Fatalf("positive unaccounted time %q", got)
+	}
+}

@@ -146,7 +146,9 @@ Each model request a turn sends is listed under its `model` stage in Flow,
 labelled by purpose (route, reply, …) with its status and wall time, and drawn as
 its own Timeline bar. Enter on a request shows its model, prompt and output
 tokens, first-token offset, and the provider's load, prefill and generation time;
-unaccounted time is wall time minus those three. The startup warmup has no turn
+unaccounted time is wall time minus those three, the time the provider's report
+does not account for; a negative value is marked as the provider reporting more
+than wall time. The startup warmup has no turn
 and appears on the session lane (`s`). Request bars never add to the `model`
 stage or turn time.
 
