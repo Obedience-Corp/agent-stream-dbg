@@ -33,25 +33,52 @@ rules:
       capture_cut: cut
       environment: environment
 
+  # Model requests nest under the turn's model stage and add provider-reported
+  # request evidence beside their own span bounds.
+  - match: {event: trace_span, path: span.state, equals: start, exists: span.request}
+    kind: step_start
+    source: span.lane
+    timestamp: ts
+    seq: seq
+    fields: &request_fields
+      <<: &span_fields
+        <<: *scope
+        span_id: span.id
+        parent_span_id: span.parent_id
+        step: span.stage
+        lane: span.lane
+        span_role: {lookup: span.stage, values: {turn: turn, stt: input, model: model, segment_queue: queue, synthesis: compute, playback: output}}
+        boundary_reference: {lookup: span.stage, values: {stt: input_end}}
+        start_ms: span.start_ms
+        end_ms: span.end_ms
+        span_state: span.state
+        status: span.status
+        segment_index: span.segment_index
+        attempt_id: span.attempt_id
+      parent_stage: {lookup: span.stage, values: {model_request: model}}
+      span_label: span.request.purpose
+      request_provider: span.request.provider
+      request_model: span.request.model
+      first_token_ms: span.request.first_token_ms
+      prompt_tokens: span.request.prompt_tokens
+      output_tokens: span.request.output_tokens
+      load_ms: span.request.load_ms
+      prefill_ms: span.request.prefill_ms
+      generation_ms: span.request.generation_ms
+
+  - match: {event: trace_span, path: span.state, equals: end, exists: span.request}
+    kind: step_end
+    source: span.lane
+    timestamp: ts
+    seq: seq
+    fields: *request_fields
+
   - match: {event: trace_span, path: span.state, equals: start}
     kind: step_start
     source: span.lane
     timestamp: ts
     seq: seq
-    fields: &span_fields
-      <<: *scope
-      span_id: span.id
-      parent_span_id: span.parent_id
-      step: span.stage
-      lane: span.lane
-      span_role: {lookup: span.stage, values: {turn: turn, stt: input, model: model, segment_queue: queue, synthesis: compute, playback: output}}
-      boundary_reference: {lookup: span.stage, values: {stt: input_end}}
-      start_ms: span.start_ms
-      end_ms: span.end_ms
-      span_state: span.state
-      status: span.status
-      segment_index: span.segment_index
-      attempt_id: span.attempt_id
+    fields: *span_fields
 
   - match: {event: trace_span, path: span.state, equals: end}
     kind: step_end

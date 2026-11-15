@@ -21,7 +21,7 @@ frame 1  event=header
       turn_id                ← trace.turn_id                                                                               = "<nil>"
       turn_start_ms          ← trace.turn_start_ms                                                                         = "<nil>"
 frame 2  event=trace_span
-  ✓ rules[1] matched {event: trace_span, path: span.state, equals: start}
+  ✓ rules[3] matched {event: trace_span, path: span.state, equals: start}
       source             ← span.lane                                                                                   = "turn"
       seq                ← seq                                                                                         = "2"
       attempt_id         ← span.attempt_id                                                                             = "<nil>"
@@ -48,7 +48,7 @@ frame 2  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-1"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "0"
 frame 3  event=trace_span
-  ✓ rules[1] matched {event: trace_span, path: span.state, equals: start}
+  ✓ rules[3] matched {event: trace_span, path: span.state, equals: start}
       source             ← span.lane                                                                                   = "stt"
       seq                ← seq                                                                                         = "3"
       attempt_id         ← span.attempt_id                                                                             = "<nil>"
@@ -75,7 +75,7 @@ frame 3  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-1"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "0"
 frame 4  event=trace_span
-  ✓ rules[2] matched {event: trace_span, path: span.state, equals: end}
+  ✓ rules[4] matched {event: trace_span, path: span.state, equals: end}
       source             ← span.lane                                                                                   = "stt"
       seq                ← seq                                                                                         = "4"
       attempt_id         ← span.attempt_id                                                                             = "<nil>"
@@ -102,7 +102,7 @@ frame 4  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-1"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "0"
 frame 5  event=user
-  ✓ rules[7] matched {event: user}
+  ✓ rules[9] matched {event: user}
       source              ← const: conversation                                                                         = "conversation"
       content             ← text                                                                                        = "Synthetic long reply"
       seq                 ← seq                                                                                         = "5"
@@ -120,7 +120,7 @@ frame 5  event=user
       turn_id             ← trace.turn_id                                                                               = "turn-1"
       turn_start_ms       ← trace.turn_start_ms                                                                         = "0"
 frame 6  event=trace_span
-  ✓ rules[1] matched {event: trace_span, path: span.state, equals: start}
+  ✓ rules[3] matched {event: trace_span, path: span.state, equals: start}
       source             ← span.lane                                                                                   = "response"
       seq                ← seq                                                                                         = "6"
       attempt_id         ← span.attempt_id                                                                             = "<nil>"
@@ -147,7 +147,7 @@ frame 6  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-1"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "0"
 frame 7  event=trace_span
-  ✓ rules[1] matched {event: trace_span, path: span.state, equals: start}
+  ✓ rules[3] matched {event: trace_span, path: span.state, equals: start}
       source             ← span.lane                                                                                   = "model"
       seq                ← seq                                                                                         = "7"
       attempt_id         ← span.attempt_id                                                                             = "<nil>"
@@ -174,7 +174,7 @@ frame 7  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-1"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "0"
 frame 8  event=trace_span
-  ✓ rules[1] matched {event: trace_span, path: span.state, equals: start}
+  ✓ rules[3] matched {event: trace_span, path: span.state, equals: start}
       source             ← span.lane                                                                                   = "synthesis"
       seq                ← seq                                                                                         = "8"
       attempt_id         ← span.attempt_id                                                                             = "<nil>"
@@ -201,7 +201,7 @@ frame 8  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-1"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "0"
 frame 9  event=trace_span
-  ✓ rules[1] matched {event: trace_span, path: span.state, equals: start}
+  ✓ rules[3] matched {event: trace_span, path: span.state, equals: start}
       source             ← span.lane                                                                                   = "playback"
       seq                ← seq                                                                                         = "9"
       attempt_id         ← span.attempt_id                                                                             = "<nil>"
@@ -228,7 +228,7 @@ frame 9  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-1"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "0"
 frame 10  event=trace_span
-  ✓ rules[2] matched {event: trace_span, path: span.state, equals: end}
+  ✓ rules[4] matched {event: trace_span, path: span.state, equals: end}
       source             ← span.lane                                                                                   = "synthesis"
       seq                ← seq                                                                                         = "10"
       attempt_id         ← span.attempt_id                                                                             = "<nil>"
@@ -255,7 +255,7 @@ frame 10  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-1"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "0"
 frame 11  event=trace_span
-  ✓ rules[2] matched {event: trace_span, path: span.state, equals: end}
+  ✓ rules[4] matched {event: trace_span, path: span.state, equals: end}
       source             ← span.lane                                                                                   = "model"
       seq                ← seq                                                                                         = "11"
       attempt_id         ← span.attempt_id                                                                             = "<nil>"
@@ -282,7 +282,7 @@ frame 11  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-1"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "0"
 frame 12  event=trace_span
-  ✓ rules[2] matched {event: trace_span, path: span.state, equals: end}
+  ✓ rules[4] matched {event: trace_span, path: span.state, equals: end}
       source             ← span.lane                                                                                   = "playback"
       seq                ← seq                                                                                         = "12"
       attempt_id         ← span.attempt_id                                                                             = "<nil>"
@@ -309,7 +309,7 @@ frame 12  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-1"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "0"
 frame 13  event=trace_span
-  ✓ rules[1] matched {event: trace_span, path: span.state, equals: start}
+  ✓ rules[3] matched {event: trace_span, path: span.state, equals: start}
       source             ← span.lane                                                                                   = "synthesis"
       seq                ← seq                                                                                         = "13"
       attempt_id         ← span.attempt_id                                                                             = "<nil>"
@@ -336,7 +336,7 @@ frame 13  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-1"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "0"
 frame 14  event=trace_span
-  ✓ rules[2] matched {event: trace_span, path: span.state, equals: end}
+  ✓ rules[4] matched {event: trace_span, path: span.state, equals: end}
       source             ← span.lane                                                                                   = "synthesis"
       seq                ← seq                                                                                         = "14"
       attempt_id         ← span.attempt_id                                                                             = "<nil>"
@@ -363,7 +363,7 @@ frame 14  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-1"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "0"
 frame 15  event=trace_span
-  ✓ rules[1] matched {event: trace_span, path: span.state, equals: start}
+  ✓ rules[3] matched {event: trace_span, path: span.state, equals: start}
       source             ← span.lane                                                                                   = "playback"
       seq                ← seq                                                                                         = "15"
       attempt_id         ← span.attempt_id                                                                             = "<nil>"
@@ -390,7 +390,7 @@ frame 15  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-1"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "0"
 frame 16  event=trace_span
-  ✓ rules[2] matched {event: trace_span, path: span.state, equals: end}
+  ✓ rules[4] matched {event: trace_span, path: span.state, equals: end}
       source             ← span.lane                                                                                   = "turn"
       seq                ← seq                                                                                         = "16"
       attempt_id         ← span.attempt_id                                                                             = "<nil>"
@@ -417,7 +417,7 @@ frame 16  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-1"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "0"
 frame 17  event=trace_span
-  ✓ rules[2] matched {event: trace_span, path: span.state, equals: end}
+  ✓ rules[4] matched {event: trace_span, path: span.state, equals: end}
       source             ← span.lane                                                                                   = "response"
       seq                ← seq                                                                                         = "17"
       attempt_id         ← span.attempt_id                                                                             = "<nil>"
@@ -444,7 +444,7 @@ frame 17  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-1"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "0"
 frame 18  event=trace_span
-  ✓ rules[2] matched {event: trace_span, path: span.state, equals: end}
+  ✓ rules[4] matched {event: trace_span, path: span.state, equals: end}
       source             ← span.lane                                                                                   = "playback"
       seq                ← seq                                                                                         = "18"
       attempt_id         ← span.attempt_id                                                                             = "<nil>"
@@ -471,7 +471,7 @@ frame 18  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-1"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "0"
 frame 19  event=metrics
-  ✓ rules[10] matched {event: metrics}
+  ✓ rules[12] matched {event: metrics}
       source                      ← const: conversation                                                                         = "conversation"
       seq                         ← seq                                                                                         = "19"
       capture_id                  ← trace.capture_id                                                                            = "fixture-capture"
@@ -492,7 +492,7 @@ frame 19  event=metrics
       turn_start_ms               ← trace.turn_start_ms                                                                         = "0"
       turn_timing                 ← timing                                                                                      = "map[normalized:map[barge_in_ms:<nil> finalized_input_ms:0 first_audio_ready_ms:160 first_model_chunk_ms:30 model_complete_ms:680 playback_complete_ms:2180 playback_start_ms:180 stream_drain_ms:<nil>] origin:finalized_input origin_offset_ms:20 raw_turn_start:map[barge_in_ms:<nil> finalized_input_ms:20 first_audio_ready_ms:180 first_model_chunk_ms:50 model_complete_ms:700 playback_complete_ms:2200 playback_start_ms:200 stream_drain_ms:<nil>]]"
 frame 20  event=trace_span
-  ✓ rules[1] matched {event: trace_span, path: span.state, equals: start}
+  ✓ rules[3] matched {event: trace_span, path: span.state, equals: start}
       source             ← span.lane                                                                                   = "turn"
       seq                ← seq                                                                                         = "20"
       attempt_id         ← span.attempt_id                                                                             = "<nil>"
@@ -519,7 +519,7 @@ frame 20  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-2"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "3000"
 frame 21  event=user
-  ✓ rules[7] matched {event: user}
+  ✓ rules[9] matched {event: user}
       source              ← const: conversation                                                                         = "conversation"
       content             ← text                                                                                        = "Synthetic interrupted reply"
       seq                 ← seq                                                                                         = "21"
@@ -537,7 +537,7 @@ frame 21  event=user
       turn_id             ← trace.turn_id                                                                               = "turn-2"
       turn_start_ms       ← trace.turn_start_ms                                                                         = "3000"
 frame 22  event=trace_span
-  ✓ rules[1] matched {event: trace_span, path: span.state, equals: start}
+  ✓ rules[3] matched {event: trace_span, path: span.state, equals: start}
       source             ← span.lane                                                                                   = "response"
       seq                ← seq                                                                                         = "22"
       attempt_id         ← span.attempt_id                                                                             = "<nil>"
@@ -564,7 +564,7 @@ frame 22  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-2"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "3000"
 frame 23  event=trace_span
-  ✓ rules[1] matched {event: trace_span, path: span.state, equals: start}
+  ✓ rules[3] matched {event: trace_span, path: span.state, equals: start}
       source             ← span.lane                                                                                   = "model"
       seq                ← seq                                                                                         = "23"
       attempt_id         ← span.attempt_id                                                                             = "<nil>"
@@ -591,7 +591,7 @@ frame 23  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-2"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "3000"
 frame 24  event=trace_span
-  ✓ rules[1] matched {event: trace_span, path: span.state, equals: start}
+  ✓ rules[3] matched {event: trace_span, path: span.state, equals: start}
       source             ← span.lane                                                                                   = "synthesis"
       seq                ← seq                                                                                         = "24"
       attempt_id         ← span.attempt_id                                                                             = "<nil>"
@@ -618,7 +618,7 @@ frame 24  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-2"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "3000"
 frame 25  event=trace_span
-  ✓ rules[2] matched {event: trace_span, path: span.state, equals: end}
+  ✓ rules[4] matched {event: trace_span, path: span.state, equals: end}
       source             ← span.lane                                                                                   = "model"
       seq                ← seq                                                                                         = "25"
       attempt_id         ← span.attempt_id                                                                             = "<nil>"
@@ -645,7 +645,7 @@ frame 25  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-2"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "3000"
 frame 26  event=trace_span
-  ✓ rules[2] matched {event: trace_span, path: span.state, equals: end}
+  ✓ rules[4] matched {event: trace_span, path: span.state, equals: end}
       source             ← span.lane                                                                                   = "turn"
       seq                ← seq                                                                                         = "26"
       attempt_id         ← span.attempt_id                                                                             = "<nil>"
@@ -672,7 +672,7 @@ frame 26  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-2"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "3000"
 frame 27  event=trace_span
-  ✓ rules[2] matched {event: trace_span, path: span.state, equals: end}
+  ✓ rules[4] matched {event: trace_span, path: span.state, equals: end}
       source             ← span.lane                                                                                   = "response"
       seq                ← seq                                                                                         = "27"
       attempt_id         ← span.attempt_id                                                                             = "<nil>"
@@ -699,7 +699,7 @@ frame 27  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-2"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "3000"
 frame 28  event=trace_span
-  ✓ rules[2] matched {event: trace_span, path: span.state, equals: end}
+  ✓ rules[4] matched {event: trace_span, path: span.state, equals: end}
       source             ← span.lane                                                                                   = "synthesis"
       seq                ← seq                                                                                         = "28"
       attempt_id         ← span.attempt_id                                                                             = "<nil>"
@@ -726,7 +726,7 @@ frame 28  event=trace_span
       turn_id            ← trace.turn_id                                                                               = "turn-2"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "3000"
 frame 29  event=turn_interrupted
-  ✓ rules[19] matched {event: *}
+  ✓ rules[21] matched {event: *}
       source             ← const: conversation                                                                         = "conversation"
       seq                ← seq                                                                                         = "29"
       capture_id         ← trace.capture_id                                                                            = "fixture-capture"
@@ -741,7 +741,7 @@ frame 29  event=turn_interrupted
       turn_id            ← trace.turn_id                                                                               = "turn-2"
       turn_start_ms      ← trace.turn_start_ms                                                                         = "3000"
 frame 30  event=capture_end
-  ✓ rules[4] matched {event: capture_end}
+  ✓ rules[6] matched {event: capture_end}
       source             ← const: conversation                                                                         = "conversation"
       seq                ← seq                                                                                         = "30"
       capture_health     ← health                                                                                      (not found)

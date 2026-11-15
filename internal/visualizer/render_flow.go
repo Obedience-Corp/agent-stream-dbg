@@ -141,8 +141,11 @@ func (m InteractiveModel) renderFlowPane() string {
 	b.WriteString("\n\n")
 
 	reduced := anim.ReducedMotion()
-	for i, step := range steps {
+	row := 0
+	for _, step := range steps {
 		n := nodes[step]
+		selected := row == m.selectedStepIndex
+		row++
 
 		// Build the line
 		var line strings.Builder
@@ -205,7 +208,7 @@ func (m InteractiveModel) renderFlowPane() string {
 
 		// Render with selection highlight
 		lineStr := line.String()
-		if i == m.selectedStepIndex {
+		if selected {
 			b.WriteString(selectedStyle.Render("> " + lineStr))
 		} else {
 			b.WriteString("  " + lineStr)
@@ -235,6 +238,10 @@ func (m InteractiveModel) renderFlowPane() string {
 				aggResp = m.aggregatorResponse(msg)
 			}
 			b.WriteString(m.renderFlowNodeDetails(n, aggResp))
+		}
+		for _, child := range m.flowChildren[step] {
+			b.WriteString(renderFlowChild(child, row == m.selectedStepIndex))
+			row++
 		}
 	}
 

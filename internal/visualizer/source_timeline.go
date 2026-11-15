@@ -67,7 +67,7 @@ func (p InteractiveModel) renderSourceTimeline() string {
 			if len(lines) > max(6, m.height-13) {
 				break
 			}
-			name := i.Stage
+			name := intervalName(i)
 			if i.Segment != nil {
 				name += fmt.Sprintf("[%d]", *i.Segment)
 			}
@@ -78,17 +78,9 @@ func (p InteractiveModel) renderSourceTimeline() string {
 				name += " " + i.Cause
 			}
 			color := p.getAgentColor(i.Lane)
-			glyph := "✓"
-			switch i.Status {
-			case "running":
-				glyph = "●"
-			case "cancelled", "interrupted":
-				glyph = "■"
-			case "failed", "error":
-				glyph = "✗"
+			glyph := intervalStatusGlyph(i.Status)
+			if i.Status == "failed" || i.Status == "error" {
 				color = lipgloss.Color("9")
-			case "unknown":
-				glyph = "?"
 			}
 			if i.Gap {
 				color = lipgloss.Color("11")

@@ -166,6 +166,10 @@ init:
 record-voice-launcher:
     bash demos/record-voice-launcher.sh
 
+# Record docs/assets/voice-model-requests.gif from the synthetic model-request fixture (requires vhs).
+record-voice-model-requests:
+    bash demos/record-voice-model-requests.sh
+
 # Cross-repo live diagnostics walkthrough with isolated source events, no audio.
 record-live-voice voice_repo:
     bash demos/record-live-voice.sh "{{voice_repo}}"

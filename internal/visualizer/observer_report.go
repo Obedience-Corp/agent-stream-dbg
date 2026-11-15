@@ -431,7 +431,7 @@ func renderObserverIntervals(report ObserverIntervalReport, width, scroll, rows 
 				}
 				heading = true
 			}
-			label := interval.Stage
+			label := intervalName(interval)
 			if interval.Segment != nil {
 				label += fmt.Sprintf("[%d]", *interval.Segment)
 			}

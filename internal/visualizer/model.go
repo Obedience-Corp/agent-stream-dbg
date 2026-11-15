@@ -105,6 +105,7 @@ type AgentResponse struct {
 type InteractiveModel struct {
 	passive           *ObserverModel
 	flowNodesOverride map[string]*FlowNode
+	flowChildren      map[string][]*inspectedInterval
 	cfg               *config.EnhancedConfig
 	textarea          textarea.Model
 	viewport          viewport.Model

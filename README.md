@@ -142,6 +142,14 @@ not stop the conversation. Earlier live history cannot be recovered with
 Optional `/record talk` in Obey Voice saves events **and conversation audio** for
 later review; `/record off` stops that recording.
 
+Each model request a turn sends is listed under its `model` stage in Flow,
+labelled by purpose (route, reply, …) with its status and wall time, and drawn as
+its own Timeline bar. Enter on a request shows its model, prompt and output
+tokens, first-token offset, and the provider's load, prefill and generation time;
+unaccounted time is wall time minus those three. The startup warmup has no turn
+and appears on the session lane (`s`). Request bars never add to the `model`
+stage or turn time.
+
 Stage durations are unions within one clock domain, not a sum of concurrent
 work. Timeline bars share their source axis; the within-segment overlap summary
 is distinct from cross-segment pipelining visible in the bars. Missing timing or

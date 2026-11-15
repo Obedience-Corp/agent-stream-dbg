@@ -11,7 +11,7 @@ func (m *ObserverModel) movePassiveSelection(delta int) {
 	case m.selectingScope:
 		count = len(m.store.groups())
 	case m.pane == PaneFlow:
-		count = len(m.presentation().dialectFlow.stages())
+		count = len(m.presentation().flowRows())
 	case m.pane == PaneApp:
 		count = len(m.presentation().messages[0].AgentResponses)
 	case m.pane == PaneTimeline:
@@ -36,13 +36,16 @@ func (m *ObserverModel) movePassiveSelection(delta int) {
 func (m *ObserverModel) selectedPaneInterval() *inspectedInterval {
 	report := m.IntervalReport()
 	if m.pane == PaneFlow {
-		stages := m.presentation().dialectFlow.stages()
-		if len(stages) == 0 {
+		rows := m.presentation().flowRows()
+		if len(rows) == 0 {
 			return nil
 		}
-		stage := stages[min(m.eventRow, len(stages)-1)]
+		row := rows[min(m.eventRow, len(rows)-1)]
+		if row.child != nil {
+			return row.child
+		}
 		for _, interval := range report.Intervals {
-			if interval.Stage == stage {
+			if interval.Stage == row.stage && interval.ParentStage == "" {
 				return interval
 			}
 		}

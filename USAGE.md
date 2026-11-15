@@ -7,6 +7,11 @@ Run `agent-stream-dbg` without arguments to open the home screen. Select
 No dialect, file path, or follow flag is needed. The recording list refreshes
 automatically; `c` chooses and remembers a custom captures folder.
 
+In Flow, each model request appears under the `model` stage with its purpose,
+status and wall time; Timeline draws one bar per request. Select a request and
+press Enter for its tokens, provider timing and unaccounted time. The startup
+warmup is on the session lane (`s`).
+
 No recordings yet? In Obey Voice, type `/record talk` to record events, transcript,
 and conversation audio. Use `/record off` to stop. Close the debugger's viewer
 with `q` to return to the picker; `Esc` returns home.
