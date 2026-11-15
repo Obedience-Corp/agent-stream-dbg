@@ -81,6 +81,7 @@ type FlowNode struct {
 	Status        string
 	Evidence      []string
 	DurationKnown bool
+	RunningFor    string
 }
 
 // AgentResponse tracks a single agent's response
@@ -105,6 +106,8 @@ type AgentResponse struct {
 type InteractiveModel struct {
 	passive           *ObserverModel
 	flowNodesOverride map[string]*FlowNode
+	flowChildren      map[string][]*inspectedInterval
+	flowEstimates     map[*inspectedInterval]float64
 	cfg               *config.EnhancedConfig
 	textarea          textarea.Model
 	viewport          viewport.Model

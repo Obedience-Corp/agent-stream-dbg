@@ -38,6 +38,8 @@ func (p InteractiveModel) renderSourceTimeline() string {
 	if len(report.Domains) > 1 {
 		lines = append(lines, "Clock domains shown separately")
 	}
+	// Live estimates are taken once per render so the axis and bars agree.
+	running := m.runningEstimates(report.Intervals)
 	index := 0
 	for _, domain := range report.Domains {
 		origin, end := math.Inf(1), math.Inf(-1)
@@ -50,6 +52,9 @@ func (p InteractiveModel) renderSourceTimeline() string {
 					origin = math.Min(origin, *v)
 					end = math.Max(end, *v)
 				}
+			}
+			if elapsed, ok := running[i]; ok {
+				end = math.Max(end, *i.Start+elapsed)
 			}
 		}
 		known := domain.ClockKnown && !math.IsInf(origin, 0) && !math.IsInf(end, 0)
@@ -67,7 +72,7 @@ func (p InteractiveModel) renderSourceTimeline() string {
 			if len(lines) > max(6, m.height-13) {
 				break
 			}
-			name := i.Stage
+			name := intervalName(i)
 			if i.Segment != nil {
 				name += fmt.Sprintf("[%d]", *i.Segment)
 			}
@@ -78,17 +83,9 @@ func (p InteractiveModel) renderSourceTimeline() string {
 				name += " " + i.Cause
 			}
 			color := p.getAgentColor(i.Lane)
-			glyph := "✓"
-			switch i.Status {
-			case "running":
-				glyph = "●"
-			case "cancelled", "interrupted":
-				glyph = "■"
-			case "failed", "error":
-				glyph = "✗"
+			glyph := intervalStatusGlyph(i.Status)
+			if i.Status == "failed" || i.Status == "error" {
 				color = lipgloss.Color("9")
-			case "unknown":
-				glyph = "?"
 			}
 			if i.Gap {
 				color = lipgloss.Color("11")
@@ -104,12 +101,17 @@ func (p InteractiveModel) renderSourceTimeline() string {
 			duration := "?"
 			if v, ok := intervalDuration(i); ok {
 				duration = fmt.Sprintf("%.3fms", v)
+			} else if elapsed, ok := running[i]; ok {
+				duration = formatElapsed(elapsed)
+				if known {
+					bar = runningBar(i, elapsed, origin, end, max(4, width-60))
+				}
 			}
 			prefix := " "
 			if row == m.eventRow {
 				prefix = "▸"
 			}
-			line := fmt.Sprintf("%s %s %-23s %-11s %10s %s", prefix, glyph, observerClip(name, 23), i.Status, duration, bar)
+			line := fmt.Sprintf("%s %s %s %-11s %10s %s", prefix, glyph, padCells(observerClip(name, 23), 23), i.Status, duration, bar)
 			lines = append(lines, lipgloss.NewStyle().Foreground(color).Render(line))
 		}
 	}

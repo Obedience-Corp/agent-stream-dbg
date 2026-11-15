@@ -143,6 +143,9 @@ func (m *ObserverModel) detailSource() (map[string]any, *observedRecord) {
 				offset = interval.SourceOffsets[min(m.detailEvidence, len(interval.SourceOffsets)-1)]
 			}
 			data := map[string]any{"span_id": interval.ID, "parent_span_id": interval.Parent, "scope": m.selected, "runtime_id": interval.Runtime, "response_id": interval.Response, "stage": interval.Stage, "lane": interval.Lane, "segment_index": interval.Segment, "attempt_id": interval.Attempt, "start_ms": interval.Start, "end_ms": interval.End, "duration_ms": duration, "status": interval.Status, "relative_clock": interval.Relative, "start_from_final": interval.StartFinal, "end_from_final": interval.EndFinal, "uncorrelated": interval.Uncorrelated, "invalid_timing": interval.Invalid, "issues": interval.Issues, "source_offsets": interval.SourceOffsets, "gap_cause": interval.Cause}
+			if interval.Request != nil {
+				data["request"] = requestDetails(interval)
+			}
 			for _, record := range records {
 				if record.Offset == offset {
 					data["source_context"] = observerNormalizedContext(record.Event)

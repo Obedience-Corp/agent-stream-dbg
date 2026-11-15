@@ -78,7 +78,7 @@ func (m *ObserverModel) presentation() InteractiveModel {
 		message.Text = "Input text unavailable in retained events"
 	}
 	p.messages = []Message{message}
-	p.flowNodesOverride = m.stageNodes()
+	p.flowNodesOverride, p.flowChildren, p.flowEstimates = m.stageNodes()
 	p.includeObservedStages()
 	for _, n := range p.flowNodesOverride {
 		if n.InProgress {
@@ -88,12 +88,23 @@ func (m *ObserverModel) presentation() InteractiveModel {
 	return p
 }
 
-func (m *ObserverModel) stageNodes() map[string]*FlowNode {
+// stageNodes measures each stage from its own intervals. Intervals nested
+// under a stage are returned separately in start order and never contribute
+// to that stage's status or duration.
+func (m *ObserverModel) stageNodes() (map[string]*FlowNode, map[string][]*inspectedInterval, map[*inspectedInterval]float64) {
 	nodes := map[string]*FlowNode{}
+	children := map[string][]*inspectedInterval{}
 	ranges := map[string][]measuredRange{}
 	clocks := map[string]string{}
-	for _, i := range m.IntervalReport().Intervals {
+	running := map[string]float64{}
+	intervals := m.IntervalReport().Intervals
+	estimates := m.runningEstimates(intervals)
+	for _, i := range intervals {
 		if i.Gap {
+			continue
+		}
+		if i.ParentStage != "" {
+			children[i.ParentStage] = append(children[i.ParentStage], i)
 			continue
 		}
 		n := nodes[i.Stage]
@@ -106,6 +117,11 @@ func (m *ObserverModel) stageNodes() map[string]*FlowNode {
 		}
 		if i.Status == "running" && i.End == nil {
 			n.InProgress = true
+		}
+		if elapsed, ok := estimates[i]; ok {
+			if previous, seen := running[i.Stage]; !seen || elapsed > previous {
+				running[i.Stage] = elapsed
+			}
 		}
 		if !i.Invalid && !i.Uncorrelated && i.Start != nil && i.End != nil {
 			clock := intervalClockKey(i)
@@ -124,23 +140,31 @@ func (m *ObserverModel) stageNodes() map[string]*FlowNode {
 			n.Evidence = append(n.Evidence, fmt.Sprintf("%s · %s · %s → %s", label, i.Status, formatMeasured(i.Start), formatMeasured(i.End)))
 		}
 	}
+	for stage, elapsed := range running {
+		nodes[stage].RunningFor = formatElapsed(elapsed)
+	}
 	for stage, n := range nodes {
 		if len(ranges[stage]) > 0 && clocks[stage] != "mixed" {
 			n.DurationMs = int(rangeDuration(ranges[stage]))
 			n.DurationKnown = true
 		}
 	}
-	return nodes
+	return nodes, children, estimates
 }
 func (m *ObserverModel) togglePassiveRow() {
 	p := m.presentation()
 	if m.pane == PaneFlow {
-		stages := p.dialectFlow.stages()
-		if len(stages) == 0 {
+		rows := p.flowRows()
+		if len(rows) == 0 {
 			return
 		}
-		stage := stages[min(m.eventRow, len(stages)-1)]
-		m.flowExpanded[stage] = !m.flowExpanded[stage]
+		row := rows[min(m.eventRow, len(rows)-1)]
+		if row.child != nil {
+			m.details = true
+			m.openObserverDetails()
+			return
+		}
+		m.flowExpanded[row.stage] = !m.flowExpanded[row.stage]
 	} else {
 		ids := []string{}
 		for id := range p.messages[0].AgentResponses {
@@ -183,6 +207,13 @@ func (p *InteractiveModel) includeObservedStages() {
 	for stage := range p.flowNodesOverride {
 		if !known[stage] {
 			extra = append(extra, stage)
+			known[stage] = true
+		}
+	}
+	for stage := range p.flowChildren {
+		if !known[stage] {
+			extra = append(extra, stage)
+			known[stage] = true
 		}
 	}
 	sort.Strings(extra)

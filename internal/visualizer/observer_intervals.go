@@ -1,6 +1,7 @@
 package visualizer
 
 import (
+	"cmp"
 	"fmt"
 	"math"
 	"sort"
@@ -13,6 +14,10 @@ type inspectedInterval struct {
 	ID, Parent, Stage, Lane                   string
 	Attempt, Status, Runtime, Response, Cause string
 	Role, Reference                           string
+	ParentStage, Label                        string
+	Request                                   *requestEvidence
+	Ended                                     bool
+	FirstSeq                                  int
 	Segment                                   *int
 	Start, End                                *float64
 	Relative, Gap, Invalid                    bool
@@ -82,6 +87,10 @@ func intervalFromFields(fields map[string]any) *inspectedInterval {
 	gap, _ := fields["is_gap"].(bool)
 	invalid, _ := fields["invalid_timing"].(bool)
 	result := &inspectedInterval{Role: stringValue("span_role"), Reference: stringValue("boundary_reference"), Stage: stringValue("stage"), Lane: stringValue("lane"), Parent: stringValue("parent_span_id"), Attempt: stringValue("attempt_id"), Status: status, Segment: intervalSegment(fields["segment_index"]), Start: start, End: end, Relative: relative, Gap: gap, Cause: stringValue("cause"), Invalid: badStart || badEnd || invalid}
+	result.Ended = stringValue("span_state") == "end"
+	result.ParentStage = stringValue("parent_stage")
+	result.Label = stringValue("span_label")
+	result.Request = requestFromFields(fields)
 	if result.Invalid {
 		result.issue("invalid timing shape/non-finite measurement")
 	}
@@ -140,6 +149,7 @@ func projectObservedIntervals(records []*observedRecord, legacy bool) []*inspect
 		current, exists := operations[key]
 		if !exists {
 			incoming.ID = id
+			incoming.FirstSeq = e.Seq
 			incoming.SourceOffsets = []int64{record.Offset}
 			operations[key] = incoming
 			result = append(result, incoming)
@@ -172,6 +182,10 @@ func projectObservedIntervals(records []*observedRecord, legacy bool) []*inspect
 		if current.Lane == "" {
 			current.Lane = incoming.Lane
 		}
+		current.ParentStage = cmp.Or(current.ParentStage, incoming.ParentStage)
+		current.Label = cmp.Or(current.Label, incoming.Label)
+		current.Request = mergeRequestEvidence(current.Request, incoming.Request)
+		current.Ended = current.Ended || incoming.Ended
 
 		mergeIntervalBound(current, true, incoming.Start, false)
 		mergeIntervalBound(current, false, incoming.End, false)

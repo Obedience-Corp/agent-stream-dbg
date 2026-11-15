@@ -12,7 +12,7 @@ import (
 // bottom panel reports source health instead of accepting conversation input.
 func (p InteractiveModel) renderPassiveView() string {
 	m := p.passive
-	width, height := min(240, max(30, m.width)), min(100, max(12, m.height))
+	width, height := passivePanelWidth(m.width), min(100, max(12, m.height))
 	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	accent := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
 	state := m.sourceLifecycle()
@@ -139,3 +139,6 @@ func (p InteractiveModel) passiveActivity() string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+// passivePanelWidth is the terminal width the passive view lays out within.
+func passivePanelWidth(width int) int { return min(240, max(30, width)) }

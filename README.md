@@ -142,6 +142,29 @@ not stop the conversation. Earlier live history cannot be recovered with
 Optional `/record talk` in Obey Voice saves events **and conversation audio** for
 later review; `/record off` stops that recording.
 
+Each model request a turn sends is listed under its `model` stage in Flow,
+labelled by purpose (route, reply, …) with its status and wall time, and drawn as
+its own Timeline bar. Enter on a request shows its model, prompt and output
+tokens, first-token offset, and the provider's load, prefill and generation time;
+unaccounted time is wall time minus those three, the time the provider's report
+does not account for; a negative value is marked as the provider reporting more
+than wall time. The startup warmup has no turn
+and appears on the session lane (`s`). Request bars never add to the `model`
+stage or turn time.
+
+While a live conversation is attached, anything still running shows how long it
+has been running, for example `running 12.3s…`, and its Timeline bar grows from
+its start and ends in `…`. With `observe --follow` this starts once the file has
+grown since it was opened, and stops after three minutes without new bytes. The
+value is the viewer's lower-bound estimate on the source clock: the latest
+record's source time plus local time since the viewer received it, so opening a
+capture mid-request while the producer is quiet under-reports. The source's
+measured duration replaces it when the span ends. A span shows as unavailable
+(`?`) instead when the capture is saved, sealed or not growing; when the live
+feed has ended or disconnected; when the span's end record arrived without an
+end time; when its parent (such as its turn) has ended; or when records were
+missing from the source after it began and a later turn has started.
+
 Stage durations are unions within one clock domain, not a sum of concurrent
 work. Timeline bars share their source axis; the within-segment overlap summary
 is distinct from cross-segment pipelining visible in the bars. Missing timing or

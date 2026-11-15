@@ -431,7 +431,7 @@ func renderObserverIntervals(report ObserverIntervalReport, width, scroll, rows 
 				}
 				heading = true
 			}
-			label := interval.Stage
+			label := intervalName(interval)
 			if interval.Segment != nil {
 				label += fmt.Sprintf("[%d]", *interval.Segment)
 			}
@@ -453,7 +453,7 @@ func renderObserverIntervals(report ObserverIntervalReport, width, scroll, rows 
 			if domain.ClockKnown && axisKnown {
 				bar = intervalBar(interval, origin, end, max(4, width-48))
 			}
-			lines = append(lines, observerClip(fmt.Sprintf("%3d %-12s %-26s %s", index, observerClip(status+badge, 12), observerClip(label, 26), bar), width))
+			lines = append(lines, observerClip(fmt.Sprintf("%3d %-12s %s %s", index, observerClip(status+badge, 12), padCells(observerClip(label, 26), 26), bar), width))
 			duration := "unavailable"
 			if value, ok := intervalDuration(interval); ok {
 				duration = fmt.Sprintf("%.3fms", value)
