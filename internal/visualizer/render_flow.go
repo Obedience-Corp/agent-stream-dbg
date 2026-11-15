@@ -168,6 +168,9 @@ func (m InteractiveModel) renderFlowPane() string {
 		if n != nil && n.Status != "" {
 			line.WriteString(" · " + n.Status)
 		}
+		if n != nil && n.RunningFor != "" {
+			line.WriteString(" " + n.RunningFor)
+		}
 
 		// Metrics (if available)
 		if n != nil {
@@ -240,7 +243,7 @@ func (m InteractiveModel) renderFlowPane() string {
 			b.WriteString(m.renderFlowNodeDetails(n, aggResp))
 		}
 		for _, child := range m.flowChildren[step] {
-			b.WriteString(renderFlowChild(child, row == m.selectedStepIndex))
+			b.WriteString(renderFlowChild(child, row == m.selectedStepIndex, m.runningLabel(child)))
 			row++
 		}
 	}

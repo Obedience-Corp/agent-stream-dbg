@@ -150,6 +150,14 @@ unaccounted time is wall time minus those three. The startup warmup has no turn
 and appears on the session lane (`s`). Request bars never add to the `model`
 stage or turn time.
 
+While the source is live (a live conversation, or `observe --follow` before the
+capture is sealed), anything still running shows how long it has been running,
+for example `running 12.3s…`, and its Timeline bar grows from its start and ends
+in `…`. This is the viewer's estimate on the source clock: the latest record's
+source time plus local time since it arrived. The source's measured duration
+replaces it when the span ends. Saved captures, and live sources after they end
+or disconnect, show unfinished spans as unavailable (`?`).
+
 Stage durations are unions within one clock domain, not a sum of concurrent
 work. Timeline bars share their source axis; the within-segment overlap summary
 is distinct from cross-segment pipelining visible in the bars. Missing timing or

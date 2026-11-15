@@ -157,10 +157,12 @@ func (m InteractiveModel) flowRows() []flowRow {
 	return rows
 }
 
-func renderFlowChild(interval *inspectedInterval, selected bool) string {
+func renderFlowChild(interval *inspectedInterval, selected bool, running string) string {
 	line := fmt.Sprintf("  ↳ %s %-14s · %s", intervalStatusGlyph(interval.Status), cmp.Or(interval.Label, interval.Stage), interval.Status)
 	if wall, ok := intervalDuration(interval); ok {
 		line += fmt.Sprintf(" [%dms]", int(wall))
+	} else if running != "" {
+		line += " " + running
 	}
 	if selected {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true).Render("> "+line) + "\n"

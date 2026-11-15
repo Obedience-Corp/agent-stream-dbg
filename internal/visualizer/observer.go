@@ -61,6 +61,8 @@ type ObserverModel struct {
 	manifestCaptureID                                             string
 	intervalsEnabled                                              bool
 	err                                                           error
+	now                                                           func() time.Time
+	clockAnchors                                                  map[string]clockAnchor
 }
 
 func NewObserverModel(ctx context.Context, tr transport.Transport, parser *bridge.Parser, path string, follow bool, manifestCaptureID string) *ObserverModel {
@@ -172,6 +174,7 @@ func (m *ObserverModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.health = fmt.Sprintf("lost:%v omitted:%v scope-excluded:%v errors:%v written:%v synced:%v", observerNumber(health["dropped"]), observerNumber(health["skipped"]), observerNumber(health["scope_excluded"]), observerNumber(health["write_errors"]), observerNumber(health["last_written_seq"]), observerNumber(health["last_synced_seq"]))
 		}
 		m.store.add(event, frame, true)
+		m.noteSourceClock(event)
 		if frame.Terminal && frame.Err != nil {
 			m.err = frame.Err
 			m.sourceEnded = true

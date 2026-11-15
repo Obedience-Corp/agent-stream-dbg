@@ -96,6 +96,7 @@ func (m *ObserverModel) stageNodes() (map[string]*FlowNode, map[string][]*inspec
 	children := map[string][]*inspectedInterval{}
 	ranges := map[string][]measuredRange{}
 	clocks := map[string]string{}
+	running := map[string]float64{}
 	for _, i := range m.IntervalReport().Intervals {
 		if i.Gap {
 			continue
@@ -115,6 +116,11 @@ func (m *ObserverModel) stageNodes() (map[string]*FlowNode, map[string][]*inspec
 		if i.Status == "running" && i.End == nil {
 			n.InProgress = true
 		}
+		if elapsed, ok := m.runningElapsedMS(i); ok {
+			if previous, seen := running[i.Stage]; !seen || elapsed > previous {
+				running[i.Stage] = elapsed
+			}
+		}
 		if !i.Invalid && !i.Uncorrelated && i.Start != nil && i.End != nil {
 			clock := intervalClockKey(i)
 			if prev := clocks[i.Stage]; prev != "" && prev != clock {
@@ -131,6 +137,9 @@ func (m *ObserverModel) stageNodes() (map[string]*FlowNode, map[string][]*inspec
 			}
 			n.Evidence = append(n.Evidence, fmt.Sprintf("%s · %s · %s → %s", label, i.Status, formatMeasured(i.Start), formatMeasured(i.End)))
 		}
+	}
+	for stage, elapsed := range running {
+		nodes[stage].RunningFor = formatElapsed(elapsed)
 	}
 	for stage, n := range nodes {
 		if len(ranges[stage]) > 0 && clocks[stage] != "mixed" {

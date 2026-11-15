@@ -81,6 +81,7 @@ type FlowNode struct {
 	Status        string
 	Evidence      []string
 	DurationKnown bool
+	RunningFor    string
 }
 
 // AgentResponse tracks a single agent's response
