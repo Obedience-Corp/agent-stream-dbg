@@ -78,7 +78,7 @@ func (m *ObserverModel) presentation() InteractiveModel {
 		message.Text = "Input text unavailable in retained events"
 	}
 	p.messages = []Message{message}
-	p.flowNodesOverride, p.flowChildren = m.stageNodes()
+	p.flowNodesOverride, p.flowChildren, p.flowEstimates = m.stageNodes()
 	p.includeObservedStages()
 	for _, n := range p.flowNodesOverride {
 		if n.InProgress {
@@ -91,13 +91,15 @@ func (m *ObserverModel) presentation() InteractiveModel {
 // stageNodes measures each stage from its own intervals. Intervals nested
 // under a stage are returned separately in start order and never contribute
 // to that stage's status or duration.
-func (m *ObserverModel) stageNodes() (map[string]*FlowNode, map[string][]*inspectedInterval) {
+func (m *ObserverModel) stageNodes() (map[string]*FlowNode, map[string][]*inspectedInterval, map[*inspectedInterval]float64) {
 	nodes := map[string]*FlowNode{}
 	children := map[string][]*inspectedInterval{}
 	ranges := map[string][]measuredRange{}
 	clocks := map[string]string{}
 	running := map[string]float64{}
-	for _, i := range m.IntervalReport().Intervals {
+	intervals := m.IntervalReport().Intervals
+	estimates := m.runningEstimates(intervals)
+	for _, i := range intervals {
 		if i.Gap {
 			continue
 		}
@@ -116,7 +118,7 @@ func (m *ObserverModel) stageNodes() (map[string]*FlowNode, map[string][]*inspec
 		if i.Status == "running" && i.End == nil {
 			n.InProgress = true
 		}
-		if elapsed, ok := m.runningElapsedMS(i); ok {
+		if elapsed, ok := estimates[i]; ok {
 			if previous, seen := running[i.Stage]; !seen || elapsed > previous {
 				running[i.Stage] = elapsed
 			}
@@ -147,7 +149,7 @@ func (m *ObserverModel) stageNodes() (map[string]*FlowNode, map[string][]*inspec
 			n.DurationKnown = true
 		}
 	}
-	return nodes, children
+	return nodes, children, estimates
 }
 func (m *ObserverModel) togglePassiveRow() {
 	p := m.presentation()

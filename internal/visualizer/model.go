@@ -107,6 +107,7 @@ type InteractiveModel struct {
 	passive           *ObserverModel
 	flowNodesOverride map[string]*FlowNode
 	flowChildren      map[string][]*inspectedInterval
+	flowEstimates     map[*inspectedInterval]float64
 	cfg               *config.EnhancedConfig
 	textarea          textarea.Model
 	viewport          viewport.Model

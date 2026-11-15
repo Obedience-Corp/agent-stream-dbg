@@ -39,12 +39,7 @@ func (p InteractiveModel) renderSourceTimeline() string {
 		lines = append(lines, "Clock domains shown separately")
 	}
 	// Live estimates are taken once per render so the axis and bars agree.
-	running := map[*inspectedInterval]float64{}
-	for _, i := range report.Intervals {
-		if elapsed, ok := m.runningElapsedMS(i); ok {
-			running[i] = elapsed
-		}
-	}
+	running := m.runningEstimates(report.Intervals)
 	index := 0
 	for _, domain := range report.Domains {
 		origin, end := math.Inf(1), math.Inf(-1)

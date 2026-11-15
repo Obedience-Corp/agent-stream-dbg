@@ -9,6 +9,7 @@ import (
 	"github.com/Obedience-Corp/agent-stream-dbg/internal/transport"
 	tea "github.com/charmbracelet/bubbletea"
 	"math"
+	"os"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -63,11 +64,15 @@ type ObserverModel struct {
 	err                                                           error
 	now                                                           func() time.Time
 	clockAnchors                                                  map[string]clockAnchor
+	sequenceGaps                                                  []int
+	turnStarts                                                    map[string]int
+	openedSize                                                    int64
+	grewAt                                                        time.Time
 }
 
 func NewObserverModel(ctx context.Context, tr transport.Transport, parser *bridge.Parser, path string, follow bool, manifestCaptureID string) *ObserverModel {
 	ctx, cancel := context.WithCancel(ctx)
-	return &ObserverModel{source: tr, parser: parser, path: path, following: follow, ctx: ctx, cancel: cancel, store: newObserverStore(), followLatest: true, pane: PaneFlow, width: 100, height: 30, status: "attaching", manifestCaptureID: manifestCaptureID, intervalsEnabled: false, flowExpanded: make(map[string]bool), agentCollapsed: make(map[string]bool)}
+	return &ObserverModel{source: tr, parser: parser, path: path, following: follow, ctx: ctx, cancel: cancel, store: newObserverStore(), followLatest: true, pane: PaneFlow, width: 100, height: 30, status: "attaching", manifestCaptureID: manifestCaptureID, openedSize: -1, intervalsEnabled: false, flowExpanded: make(map[string]bool), agentCollapsed: make(map[string]bool)}
 }
 func (m *ObserverModel) Init() tea.Cmd {
 	return func() tea.Msg {
@@ -113,6 +118,11 @@ func (m *ObserverModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.attached = true
 		m.ingesting = true
 		m.status = "reading"
+		if file, ok := m.source.(interface{ Snapshot() (os.FileInfo, []byte) }); ok {
+			if info, _ := file.Snapshot(); info != nil {
+				m.openedSize = info.Size()
+			}
+		}
 		return m, m.waitFrame()
 	case observerFrame:
 		if !msg.ok {
@@ -124,6 +134,10 @@ func (m *ObserverModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
+		}
+		anchor, keepSelection := selectionIdentity{}, false
+		if !m.followLatest {
+			anchor, keepSelection = m.selectedIdentity()
 		}
 		frame := msg.frame
 		if m.source.Name() == "sse" {
@@ -173,8 +187,11 @@ func (m *ObserverModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if health := event.MapField("capture_health"); health != nil {
 			m.health = fmt.Sprintf("lost:%v omitted:%v scope-excluded:%v errors:%v written:%v synced:%v", observerNumber(health["dropped"]), observerNumber(health["skipped"]), observerNumber(health["scope_excluded"]), observerNumber(health["write_errors"]), observerNumber(health["last_written_seq"]), observerNumber(health["last_synced_seq"]))
 		}
+		previousSeq := m.store.lastSeq
 		m.store.add(event, frame, true)
 		m.noteSourceClock(event)
+		m.noteSourceProgress(event, previousSeq)
+		m.noteFileGrowth(frame)
 		if frame.Terminal && frame.Err != nil {
 			m.err = frame.Err
 			m.sourceEnded = true
@@ -186,6 +203,8 @@ func (m *ObserverModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.selectScope(latestObservedGroup(groups, m.runtimeID), m.store)
 			m.scroll = 0
 			m.eventRow = 0
+		} else if keepSelection {
+			m.restoreSelection(anchor)
 		}
 		if event.Kind == events.KindSessionEnd {
 			m.sourceEnded = true

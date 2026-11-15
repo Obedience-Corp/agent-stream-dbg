@@ -12,7 +12,8 @@ status and wall time; Timeline draws one bar per request. Select a request and
 press Enter for its tokens, provider timing and unaccounted time. The startup
 warmup is on the session lane (`s`). While a live conversation is attached,
 running stages and requests count up (`running 12.3s…`) until the source reports
-their measured duration.
+their measured duration. The count is a lower-bound estimate from when the
+viewer received the latest record; see the README for when it shows `?` instead.
 
 No recordings yet? In Obey Voice, type `/record talk` to record events, transcript,
 and conversation audio. Use `/record off` to stop. Close the debugger's viewer

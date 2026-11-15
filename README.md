@@ -152,13 +152,18 @@ than wall time. The startup warmup has no turn
 and appears on the session lane (`s`). Request bars never add to the `model`
 stage or turn time.
 
-While the source is live (a live conversation, or `observe --follow` before the
-capture is sealed), anything still running shows how long it has been running,
-for example `running 12.3s…`, and its Timeline bar grows from its start and ends
-in `…`. This is the viewer's estimate on the source clock: the latest record's
-source time plus local time since it arrived. The source's measured duration
-replaces it when the span ends. Saved captures, and live sources after they end
-or disconnect, show unfinished spans as unavailable (`?`).
+While a live conversation is attached, anything still running shows how long it
+has been running, for example `running 12.3s…`, and its Timeline bar grows from
+its start and ends in `…`. With `observe --follow` this starts once the file has
+grown since it was opened, and stops after three minutes without new bytes. The
+value is the viewer's lower-bound estimate on the source clock: the latest
+record's source time plus local time since the viewer received it, so opening a
+capture mid-request while the producer is quiet under-reports. The source's
+measured duration replaces it when the span ends. A span shows as unavailable
+(`?`) instead when the capture is saved, sealed or not growing; when the live
+feed has ended or disconnected; when the span's end record arrived without an
+end time; when its parent (such as its turn) has ended; or when records were
+missing from the source after it began and a later turn has started.
 
 Stage durations are unions within one clock domain, not a sum of concurrent
 work. Timeline bars share their source axis; the within-segment overlap summary
